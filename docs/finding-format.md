@@ -25,6 +25,7 @@ One SARIF result becomes one finding. Grouping duplicates happens later, in dedu
 | `related_locations` | list of locations | no | `result.relatedLocations` | other places the tool points to |
 | `data_flow` | list of flow steps | no | `result.codeFlows[0].threadFlows[0].locations` | the path from the source to the flagged call, when the tool reports one |
 | `fingerprint` | string | yes | computed by the adapter (see below) | stays the same for the same finding across scans of different commits |
+| `fingerprint_ambiguous` | boolean | yes | computed by the adapter (see below) | true when another finding in the same run has the same rule, file and flagged code, so a match with an earlier scan is less certain |
 | `tool_fingerprint` | string | no | `result.partialFingerprints` or `result.fingerprints` | the tool's own fingerprint, kept only when the adapter knows it is stable |
 | `language` | string | no | the file extension | `python`, `java`, `javascript` or `typescript` |
 | `raw` | object | yes | the whole SARIF result | kept so we can check or redo the mapping later |
@@ -37,7 +38,7 @@ A location has these fields:
 | `start_line` | integer | yes | `region.startLine` | starts at 1 |
 | `end_line` | integer | yes | `region.endLine`, else `start_line` | |
 | `start_column`, `end_column` | integer | no | `region.startColumn`, `region.endColumn` | start at 1 |
-| `snippet` | string | no | `region.snippet.text`, else the lines read from the checkout | the flagged code |
+| `snippet` | string | no | `region.snippet.text`, else the lines read from the checkout. For Gitleaks, only the redacted text from SARIF. | the flagged code |
 
 A flow step is a location plus `step`, its position in the path starting at 1, and `message`, from the step's `location.message.text` when the tool gives one.
 
@@ -113,6 +114,10 @@ def fingerprint(tool: str, rule_id: str, file: str, lines: list[str], occurrence
     return "v1:" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
 ```
 
+The adapter reads the lines as UTF-8 and replaces bytes that aren't valid UTF-8, so a file in another encoding doesn't stop the run. If the file can't be read at all, it uses the SARIF snippet instead.
+
+For Gitleaks findings, the adapter first replaces the flagged columns, which hold the secret, with `REDACTED`, both in the text it hashes and in the snippet it stores. The secret never reaches the findings store, not even as part of a hash.
+
 The hash leaves out line numbers on purpose. When code above a finding is added or removed, the finding keeps its fingerprint. We checked this on the example below: after adding three lines at the top of the file, the finding moved from line 57 to line 60 and its fingerprint stayed the same. Collapsing whitespace means that indenting the code differently doesn't change it either.
 
 A fingerprint changes, and the finding counts as new, when:
@@ -122,6 +127,26 @@ A fingerprint changes, and the finding counts as new, when:
 - the rule ID changes, which happens only when we update the rules on purpose
 
 The `v1:` prefix lets us change the method later without mixing old and new values. Deduplication matches findings from repeated scans of the same repository by their fingerprint.
+
+### Ambiguous fingerprints
+
+The occurrence number is the one weak point. When a file has two identical flagged pieces of code for the same rule, such as two functions that both start with `@csrf_exempt`, the fingerprints differ only by the occurrence. If code is added between them, or one is deleted, the numbers can shift, and a finding could be matched to the wrong one in the earlier scan. Hiding a real bug because a different copy was reviewed as a false positive is the worst mistake this matching can make.
+
+So the adapter sets `fingerprint_ambiguous` to true on every finding whose first four values are shared with another finding in the same run. Deduplication still links such a finding to its match in the earlier scan, but the review screen shows it again with the earlier decision as a suggestion, instead of hiding it. Only findings that are not ambiguous in either scan are hidden.
+
+### How well it works
+
+We compared the fingerprints of three scans of PyGoat with the Semgrep plug-in. We counted two findings as truly the same when they have the same rule and file, and Git's line-by-line comparison of the two versions maps the old start line to the new one.
+
+| Scans compared | Truly the same | Matched correctly | Missed, so shown again | Matched to the wrong finding | Ambiguous in the later scan |
+|---|---|---|---|---|---|
+| commit `2aa4cc1` twice | 153 | 153 | 0 | 0 | 2 of 153 |
+| v3.0.0 and `2aa4cc1`, 11 days and 12 changed files apart | 153 | 153 | 0 | 0 | 2 of 153 |
+| v2.0.1 and `2aa4cc1`, 547 changed files apart | 3 | 0 | 3 | 0 | 2 of 153 |
+
+For normal rescans, every finding was matched. After a large rewrite, the three findings whose functions changed were shown again, which is the safe side of the trade-off.
+
+We also tried hashing only the first flagged line, which is closer to how GitHub's code scanning builds its line hash, so that edits inside a long flagged region don't count as a new finding. It matched the first two pairs equally well, but on the third it matched three `@csrf_exempt` findings to the wrong functions. We kept the whole region.
 
 ## Example: Semgrep on PyGoat
 
@@ -237,6 +262,7 @@ The IDs are illustrative. Everything else is what the adapter produces from the 
   "related_locations": [],
   "data_flow": [],
   "fingerprint": "v1:4aef0ff3eeeaa51051da86d7be561fee",
+  "fingerprint_ambiguous": false,
   "tool_fingerprint": null,
   "language": "python",
   "raw": {
