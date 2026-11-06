@@ -44,6 +44,7 @@ erDiagram
     text status
     text reason
     int exit_code
+    int files_scanned
     int result_count
     int dropped_count
     text sarif_path
@@ -74,6 +75,7 @@ erDiagram
     int end_column
     text snippet
     text fingerprint
+    bool fingerprint_ambiguous
     text tool_fingerprint
     text language
     jsonb raw
@@ -130,7 +132,7 @@ erDiagram
   }
 ```
 
-`text_array` stands for PostgreSQL's `text[]`, which Mermaid can't show.
+`text_array` stands for PostgreSQL's `text[]`, and `bool` for `boolean`, because Mermaid can't show those names.
 
 ## Conventions
 
@@ -174,8 +176,9 @@ One row per plug-in run in a scan. This table is not one of the eight in the pro
 | `tool_version` | text | no | from the manifest |
 | `rules_version` | text | no | from the manifest |
 | `status` | text | no | `pending`, `building`, `running`, `succeeded`, `skipped`, `failed` or `timed_out` |
-| `reason` | text | yes | for failed runs: `exit_code`, `missing_sarif`, `invalid_sarif`, `out_of_memory` or `build_failed` |
+| `reason` | text | yes | for failed runs: `exit_code`, `missing_sarif`, `nothing_scanned`, `invalid_sarif`, `out_of_memory` or `build_failed` |
 | `exit_code` | integer | yes | the container's exit code, empty while running and after a timeout |
+| `files_scanned` | integer | yes | the number of files the tool scanned, from `scan-info.json`. A run with 0 here fails when the checkout has files in the plug-in's languages. |
 | `result_count` | integer | yes | the number of results in the SARIF file |
 | `dropped_count` | integer | no | results the adapter didn't turn into findings, for the reasons in docs/finding-format.md. Default 0. |
 | `sarif_path` | text | yes | where the SARIF file is in the `sieve-data` volume |
@@ -199,7 +202,7 @@ One row per finding, in the format of docs/finding-format.md. Each field of that
 | `scan_id` | uuid | no | the scan, references `scans` |
 | `run_id` | uuid | no | the plug-in run that produced it, references `analyzer_runs` |
 | `group_id` | uuid | yes | its duplicate group, references `duplicate_groups`. Empty when the finding has no duplicates, so it is a triage item on its own. |
-| `matched_finding_id` | uuid | yes | the finding with the same fingerprint in the latest earlier scan of the same repository, references `findings`. Set by deduplication. A finding whose match was already reviewed is not shown in the review queue again (requirement F3). |
+| `matched_finding_id` | uuid | yes | the finding with the same fingerprint in the latest earlier scan of the same repository, references `findings`. Set by deduplication. A finding whose match was already reviewed is not shown in the review queue again (requirement F3), unless either of the two is ambiguous. |
 | `tool` | text | no | the plug-in's name |
 | `tool_version` | text | no | |
 | `rule_id` | text | no | |
@@ -217,6 +220,7 @@ One row per finding, in the format of docs/finding-format.md. Each field of that
 | `end_column` | integer | yes | |
 | `snippet` | text | yes | the flagged code |
 | `fingerprint` | text | no | computed as in docs/finding-format.md, such as `v1:4aef0ff3eeeaa51051da86d7be561fee` |
+| `fingerprint_ambiguous` | boolean | no | true when another finding in the same run has the same rule, file and flagged code. Such a finding is shown again instead of hidden when it matches an earlier one. |
 | `tool_fingerprint` | text | yes | the tool's own fingerprint, when it is stable |
 | `language` | text | yes | `python`, `java`, `javascript` or `typescript` |
 | `raw` | jsonb | no | the SARIF result the finding came from |
