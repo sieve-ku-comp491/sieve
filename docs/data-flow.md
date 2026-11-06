@@ -99,7 +99,7 @@ Prompts carry no repository name or URL and no CVE IDs or CVE descriptions, so t
 - The scope file and review decisions.
 - Exported reports. They are written to the `./exports` folder, and the researcher submits them by hand. Sieve never sends a report to a bug bounty platform. Submission is tested only against the mock server (S4), which runs on the machine.
 - API keys. They are read from environment variables that come from an `.env` file that Git ignores. Only the worker container gets them. They are never written into a prompt, the database, a log or a report, and Gitleaks checks every pull request for keys committed by mistake (N4).
-- Secrets found by Gitleaks. Gitleaks runs with `--redact`, so the secret value never reaches the SARIF file, the findings store or a prompt.
+- Secrets found by Gitleaks. Gitleaks runs with `--redact`, so the secret value never reaches the SARIF file. The adapter replaces the secret's columns with `REDACTED` before it stores a snippet or computes a fingerprint, and the triage agent's context collector does the same before it puts the code of a Gitleaks finding into a prompt.
 
 ## Guarantees and where they are enforced
 
