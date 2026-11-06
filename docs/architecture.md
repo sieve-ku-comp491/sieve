@@ -158,7 +158,7 @@ Scans and triage runs take minutes, so the API only records a job and returns it
 | Volume | Mounted in | Contents |
 |---|---|---|
 | `pgdata` | `db` | the database files |
-| `sieve-data` | `worker` at /data, and parts of it in analyzer and build containers | `scans/<scan ID>/src` for the checkout, `runs/<run ID>/out` for the SARIF file, `runs/<run ID>/build` for the Java build, and `runs/<run ID>/log` |
+| `sieve-data` | `worker` at /data, and parts of it in analyzer and build containers | `scans/<scan ID>/src` for the files of the scanned commit, exported without the .git folder, `runs/<run ID>/out` for the SARIF file, `runs/<run ID>/build` for the Java build, and `runs/<run ID>/log` |
 | `m2-cache` | build containers at /cache/m2 | Maven's local repository, shared between scans so later builds download less |
 | `./exports` | `api` | exported reports, as a folder on the host so the researcher can open them |
 
