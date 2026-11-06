@@ -8,7 +8,165 @@ This document fixes the interfaces between Sieve's components, so each of us can
 
 ## Plug-in contract
 
-To be written by Ali.
+A plug-in is one analyzer packed as a Docker image, plus a manifest that tells the scan service how to run it. The plug-in reads the code from /src and writes SARIF 2.1.0 to /out. That is all the core knows about it, so adding an analyzer means adding a plug-in and its adapter, and nothing in the core changes (requirements F1 and N5). The plug-in runner (T2.1) is the host side of this contract.
+
+### Plug-in directory
+
+Each plug-in has its own directory in the repository:
+
+    plugins/semgrep/
+      plugin.toml    the manifest
+      Dockerfile     installs the tool and its rules at pinned versions
+      run.sh         the entry point: runs the tool, writes the SARIF file, maps exit codes
+
+The adapter that turns the plug-in's SARIF into findings lives in the back end (T2.2), and the manifest names it.
+
+### Manifest
+
+The manifest is TOML, so the back end reads it with Python's `tomllib` and needs no extra library.
+
+```toml
+name = "semgrep"
+image = "sieve-plugin-semgrep:1.183.0-16b9e6d"
+languages = ["python", "java", "javascript", "typescript"]
+adapter = "semgrep"
+timeout_seconds = 600
+
+[versions]
+tool = "1.183.0"
+rules = "semgrep-rules@16b9e6d45f10649f6a531ec4838ed9924372c3bc"
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `name` | yes | the plug-in's ID, lowercase. Findings store it in their `tool` field. |
+| `image` | yes | the image to run. Its tag includes the tool and rules versions, so updating either means building a new image on purpose. |
+| `languages` | yes | the languages it scans. The scan service skips a plug-in when the repository has no files in these languages. |
+| `adapter` | yes | the adapter that reads its SARIF (docs/finding-format.md) |
+| `timeout_seconds` | no | the time limit for the whole run, build step included. Default 600, at most 3600. |
+| `versions.tool`, `versions.rules` | yes | recorded with every run. `versions.rules` is the rules repository and commit, or the tool version when the rules ship with the tool. |
+| `build.image` | no | an image for a build step that runs before the scan, for the Java plug-in |
+| `build.network` | no | `true` to give the build step network access. Only the build step can have it. |
+
+The Java plug-in adds a build step and a longer time limit:
+
+```toml
+name = "spotbugs"
+image = "sieve-plugin-spotbugs:<tool version>-<plug-in version>"
+languages = ["java"]
+adapter = "spotbugs"
+timeout_seconds = 1800
+
+[build]
+image = "sieve-plugin-spotbugs-build:<maven version>"
+network = true
+```
+
+### What the container gets
+
+| Path | Access | Contents |
+|---|---|---|
+| `/src` | read-only | the checkout of the scanned commit |
+| `/out` | read and write, empty at start | where the plug-in writes `results.sarif` |
+| `/build` | read-only | the build step's output, only for plug-ins with a build step |
+| `/tmp` | read and write, in memory | scratch space. `HOME` points here, because tools such as Semgrep write a cache to the home directory. |
+
+The runner starts every scan container like this:
+
+    docker run --network none --read-only --tmpfs /tmp
+      --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges
+      --memory 4g --cpus 2 --pids-limit 512
+      --label sieve.scan_id=<scan ID> --label sieve.run_id=<run ID>
+      --mount <checkout>:/src,readonly --mount <run output>:/out
+      -e SIEVE_SRC=/src -e SIEVE_OUT=/out -e HOME=/tmp
+      <image>
+
+- No network, so the container can't send code or findings anywhere (requirement N4), and the same image gives the same results on the same commit.
+- Only the variables above are passed. The container never sees API keys or the host's environment.
+- The labels let the worker find and remove containers left behind if it crashes in the middle of a scan.
+- The memory, CPU and process limits are defaults in the back end's settings, not in the manifest.
+
+We tested these flags with Semgrep 1.183.0 on PyGoat: the scan works with no network, a read-only root file system, a non-root user and all capabilities dropped.
+
+### Build step
+
+SpotBugs scans compiled code, so the Java plug-in builds the project first. The build and the scan run in two separate containers:
+
+1. The build container copies /src to /build/work and runs Maven there, with `-DskipTests`. It has network access through its own Docker network, which has no other containers on it, so it can download dependencies but can't reach the database or the back end. Maven's local repository is a volume shared between scans, so later builds of the same project download little.
+2. The scan container runs SpotBugs on /build/work with no network, like any other plug-in.
+
+If the build fails, the run fails with the reason `build_failed`, and Semgrep still covers the Java code.
+
+The trade-off: a Maven build runs code from the scanned project, such as plug-ins named in its pom.xml, and that code has network access while it runs. We accept this only for the Java build step, for three reasons: we scan only public repositories listed in the scope file, the build container has no secrets, no capabilities and no access to other containers, and it stops at the time limit. Requirement N4 lists this as its one exception.
+
+### Results
+
+The plug-in writes `/out/results.sarif`:
+
+- SARIF 2.1.0 with one run. A scan that finds nothing still writes the file, with an empty `results` list.
+- File paths relative to the repository root, or absolute under /src. The adapter turns both into paths relative to the repository root (docs/finding-format.md).
+- At most 100 MB.
+
+Other files the plug-in writes to /out are kept with the run for debugging, but nothing in Sieve reads them.
+
+The Gitleaks plug-in runs Gitleaks with `--redact`, so secret values never reach the SARIF file, the findings store or a prompt.
+
+### Exit codes
+
+| Code | Meaning | Run status |
+|---|---|---|
+| 0 | the analyzer finished and wrote `results.sarif` | `succeeded` if the SARIF file is valid |
+| 3 | nothing to scan: no files the analyzer supports | `skipped` |
+| any other | the analyzer failed | `failed` |
+
+Tools use their own exit codes. Bandit, for example, exits with 1 when it finds issues. `run.sh` maps them to the codes above.
+
+### Run statuses
+
+A plug-in run goes through `pending`, then `building` for plug-ins with a build step, then `running`, and ends in one of these:
+
+| Status | When | Reason recorded |
+|---|---|---|
+| `succeeded` | exit code 0 and a valid SARIF file | |
+| `skipped` | exit code 3 | |
+| `failed` | exit code other than 0 or 3 | `exit_code` |
+| `failed` | `results.sarif` is missing | `missing_sarif` |
+| `failed` | the file is not JSON, its version is not 2.1.0, it fails the SARIF 2.1.0 JSON schema, or it is larger than 100 MB | `invalid_sarif` |
+| `failed` | the container ran out of memory | `out_of_memory` |
+| `failed` | the build step failed | `build_failed` |
+| `timed_out` | the run reached its time limit. The runner kills and removes the container. | |
+
+One plug-in failing doesn't stop the others. When all of a scan's plug-in runs have ended, the scan is `completed` if every run succeeded or was skipped, `partial` if some failed or timed out, and `failed` if none succeeded.
+
+### Time limits
+
+The default limit is 10 minutes for a whole run, build step included, and the Java plug-in sets 30 minutes. We will check these limits against the real times of the baseline run in week 4.
+
+### Logs and recorded versions
+
+The runner saves the container's standard output and error as the run's log, up to the first 5 MB, for every run, including failed ones.
+
+Each run records the plug-in, the image digest, the tool and rules versions from the manifest, the status and reason, the exit code, the start and end times, the number of results, and the paths of its SARIF file and log (`analyzer_runs` in docs/database.md). The runner also compares the tool version in the manifest with `tool.driver.semanticVersion` in the SARIF file, and logs a warning when they differ.
+
+Rule versions stay fixed from the baseline run in week 4 to the final evaluation in week 9, so results can be compared. Updating rules means building a new image.
+
+### Example: the Semgrep plug-in
+
+The image has Semgrep 1.183.0 and the semgrep-rules repository at a pinned commit in /opt/semgrep-rules. It runs only the security rules, because the other rules are about code style and correctness, not vulnerabilities. With the full Python rule set, 77 of the 227 results on PyGoat came from non-security rules.
+
+```sh
+#!/bin/sh
+# Entry point of the Semgrep plug-in.
+cd /opt/semgrep-rules || exit 1
+configs=$(find python java javascript typescript -type d -name security \
+  | sort | sed 's/^/--config /')
+semgrep scan $configs --metrics off --disable-version-check \
+  --sarif --output "$SIEVE_OUT/results.sarif" "$SIEVE_SRC"
+# Semgrep exits with 0 when the scan finished, with or without findings.
+[ $? -eq 0 ] || exit 1
+```
+
+The rules are referenced with paths relative to /opt/semgrep-rules, because Semgrep builds rule IDs from those paths. This gives IDs such as `python.lang.security.audit.formatted-sql-query`, the same as in the Semgrep registry.
 
 ## Triage API
 
