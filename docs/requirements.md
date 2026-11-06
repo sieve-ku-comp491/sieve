@@ -18,7 +18,7 @@ Acceptance tests:
 
 1. Scans of PyGoat, WebGoat and Juice Shop run every plug-in for the application's languages, and their findings reach the findings store in the format of docs/finding-format.md.
 2. Each adapter has a test that converts a saved SARIF file from a real run of its tool. The rule, CWEs, file, lines and tool severity of every finding match the SARIF file.
-3. With the test plug-in from T2.1, a run that succeeds, times out, crashes, writes invalid SARIF or tries to reach the internet ends with the status that docs/interfaces.md gives for that case, and a second plug-in in the same scan still succeeds.
+3. With the test plug-in from T2.1, a run that succeeds, times out, crashes, writes invalid SARIF, scans no files, or tries to reach the internet ends with the status that docs/interfaces.md gives for that case, and a second plug-in in the same scan still succeeds.
 4. Every plug-in run records its image digest and the tool and rules versions it used.
 
 Built in T2.1 and T2.2. Verified in T2.1 (tests 3 and 4) and T2.2 (tests 1 and 2).
