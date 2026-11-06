@@ -66,7 +66,7 @@ network = true
 
 | Path | Access | Contents |
 |---|---|---|
-| `/src` | read-only | the checkout of the scanned commit |
+| `/src` | read-only | the files of the scanned commit, exported with `git archive`, without the .git folder. Tools then scan the same files whatever their Git settings, and no tool sees the repository's history. |
 | `/out` | read and write, empty at start | where the plug-in writes `results.sarif` |
 | `/build` | read-only | the build step's output, only for plug-ins with a build step |
 | `/tmp` | read and write, in memory | scratch space. `HOME` points here, because tools such as Semgrep write a cache to the home directory. |
@@ -107,9 +107,17 @@ The plug-in writes `/out/results.sarif`:
 - File paths relative to the repository root, or absolute under /src. The adapter turns both into paths relative to the repository root (docs/finding-format.md).
 - At most 100 MB.
 
+It also writes `/out/scan-info.json` with the number of files the tool scanned:
+
+```json
+{"files_scanned": 446}
+```
+
+A scan that scans nothing reports success with no findings, which looks exactly like a scan of clean code. We saw this happen while testing: when /src was mounted from the wrong folder, Semgrep scanned 0 files and exited with 0. So the runner marks a run as failed when `files_scanned` is 0 but the checkout has files in the plug-in's languages.
+
 Other files the plug-in writes to /out are kept with the run for debugging, but nothing in Sieve reads them.
 
-The Gitleaks plug-in runs Gitleaks with `--redact`, so secret values never reach the SARIF file, the findings store or a prompt.
+The Gitleaks plug-in runs Gitleaks with `--redact`, so secret values never reach the SARIF file. The adapter also hides the secret's columns before it stores a snippet or computes a fingerprint (docs/finding-format.md), and the triage agent's context collector does the same before it puts the code of a Gitleaks finding into a prompt.
 
 ### Exit codes
 
@@ -130,7 +138,8 @@ A plug-in run goes through `pending`, then `building` for plug-ins with a build 
 | `succeeded` | exit code 0 and a valid SARIF file | |
 | `skipped` | exit code 3 | |
 | `failed` | exit code other than 0 or 3 | `exit_code` |
-| `failed` | `results.sarif` is missing | `missing_sarif` |
+| `failed` | `results.sarif` or `scan-info.json` is missing | `missing_sarif` |
+| `failed` | `files_scanned` is 0, but the checkout has files in the plug-in's languages | `nothing_scanned` |
 | `failed` | the file is not JSON, its version is not 2.1.0, it fails the SARIF 2.1.0 JSON schema, or it is larger than 100 MB | `invalid_sarif` |
 | `failed` | the container ran out of memory | `out_of_memory` |
 | `failed` | the build step failed | `build_failed` |
@@ -146,7 +155,7 @@ The default limit is 10 minutes for a whole run, build step included, and the Ja
 
 The runner saves the container's standard output and error as the run's log, up to the first 5 MB, for every run, including failed ones.
 
-Each run records the plug-in, the image digest, the tool and rules versions from the manifest, the status and reason, the exit code, the start and end times, the number of results, and the paths of its SARIF file and log (`analyzer_runs` in docs/database.md). The runner also compares the tool version in the manifest with `tool.driver.semanticVersion` in the SARIF file, and logs a warning when they differ.
+Each run records the plug-in, the image digest, the tool and rules versions from the manifest, the status and reason, the exit code, the start and end times, the number of files scanned and of results, and the paths of its SARIF file and log (`analyzer_runs` in docs/database.md). The runner also compares the tool version in the manifest with `tool.driver.semanticVersion` in the SARIF file, and logs a warning when they differ.
 
 Rule versions stay fixed from the baseline run in week 4 to the final evaluation in week 9, so results can be compared. Updating rules means building a new image.
 
@@ -160,11 +169,18 @@ The image has Semgrep 1.183.0 and the semgrep-rules repository at a pinned commi
 cd /opt/semgrep-rules || exit 1
 configs=$(find python java javascript typescript -type d -name security \
   | sort | sed 's/^/--config /')
-semgrep scan $configs --metrics off --disable-version-check \
-  --sarif --output "$SIEVE_OUT/results.sarif" "$SIEVE_SRC"
 # Semgrep exits with 0 when the scan finished, with or without findings.
-[ $? -eq 0 ] || exit 1
+semgrep scan $configs --metrics off --disable-version-check --no-git-ignore \
+  --sarif-output "$SIEVE_OUT/results.sarif" \
+  --json-output /tmp/semgrep.json "$SIEVE_SRC" || exit 1
+# Semgrep's JSON output lists the scanned files, its SARIF output doesn't.
+python3 -c 'import json, sys
+d = json.load(open("/tmp/semgrep.json"))
+json.dump({"files_scanned": len(d["paths"]["scanned"])}, sys.stdout)' \
+  > "$SIEVE_OUT/scan-info.json" || exit 1
 ```
+
+We ran this script on three versions of PyGoat as user 10001, with no network and all capabilities dropped. It scanned 206, 446 and 451 files.
 
 The rules are referenced with paths relative to /opt/semgrep-rules, because Semgrep builds rule IDs from those paths. This gives IDs such as `python.lang.security.audit.formatted-sql-query`, the same as in the Semgrep registry.
 
