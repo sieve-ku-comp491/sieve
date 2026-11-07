@@ -4,7 +4,54 @@ Three diagrams show the main interactions step by step: scanning a repository an
 
 ## Scan and import
 
-To be written by Daniyal.
+The researcher starts a scan from the command line or the review screen. The scan service checks the repository against the scope file, runs one container per analyzer, converts each analyzer's SARIF file to our finding format and stores the findings. Scans take minutes, so the API starts the scan as a background job and returns right away, and the client reads the scan's status until it is finished. Triage starts after this, once per scan.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant CL as CLI or review screen
+  participant API as REST API
+  participant SS as Scan service
+  participant DB as Findings store
+  participant FS as Scanned checkout
+  participant AC as Analyzer container
+  participant AD as SARIF adapter
+
+  CL->>API: start a scan of a repository
+  API->>SS: check the repository against the scope file
+  break repository is not in the scope file
+    SS-->>API: refused
+    API-->>CL: error, no scan is created
+  end
+  API->>DB: create the scan with status running
+  API-->>CL: scan ID, the scan continues as a background job
+  SS->>FS: check out the repository at the scanned commit
+  loop for each analyzer, one container each
+    SS->>AC: start the container with the checkout at /src
+    alt finishes within the time limit
+      AC-->>SS: SARIF file in /out
+      SS->>AD: convert the SARIF file
+      AD-->>SS: findings in our format, with a fingerprint for each
+      SS->>DB: store the findings
+    else runs past the time limit
+      SS->>AC: stop and remove the container
+      SS->>DB: record that this analyzer timed out
+    end
+  end
+  SS->>DB: set the scan status to finished, with any failed analyzers listed
+  CL->>API: get the scan status
+  API->>DB: read the scan
+  API-->>CL: finished, number of findings, failed analyzers
+```
+
+Notes on the steps:
+
+- The scope check happens before anything is created or started. A repository that is not in the scope file gets an error and no scan record (requirement F2).
+- The client repeats the status request while the status is `running`. Only the last request is shown.
+- Each analyzer runs in its own container with the checkout at `/src` and writes its results to `/out`. The Java plug-in builds the project with Maven inside its container before it runs SpotBugs.
+- When an analyzer runs past its time limit, the scan service stops its container and goes on with the next analyzer. The scan still finishes, with that analyzer listed as failed, so the researcher knows its findings are missing. An analyzer that exits with an error or writes no valid SARIF file is handled the same way.
+- Every adapter fills in a fingerprint when its tool doesn't provide one, so the same finding in a repeated scan of the same repository can be matched to the first one.
+- The checkout is kept after the scan, because the triage agent's tools read from it.
 
 ## Triage of one finding
 
