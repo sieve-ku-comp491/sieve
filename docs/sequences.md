@@ -114,4 +114,61 @@ Notes on the steps:
 
 ## Approval and export
 
-To be written by Daniyal.
+The reviewer decides on each finding on the review screen. A rejected finding never gets a report. When a finding is approved, the report service drafts its report through `LLMClient`, the reviewer can edit it, and only then is it exported. The report service checks the approval again at export, so nothing leaves Sieve for a finding that is not approved (requirement F5).
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant RS as Review screen
+  participant API as REST API
+  participant DB as Findings store
+  participant RP as Report service
+  participant LC as LLMClient
+
+  RS->>API: get the review queue
+  API->>DB: load the findings with their verdicts and severity
+  API-->>RS: findings with verdict, reasoning, cited lines and injection flag
+  alt reviewer rejects the finding
+    RS->>API: reject the finding
+    API->>DB: save the review as rejected
+    API-->>RS: done, no report is drafted
+  else reviewer approves the finding
+    opt reviewer edits the finding
+      RS->>API: save the edited text or severity
+      API->>DB: save the edit
+    end
+    RS->>API: approve the finding
+    API->>DB: save the review as approved
+    API->>RP: draft the report
+    RP->>DB: load the finding, its verdict, severity and locations
+    RP->>LC: ask report template, code as marked data
+    LC-->>RP: title, summary, impact, steps to reproduce and fix
+    RP->>DB: save the report with status draft
+    RP-->>API: report
+    API-->>RS: report preview
+    opt reviewer edits the report
+      RS->>API: save the edited fields
+      API->>DB: update the report
+    end
+    RS->>API: export the report as Markdown
+    API->>RP: export the report
+    RP->>DB: read the review of every finding in the report
+    break any finding is not approved
+      RP-->>API: NotApproved
+      API-->>RS: error, nothing is exported
+    end
+    RP->>RP: render the report with MarkdownFormat
+    RP->>DB: set the status to exported and save exported_at
+    RP-->>API: Markdown file
+    API-->>RS: Markdown file
+  end
+```
+
+Notes on the steps:
+
+- A rejected finding is not deleted. It stays in the findings store with its review, so a repeated scan matches it by its fingerprint and doesn't show it again.
+- The `ask` goes through the same cache and budget steps as in the triage diagram. If the budget has run out, no draft is created and the approval stays saved.
+- The report is drafted from the finding as the reviewer left it, including edits to its text or severity. The references include at least the finding's CWE.
+- The reviewer can change any field of the report before export. The export uses the saved version.
+- The `NotApproved` check at export is a second guard. In normal use it passes, because a report is only drafted after approval, but it also stops a direct call to the API for a finding that was never approved.
+- The report is exported as one Markdown file in the layout from docs/interfaces.md. The HackerOne and Bugcrowd formats are stretch goals and are not shown.
