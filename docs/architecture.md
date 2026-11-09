@@ -72,7 +72,7 @@ Only two kinds of data leave the researcher's machine: requests to the hosted LL
 
 ## Deployment view
 
-Sieve is one Docker Compose project with four services. The analyzer containers are not part of the project: the worker starts one for each plug-in run and removes it afterwards. Dashed boxes and arrows are stretch goals.
+Sieve is one Docker Compose project with five services. The analyzer and build containers are not part of the project: the worker starts them for each plug-in run and removes them afterwards. Dashed boxes and arrows are stretch goals.
 
 ```mermaid
 flowchart LR
@@ -85,6 +85,7 @@ flowchart LR
       api["api: FastAPI back end"]
       db[("db: PostgreSQL")]
       worker["worker: runs background jobs"]
+      proxy["maven-proxy: allows only Maven Central"]
       mock[mock-platform]
     end
     docker[Host Docker Engine]
@@ -104,18 +105,20 @@ flowchart LR
   end
 
   browser -->|HTTP, 127.0.0.1:8080| web
-  web -->|REST| api
-  cli -->|REST, 127.0.0.1:8000| api
+  web -->|REST with token| api
+  cli -->|REST with token, 127.0.0.1:8000| api
   api -->|SQL| db
   worker -->|SQL| db
+  api ---|read-only mount| data
   worker -->|Docker API, docker.sock| docker
   docker -->|starts| build
   docker -->|starts| analyzer
   worker ---|mount at /data| data
   build -->|reads /src, writes /build| data
   analyzer -->|plug-in contract| data
+  build -->|HTTPS via sieve-build| proxy
+  proxy -->|HTTPS| maven
   worker -->|clone, HTTPS| git
-  build -->|HTTPS| maven
   worker -->|provider interface, HTTPS| llm
   worker -.->|HTTPS| h1
   worker -.->|HTTP| mock
@@ -125,23 +128,38 @@ flowchart LR
   class mock,target,h1 stretch
 ```
 
-The `pgdata` and `m2-cache` volumes and the `./exports` folder are left out of the diagram to keep it readable. The tables below list them.
+The `pgdata` volume, the Maven cache volumes, the scope file and the `./exports` folder are left out of the diagram to keep it readable. The tables below list them.
 
 ### Services
 
 | Service | What runs in it | Ports | Networks | Volumes and secrets |
 |---|---|---|---|---|
-| `web` | the React app, built at image build time and served by nginx, which also forwards `/api` to `api` | 8080, bound to 127.0.0.1 | `frontend` | none |
-| `api` | the FastAPI back end: the REST API, the review workflow and the Markdown export. It reads and writes the database, and puts long tasks in the job queue. It makes no outside calls. | 8000, bound to 127.0.0.1 | `frontend`, `backend` | `./exports` on the host, to write exported reports |
-| `worker` | the same image as `api`, started with a different command. It takes jobs from the queue and runs scans, triage runs and report drafts. | none | `backend`, `egress` | `sieve-data`, the Docker socket, and the LLM API keys from `.env` |
+| `web` | the React app, built at image build time and served by nginx. nginx forwards `/api` to `api` and adds the API token. It answers only requests whose `Host` is `localhost` or `127.0.0.1`. | 8080, bound to 127.0.0.1 | `frontend` | the API token from `.env` |
+| `api` | the FastAPI back end: the REST API, the scope check, the review workflow and the Markdown export. It reads and writes the database, puts long tasks in the job queue, and reads checkouts to show cited code on the review screen. | 8000, bound to 127.0.0.1 | `frontend`, `backend` | `./exports` on the host, the scope file and `sieve-data` read-only, and the API token from `.env` |
+| `worker` | the same image as `api`, started with a different command. It takes jobs from the queue and runs scans, triage runs and report drafts. | none | `backend`, `egress` | `sieve-data`, the Docker socket, the scope file read-only, and the LLM API keys from `.env` |
+| `maven-proxy` | a small forward proxy that allows connections only to Maven Central, for the Java build step (docs/interfaces.md) | none | `sieve-build`, `egress` | none |
 | `db` | PostgreSQL. The version is pinned in T1.3. | none | `backend` | `pgdata` |
 | `mock-platform` (stretch) | the mock submission server (T5.4), started only with the `stretch` Compose profile | none | `backend` | none |
 
-Ports are bound to 127.0.0.1, so Sieve can't be reached from other machines on the network. Only `worker` gets the LLM API keys, because only the worker calls LLMs, and the keys come from an `.env` file that Git ignores (requirement N4).
+Ports are bound to 127.0.0.1, so Sieve can't be reached from other machines on the network.
+
+Secrets come from an `.env` file that Git ignores (requirement N4). The installation script creates it, with a random API token:
+
+- Only `worker` gets the LLM API keys, because only the worker calls LLMs.
+- The API requires the token on every request, and checks the `Host` header. Only nginx and the CLI have the token. A container started by Sieve can't reach the API (docs/interfaces.md), and a web page that the researcher visits can't use it through DNS rebinding, because its requests carry another `Host`.
+
+`api` is on the `frontend` network, which has outside access, because Docker doesn't publish ports from an internal network. That the API makes no outside calls is a rule in its code, not something the network enforces.
+
+On Linux, `api` runs as the researcher's own user (`user: "${UID}:${GID}"`), and the installation guide creates `./exports` before the first start. Otherwise Docker creates the folder as root, and the researcher can't edit or delete the exported reports without `sudo`.
 
 ### Background jobs
 
-Scans and triage runs take minutes, so the API only records a job and returns its ID, and the clients read the job's status. The queue is a `jobs` table in PostgreSQL. The worker takes the oldest waiting job with `SELECT ... FOR UPDATE SKIP LOCKED`, so we need no other queue service such as Redis, and two workers never take the same job. One worker is enough for one researcher, and it runs up to two analyzer containers at a time. A job left as running when the worker stopped is marked as failed when the worker starts again, and the worker removes any analyzer container still labeled with that job's scan.
+Scans and triage runs take minutes, so the API only records a job and returns its ID, and the clients read the job's status. The queue is a `jobs` table in PostgreSQL, so we need no other queue service such as Redis.
+
+- Sieve runs exactly one worker, which is enough for one researcher. It runs up to two analyzer containers at a time.
+- The worker claims the oldest waiting job with `SELECT ... FOR UPDATE SKIP LOCKED`, sets it to running and commits, before it starts the work.
+- It stores the findings of each plug-in run in one database transaction, so a crash never leaves half of a run's findings in the store.
+- When the worker starts, it treats every job still marked as running as interrupted: it marks the job failed, marks that job's scan and its unfinished plug-in runs as failed with the reason `interrupted`, and removes every container, build and scan step alike, that is labeled with that scan.
 
 ### Networks
 
@@ -149,31 +167,36 @@ Scans and triage runs take minutes, so the API only records a job and returns it
 |---|---|---|---|
 | `frontend` | `web`, `api` | yes, Docker's default | the browser reaches `web`, and `web` forwards to `api` |
 | `backend` | `api`, `worker`, `db`, `mock-platform` | no (`internal: true`) | the database can't be reached from outside the project and can't reach out |
-| `egress` | `worker` | yes | clones of public repositories and calls to the LLM APIs |
-| `sieve-build` | one build container at a time | yes | Maven downloads for the Java build step. No other container is on it, so the build can't reach the database or the back end. |
+| `egress` | `worker`, `maven-proxy` | yes | clones of public repositories, calls to the LLM APIs, and Maven downloads through the proxy |
+| `sieve-build` | `maven-proxy`, and one build container at a time | no (`internal: true`) | the build container can reach only the proxy. We tested on Docker Desktop that a container on an internal network can reach neither the internet nor the host's published ports, while one on an ordinary network can reach Sieve's API port through `host.docker.internal`. |
 | none | every analyzer container | no | `--network none` (docs/interfaces.md) |
+
+`sieve-build` gets the fixed name `sieve-build` with Compose's `name:` key, so the worker can attach build containers to it.
 
 ### Volumes
 
 | Volume | Mounted in | Contents |
 |---|---|---|
 | `pgdata` | `db` | the database files |
-| `sieve-data` | `worker` at /data, and parts of it in analyzer and build containers | `scans/<scan ID>/src` for the files of the scanned commit, exported without the .git folder, `runs/<run ID>/out` for the SARIF file, `runs/<run ID>/build` for the Java build, and `runs/<run ID>/log` |
-| `m2-cache` | build containers at /cache/m2 | Maven's local repository, shared between scans so later builds download less |
+| `sieve-data` | `worker` at /data, `api` read-only, and parts of it in analyzer and build containers | `scans/<scan ID>/src` for the files of the scanned commit, exported without the .git folder, `runs/<run ID>/out` for the SARIF file, `runs/<run ID>/build` for the Java build, and `runs/<run ID>/log` |
+| `m2-<repository key>` | build containers at /cache/m2 | Maven's local repository, one volume per scanned repository (docs/interfaces.md). Docker creates each one the first time a build mounts it. |
+| scope file | `api` and `worker`, read-only | the repositories Sieve may scan (requirement F2), edited by the researcher |
 | `./exports` | `api` | exported reports, as a folder on the host so the researcher can open them |
 
-`sieve-data` is given the fixed name `sieve-data` with Compose's `name:` key, so the worker can refer to it when it starts containers.
+`sieve-data` gets the fixed name `sieve-data` with Compose's `name:` key, so the worker can refer to it when it starts containers.
 
 ### How the worker starts analyzer containers
 
-The worker talks to the host's Docker Engine through the Docker socket, `/var/run/docker.sock`, mounted into the worker container. It uses the Docker SDK for Python, so the runner is plain Python code with no shell commands. The analyzer container is a sibling of the worker, not a container inside it.
+The worker talks to the host's Docker Engine through the Docker socket, mounted into the worker container. It uses the Docker SDK for Python, version 7.2.0 or later, so the runner is plain Python code with no shell commands. The analyzer container is a sibling of the worker, not a container inside it.
 
-Because the host's Docker Engine starts the container, a path inside the worker means nothing to it. The worker therefore mounts parts of the named volume with the `volume-subpath` option, which needs Docker Engine 26 or later:
+The socket's path is a setting, `DOCKER_SOCKET`, with the default `/var/run/docker.sock`. That default works on Docker Engine for Linux and on Docker Desktop, which we tested on Windows.
+
+Because the host's Docker Engine starts the container, a path inside the worker means nothing to it. The worker therefore mounts parts of the named volume with the `volume-subpath` option, which needs Docker Engine 26 or later and the SDK's `Mount(subpath=...)`, added in Docker SDK 7.2.0:
 
     --mount type=volume,src=sieve-data,dst=/src,volume-subpath=scans/42/src,readonly
     --mount type=volume,src=sieve-data,dst=/out,volume-subpath=runs/7/out
 
-The worker creates `runs/<run ID>/out` before the run and gives it to user 10001, which the plug-in runs as.
+A subpath must exist before the container starts, or the start fails. So the worker creates `runs/<run ID>/out` and, for the Java plug-in, `runs/<run ID>/build` before each run, and gives them to user 10001, which the plug-in runs as. If a container is created but fails to start, the runner removes it itself and ends the run with the reason `runner_error`.
 
 We considered three other ways:
 
@@ -181,12 +204,13 @@ We considered three other ways:
 |---|---|
 | Docker-in-Docker | needs a privileged container, which is root on the host as well, and a second Docker Engine to keep images in |
 | A proxy in front of the socket that allows only some API calls | creating containers must stay allowed, and a created container can mount any host path, so the proxy limits little and adds a service |
-| Rootless Docker or Podman on the host | the strongest option, but it is set up differently on Windows, macOS and Linux, and we want one installation guide. A researcher on Linux can still run Sieve this way. |
+| Rootless Docker or Podman on the host | the strongest option, but it is set up differently on Windows, macOS and Linux, and we want one installation guide. Because the socket path is a setting, a researcher on Linux could try it, but we haven't tested it, and Podman's support for volume subpaths is unknown. |
 
 The trade-off: access to the Docker socket is the same as root access on the host. If the worker were taken over, the attacker could start a container that mounts the host's file system. We accept this risk because:
 
 - Only the worker has the socket. The API, which the browser and CLI talk to, doesn't.
 - The worker has no ports, so nothing can connect to it.
-- The worker never runs code from the scanned repository. It only clones it, and Git doesn't run hooks from a cloned repository. The scanned code is read only by analyzers inside their own containers.
+- The worker never runs code from the scanned repository. It does read the checkout: the adapters read the flagged lines, and the triage agent reads code for its prompts. The export contains no symbolic links (docs/interfaces.md), and every read goes through one checkout reader that refuses any path that leaves the checkout.
+- Cloning can't run code from the repository either. Git doesn't run hooks from a cloned repository, the worker clones without submodules, and the worker image pins Git 2.50.1 or later, which fixes the known clone-time attacks through submodules (CVE-2024-32002, CVE-2025-48384).
 - The worker starts only images named in plug-in manifests, with the flags fixed in the runner's code. Requests from the API pass only IDs, never image names, paths or flags.
-- Sieve runs on the researcher's own machine and listens only on 127.0.0.1.
+- Sieve runs on the researcher's own machine, listens only on 127.0.0.1, and its API requires a token.
