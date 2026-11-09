@@ -4,7 +4,7 @@ Four interfaces let us add an analyzer, a model provider or a report format with
 
 ## Plug-in and SARIF adapter
 
-Two interfaces keep the analyzers out of the core. A plug-in is a Docker image described by its manifest (`PluginManifest`), and `PluginRunner` runs any plug-in the same way, through the plug-in contract in docs/interfaces.md. A `SarifAdapter` turns one tool's SARIF file into findings in the format of docs/finding-format.md. Adding an analyzer means adding a plug-in directory and one adapter class.
+Two interfaces keep the analyzers out of the core. A plug-in is a Docker image described by its manifest (`PluginManifest`), and `PluginRunner` runs any plug-in the same way, through the plug-in contract in docs/interfaces.md. A `SarifAdapter` turns one tool's SARIF file into findings in the format of docs/finding-format.md. Adding an analyzer means adding a plug-in directory and one adapter class. The Semgrep plug-in and its adapter are the examples.
 
 ### Plug-in
 
@@ -17,7 +17,13 @@ classDiagram
   }
   class ScopeFile {
     +load(path: Path)$ ScopeFile
-    +allows(repo_url: str) bool
+    +allows(repo_url: str) ScopeEntry
+  }
+  class CheckoutExporter {
+    +export(entry: ScopeEntry, commit: str, dest: Path) str
+  }
+  class CheckoutReader {
+    +read_lines(scan_id: str, file: str) list~str~
   }
   class PluginRegistry {
     +load(plugins_dir: Path)$ PluginRegistry
@@ -37,11 +43,21 @@ classDiagram
   }
   class BuildStep {
     +image: str
-    +network: bool
   }
   class PluginRunner {
-    +run(scan: Scan, plugin: PluginManifest) PluginRun
+    +run(scan: Scan, plugin: PluginManifest, run: PluginRun) PluginRun
     +remove_leftovers(scan_id: str)
+    -prepare_dirs(run: PluginRun)
+    -read_scan_info(out_dir: Path) int
+    -files_in_languages(scan: Scan, plugin: PluginManifest) int
+  }
+  class RunStore {
+    +create_run(scan_id: str, plugin: PluginManifest) PluginRun
+    +update(run: PluginRun)
+    +save_findings(run: PluginRun, findings: list~Finding~)
+  }
+  class RunLog {
+    +append(run_id: str, text: str)
   }
   class ContainerEngine {
     <<interface>>
@@ -61,6 +77,13 @@ classDiagram
     +env: dict
     +labels: dict
     +user: str
+    +read_only: bool
+    +tmpfs: list~str~
+    +cap_drop: list~str~
+    +no_new_privileges: bool
+    +memory: str
+    +cpus: float
+    +pids_limit: int
   }
   class Mount {
     +volume: str
@@ -72,6 +95,7 @@ classDiagram
     +exit_code: int
     +timed_out: bool
     +out_of_memory: bool
+    +start_failed: bool
     +log: str
   }
   class SarifValidator {
@@ -79,11 +103,13 @@ classDiagram
   }
   class InvalidSarif {
     <<exception>>
+    +reason: str
   }
   class PluginRun {
     +run_id: str
     +scan_id: str
     +plugin: str
+    +image: str
     +image_digest: str
     +tool_version: str
     +rules_version: str
@@ -94,6 +120,7 @@ classDiagram
     +finished_at: datetime
     +files_scanned: int
     +result_count: int
+    +dropped_count: int
     +sarif_path: str
     +log_path: str
   }
@@ -109,30 +136,39 @@ classDiagram
   }
 
   ScanService --> ScopeFile
+  ScanService --> CheckoutExporter
   ScanService --> PluginRegistry
   ScanService --> PluginRunner
+  ScanService --> RunStore
+  ScanService --> AdapterRegistry
   PluginRegistry o-- PluginManifest
   PluginManifest *-- BuildStep
   PluginRunner --> ContainerEngine
   PluginRunner --> SarifValidator
+  PluginRunner --> RunStore
+  PluginRunner --> RunLog
   ContainerEngine <|.. DockerEngine
   ContainerEngine ..> ContainerSpec
   ContainerEngine ..> ContainerResult
   ContainerSpec *-- Mount
-  PluginRunner ..> PluginRun : creates
+  RunStore ..> PluginRun : stores
   PluginRun --> RunStatus
   SarifValidator ..> InvalidSarif : raises
+  note for PluginManifest "Example: the Semgrep plug-in<br>name = semgrep, adapter = semgrep<br>image = sieve-plugin-semgrep:1.183.0-16b9e6d<br>languages = python, java, javascript, typescript<br>timeout_seconds = 600, no build step"
 ```
 
-How `ScanService.run_scan()` works:
+How `ScanService` works:
 
-1. `start_scan()` checks the repository against the scope file with `ScopeFile.allows()` before anything else, and refuses the scan if the repository isn't listed (requirement F2). Otherwise it creates the scan and puts a job in the queue, and the worker calls `run_scan()`.
-2. `run_scan()` clones the commit, exports its files into `sieve-data` without the .git folder, finds the languages in the checkout, and asks `PluginRegistry.for_languages()` for the plug-ins to run.
-3. For each plug-in, `PluginRunner.run()` builds `ContainerSpec` objects with the fixed flags from docs/interfaces.md. For a plug-in with a build step it runs the build container first, then the scan container, both within one time limit. `ContainerEngine.run()` waits until the container exits or the limit passes, saves its log, and removes the container in both cases.
-4. `PluginRunner` maps the result to a status: the exit code, `timed_out` and `out_of_memory` from `ContainerResult`, and `SarifValidator.validate()`, which raises `InvalidSarif` when the file is missing, isn't SARIF 2.1.0, fails the schema, or is too large. A run whose `scan-info.json` reports 0 scanned files fails as `nothing_scanned` when the checkout has files in the plug-in's languages. It records the image digest and the versions in the `PluginRun`.
-5. For each succeeded run, `ScanService` passes the SARIF file to the plug-in's adapter (below) and stores the findings. A failed run doesn't stop the others.
+1. `start_scan()` runs in the API. It checks the repository with `ScopeFile.allows()`, which returns the matching scope entry or refuses the scan before anything else (requirement F2). It then creates the scan and puts a job in the queue, and the worker calls `run_scan()`.
+2. `run_scan()` calls `CheckoutExporter.export()`. The exporter clones the URL from the scope entry without credentials, redirects or submodules, refuses a commit that isn't on a branch or tag of that repository, and exports the files into `sieve-data` without the .git folder, symbolic links or the tools' ignore files. It returns the full commit hash, which the scan stores. `run_scan()` then finds the languages in the checkout and asks `PluginRegistry.for_languages()` for the plug-ins to run.
+3. For each plug-in, `RunStore.create_run()` stores a `PluginRun` as `pending`, so the run's ID exists before any container starts: the containers' labels and folders use it. `PluginRunner.run()` creates the run's folders and gives them to user 10001, and updates the status through `RunStore.update()` at every change: `building`, `running`, and the end status.
+4. The runner builds a `ContainerSpec` with every flag from docs/interfaces.md as a field, for the build container and then the scan container, within one time limit. Because the flags are fields, the runner's tests can check them with a fake engine. `ContainerEngine.run()` waits until the container exits or the limit passes, and removes the container in every case, including when it was created but failed to start. `RunLog` keeps both steps' output in the run's log, up to 5 MB.
+5. The runner turns the result into a status and reason. It uses the exit code, `timed_out`, `out_of_memory` and `start_failed` from `ContainerResult`; `SarifValidator.validate()`, whose `InvalidSarif` carries the reason `missing_sarif` or `invalid_sarif`; and `read_scan_info()` with `files_in_languages()` for `nothing_scanned`. It records the image digest and the versions in the `PluginRun`.
+6. For each succeeded run, `ScanService` passes the SARIF file to the plug-in's adapter (below), and `RunStore.save_findings()` stores all of the run's findings in one transaction, together with the run's result and dropped counts. The adapter's warnings go to `RunLog`. A failed run doesn't stop the others.
 
-`ContainerEngine` is an interface so that the runner's tests can use a fake engine without Docker, and so that Podman could be added later. `DockerEngine` uses the Docker SDK for Python. `remove_leftovers()` removes containers labeled with a scan's ID, for scans that were running when the worker stopped.
+`ContainerEngine` is an interface so that the runner's tests can use a fake engine without Docker, and so that Podman could be added later. `DockerEngine` uses the Docker SDK for Python, version 7.2.0 or later. `remove_leftovers()` removes containers labeled with a scan's ID, for scans that were running when the worker stopped.
+
+`CheckoutReader` is the one way to read a checkout. It resolves every path and refuses any that leaves the checkout. The adapters use it, and so can the triage agent's context collector and tools, so that no read can follow a path out of the checkout.
 
 ### SARIF adapter
 
@@ -142,11 +178,11 @@ classDiagram
   class SarifAdapter {
     <<interface>>
     +tool: str
-    +to_findings(sarif: dict, run: PluginRun, checkout: Path) list~Finding~
+    +to_findings(sarif: dict, run: PluginRun, reader: CheckoutReader) AdapterResult
   }
   class BaseSarifAdapter {
     <<abstract>>
-    +to_findings(sarif: dict, run: PluginRun, checkout: Path) list~Finding~
+    +to_findings(sarif: dict, run: PluginRun, reader: CheckoutReader) AdapterResult
     #find_rule(run: dict, result: dict) dict
     #normalize_path(uri: str, base_ids: dict) str
     #cwes(rule: dict, result: dict) list~str~
@@ -155,24 +191,38 @@ classDiagram
     #confidence(rule: dict, result: dict) str
     #tool_fingerprint(result: dict) str
     #keep(result: dict) bool
-    #mask(text: str, result: dict) str
+    #mask(lines: list~str~, location: Location) list~str~
   }
   class SemgrepAdapter {
     +tool: str
     #confidence(rule: dict, result: dict) str
     #tool_fingerprint(result: dict) str
   }
+  class SpotBugsAdapter {
+    +tool: str
+    #normalize_path(uri: str, base_ids: dict) str
+  }
+  class EslintAdapter {
+    +tool: str
+    #cwes(rule: dict, result: dict) list~str~
+  }
   class GitleaksAdapter {
     +tool: str
     #cwes(rule: dict, result: dict) list~str~
-    #mask(text: str, result: dict) str
+    #mask(lines: list~str~, location: Location) list~str~
   }
   class AdapterRegistry {
     +get(name: str) SarifAdapter
   }
+  class AdapterResult {
+    +findings: list~Finding~
+    +dropped: dict
+    +warnings: list~str~
+  }
   class Fingerprinter {
-    +assign(findings: list~Finding~, checkout: Path)
+    +assign(findings: list~Finding~, file_lines: dict)
     +fingerprint(tool: str, rule_id: str, file: str, lines: list~str~, occurrence: int)$ str
+    +context_hash(file_lines: list~str~, start_line: int, end_line: int)$ str
   }
   class Finding {
     +finding_id: str
@@ -193,6 +243,8 @@ classDiagram
     +data_flow: list~FlowStep~
     +fingerprint: str
     +fingerprint_ambiguous: bool
+    +context_hash: str
+    +suppressed: bool
     +tool_fingerprint: str
     +language: str
     +raw: dict
@@ -212,21 +264,30 @@ classDiagram
 
   SarifAdapter <|.. BaseSarifAdapter
   BaseSarifAdapter <|-- SemgrepAdapter
+  BaseSarifAdapter <|-- SpotBugsAdapter
+  BaseSarifAdapter <|-- EslintAdapter
   BaseSarifAdapter <|-- GitleaksAdapter
   AdapterRegistry o-- SarifAdapter
   BaseSarifAdapter --> Fingerprinter
-  SarifAdapter ..> Finding : creates
+  SarifAdapter ..> AdapterResult : returns
+  AdapterResult *-- Finding
   Finding *-- Location
   Finding *-- FlowStep
   Location <|-- FlowStep
 ```
 
-`BaseSarifAdapter` does the mapping that is the same for every tool, as described in docs/finding-format.md: it finds each result's rule, keeps only results that `keep()` accepts, normalizes paths, reads CWEs from tags, relationships and taxa, applies the default level, maps locations and code flows, and has `Fingerprinter` compute the fingerprints for all findings of the run at once, since the occurrence numbers and the `fingerprint_ambiguous` flags depend on the other findings. A tool's adapter overrides only what its tool does differently:
+`BaseSarifAdapter` does the mapping that is the same for every tool, as described in docs/finding-format.md: it finds each result's rule, keeps only results that `keep()` accepts, normalizes paths, reads CWEs from tags, relationships and taxa, applies the default level, marks suppressed results, maps locations and code flows, and takes `tool_version` from the plug-in run. It reads each flagged file once through `CheckoutReader`, applies `mask()`, and passes the masked lines of all files to `Fingerprinter.assign()`. The fingerprinter computes the fingerprints, the context hashes and the `fingerprint_ambiguous` flags for all findings of the run at once, since the occurrence numbers depend on the other findings. Because it only gets lines that `mask()` has already handled, no secret that an adapter masks can reach a hash.
 
-- `SemgrepAdapter.confidence()` reads the `HIGH CONFIDENCE`, `MEDIUM CONFIDENCE` and `LOW CONFIDENCE` rule tags, and `tool_fingerprint()` returns nothing, because Semgrep OSS writes `requires login` instead of a fingerprint.
-- `GitleaksAdapter.cwes()` returns `CWE-798`, because Gitleaks gives no CWEs, and `mask()` replaces the secret's columns with `REDACTED` before the text is hashed or stored. In other adapters `mask()` returns the text unchanged.
+`to_findings()` returns an `AdapterResult` with the findings, the number of results dropped for each reason, and the warnings for the run's log. It fills `finding_id` only when the findings store saves the finding.
 
-The Bandit, ESLint and SpotBugs adapters (T2.2) follow the same pattern. Each adapter is tested against a saved SARIF file from a real run of its tool (requirement F1). `to_findings()` fills `finding_id` only when the findings store saves the finding.
+A tool's adapter overrides only what its tool does differently:
+
+- `SemgrepAdapter.confidence()` reads the `HIGH CONFIDENCE`, `MEDIUM CONFIDENCE` and `LOW CONFIDENCE` rule tags, and `tool_fingerprint()` returns nothing, because Semgrep without a login writes `requires login` instead of a fingerprint.
+- `SpotBugsAdapter.normalize_path()` also tries the source folders the Java build step listed, because SpotBugs writes paths relative to a source folder when it doesn't know the folder.
+- `EslintAdapter.cwes()` maps the rules of eslint-plugin-security to CWEs with the table in docs/finding-format.md, because the plug-in gives none.
+- `GitleaksAdapter.cwes()` returns `CWE-798`, and `mask()` replaces every flagged line with `REDACTED`. In other adapters `mask()` returns the lines unchanged.
+
+The Bandit adapter (T2.2) follows the same pattern. Each adapter is tested against a saved SARIF file from a real run of its tool (requirement F1).
 
 ## LLM provider
 
