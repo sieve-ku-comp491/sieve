@@ -17,15 +17,15 @@ Each analyzer runs in its own container with no network access. A plug-in that f
 Acceptance tests:
 
 1. Scans of PyGoat, WebGoat and Juice Shop run every plug-in for the application's languages, and their findings reach the findings store in the format of docs/finding-format.md.
-2. Each adapter has a test that converts a saved SARIF file from a real run of its tool. The rule, CWEs, file, lines and tool severity of every finding match the SARIF file.
-3. With the test plug-in from T2.1, a run that succeeds, times out, crashes, writes invalid SARIF, scans no files, or tries to reach the internet ends with the status that docs/interfaces.md gives for that case, and a second plug-in in the same scan still succeeds.
+2. Each adapter has a test that converts a saved SARIF file from a real run of its tool, and compares every finding with values worked out by hand from that file with the mapping in docs/finding-format.md: rule, CWEs, file, lines, tool severity and fingerprint.
+3. With the test plug-in from T2.1, runs that succeed, time out, crash, write invalid SARIF, scan no files, exit with 3 while there are files to scan, or try to reach the network each end with the status and reason that docs/interfaces.md gives for that case, and a second plug-in in the same scan still succeeds. For the network case, the test also checks that a listener on the host received nothing.
 4. Every plug-in run records its image digest and the tool and rules versions it used.
 
 Built in T2.1 and T2.2. Verified in T2.1 (tests 3 and 4) and T2.2 (tests 1 and 2).
 
 ### F2 Scan only repositories in the scope file
 
-Sieve scans a repository only when the project's scope file lists it, and refuses any other repository before it clones anything or starts any container. Each entry gives the reason we are allowed to scan the repository: it is our own code, a deliberately vulnerable application, or source code that a bug bounty program lists in its scope. If a program has source code but doesn't list it in its scope, we don't test it.
+Sieve scans a repository only when the project's scope file lists it, and refuses any other repository before it clones anything or starts any container. Each entry gives the reason we are allowed to scan the repository: it is our own code, a deliberately vulnerable application, source code that a bug bounty program lists in its scope, or public code at a commit with a published CVE, scanned for our evaluation. If a program has source code but doesn't list it in its scope, we don't test it.
 
 The scope file lists public repositories only (requirement N4):
 
@@ -39,14 +39,20 @@ url = "https://github.com/example-org/example-app"
 reason = "Source code listed as an asset of the Example program: https://hackerone.com/example-org"
 ```
 
-URLs are compared after normalizing them: the host in lowercase, without a trailing `/` or `.git`. An entry allows exactly one repository, so listing one repository of an owner doesn't allow the others.
+Rules for URLs and commits:
+
+- A URL must start with `https://` and have no user name or password, port, query or fragment. The same rules apply to the URL in a scan request.
+- URLs are compared after normalizing them: the host in lowercase, without a trailing `/` or `.git`. An entry allows exactly one repository, so listing one repository of an owner doesn't allow the others.
+- The scan service clones the URL written in the scope entry, not the one in the request. It clones without credentials, without following redirects and without submodules.
+- The commit must be reachable from a branch or tag of the listed repository. GitHub serves a commit from any fork through the original repository's URL, so without this check, listing PyGoat would allow scanning code that anyone pushed to a fork of PyGoat. We checked this: a commit that exists only in a fork of PyGoat downloads through PyGoat's own URL.
 
 Acceptance tests:
 
 1. A scan of a repository that is not in the scope file is refused through both the CLI and the REST API, with an error that names the repository and the scope file. Nothing is cloned and no container starts.
-2. `https://github.com/adeyosemanputra/pygoat.git`, `https://GitHub.com/adeyosemanputra/pygoat/` and the URL in the example all match the PyGoat entry. Another repository of the same owner is refused.
-3. A scope file with an entry that has no `reason` is rejected when it is loaded, with an error that names the entry.
-4. A private repository can't be scanned even when it is listed: the scan service clones without credentials, so the clone fails and the scan ends with an error.
+2. `https://github.com/adeyosemanputra/pygoat.git`, `https://GitHub.com/adeyosemanputra/pygoat/` and the URL in the example all match the PyGoat entry. Another repository of the same owner is refused, and so are `https://user:token@github.com/adeyosemanputra/pygoat` and `http://github.com/adeyosemanputra/pygoat`.
+3. A scope file with an entry that has no `reason`, or whose URL breaks the rules above, is rejected when it is loaded, with an error that names the entry.
+4. A private repository can't be scanned even when it is listed. The test clones with Git's credential helpers turned off and `GIT_TERMINAL_PROMPT=0`, as the scan service does, so it gives the same result on a developer's machine as in the worker: the clone fails and the scan ends with an error.
+5. A scan of PyGoat at commit `0dc3c4f403bea36b83a03c7c07a7d676b939eab3`, which exists only in a fork of PyGoat, is refused before any container starts.
 
 Built in T2.4. Verified in T2.4. The stretch requirement S3 adds the scope imported from HackerOne.
 
@@ -78,17 +84,25 @@ Acceptance tests:
 
 Built in T3.3 and T3.4. Verified in T3.3 and T3.4 (tests 1 and 2) and T6.4 (tests 3 and 4).
 
-### F5 Export only approved findings
+### F5 Export only approved findings with approved report text
 
-A finding is exported only after a person approves it on the review screen, with or without edits. The report service checks this itself when it exports, so no client can get around the check, including the CLI and the evaluation harness.
+A finding is exported only after a person approves it on the review screen, with or without edits, and only with report text that a person approved. The report service checks both when it exports, so no client can get around the check, including the CLI and the evaluation harness.
 
-A finding counts as approved when its latest review decision is approve. A report for a duplicate group needs every finding in the group to be approved. Each review stores the reviewer, the time and the decision, and when the reviewer edits a finding or its report, the AI's original text is kept next to the edited one.
+Approval has two steps, because the LLM drafts the report after the finding is approved:
+
+- A finding counts as approved when its latest review decision is approve.
+- A report counts as approved when a person approved its current text. Drafting it again, or editing it, after that approval undoes the approval.
+
+A report for a duplicate group covers the members whose latest review approves them, and can't be exported while any member has no review yet. A member that the reviewer rejects, for example because deduplication put it in the wrong group, is left out of the report and doesn't block it. A finding hidden because an earlier review applies to it (docs/finding-format.md) counts with that earlier decision.
+
+Each review stores the reviewer, the time and the decision. When the reviewer edits a finding or its report, the AI's original text is kept next to the edited one.
 
 Acceptance tests:
 
-1. End-to-end test through the REST API: exporting a report for an unreviewed finding, a rejected finding, and a finding that was approved and later rejected each fails with an error, and no file is written. Exporting a report for an approved finding succeeds.
-2. A report for a duplicate group with one unapproved member can't be exported. Once every member is approved, it can.
-3. Every exported report links to the review that approved it, with the reviewer and time. For an edited finding, both the AI's text and the reviewer's text are stored.
+1. End-to-end test through the REST API: exporting a report for an unreviewed finding, a rejected finding, and a finding that was approved and later rejected each fails with an error, and no file is written.
+2. Exporting a report whose finding is approved but whose text isn't fails. After a person approves the text it succeeds. After the text is drafted again or edited, it fails until the text is approved again.
+3. A report for a duplicate group can't be exported while a member has no review. With one member rejected and the others approved, it can, and the rejected member is not in it.
+4. Every exported report links to the reviews that approved the finding and the text, with the reviewer and time. For edited text, both the AI's text and the reviewer's text are stored.
 
 Built in T4.1 and T5.2. Verified in T5.2.
 
@@ -160,9 +174,10 @@ Acceptance tests:
 
 1. The evaluation runs five analyzers through the one plug-in contract and two hosted models through the one provider interface.
 2. The pull request that adds the SpotBugs plug-in in week 5 changes only files in its plug-in directory, its adapter and the adapter's tests. The same holds for the pull request that adds the second model provider.
-3. A team member who didn't write the runner adds the test plug-in from T2.1 by following the plug-in guide (T7.1), without help.
+3. A team member who didn't write the runner adds a plug-in for an analyzer that isn't in Sieve yet, such as njsscan for JavaScript, by following the plug-in guide (T7.1), without help, and without changing files outside the new plug-in's directory, its adapter and the adapter's tests.
+4. A second report format is added without changing the report service: the HackerOne format of S2, or, if that stretch goal isn't built, a plain text format written for this test.
 
-Built in T2.1, T2.2, T3.1 and T4.1. Verified in T2.2 and T3.1 (test 2), T6.4 (test 1) and T7.1 (test 3).
+Built in T2.1, T2.2, T3.1 and T4.1. Verified in T2.2 and T3.1 (test 2), T6.4 (test 1), T7.1 (test 3), and T4.1 or T4.2 (test 4).
 
 ### N6 Reproducibility
 
@@ -173,9 +188,10 @@ Acceptance tests:
 1. On a clean machine with only Docker and Git installed, a team member follows the installation guide, runs `docker compose up`, scans PyGoat, and sees its findings on the review screen.
 2. Two scans of the same PyGoat commit with the same plug-in images give the same findings with the same fingerprints.
 3. Running a finished evaluation run again from the response cache gives the same verdicts and scores, and makes no API calls.
-4. Every image, tool, rule set, dataset and target application in this document is pinned to a version or commit, and none uses `latest`.
+4. Every `FROM` line in our Dockerfiles and every image in the Compose file names a version or a digest, never `latest` or no tag, and the Python and JavaScript dependencies are installed from committed lock files. A script in CI checks this.
+5. Every tool, rule set, dataset and target application in the list below has a version or commit. Datasets that we build ourselves are pinned when they are created.
 
-Built in T1.3, T2.1 and T3.1. Verified in T2.1 (tests 2 and 4), T6.4 (test 3) and T7.3 (test 1).
+Built in T1.3, T2.1, T2.2 and T3.1. Verified in T2.2 (test 2), T1.3 (test 4), T6.4 (tests 3 and 5) and T7.3 (test 1).
 
 ### N7 Usability
 
@@ -184,7 +200,7 @@ A reviewer can decide on a finding from one screen that shows the verdict, the r
 Acceptance tests:
 
 1. The finding screen shows, without opening another page: the code with the cited lines highlighted, the verdict and reasoning, the CVSS score with the justification of each metric, the analyzer's message, the flag for comments that look like instructions to an AI, and the approve, reject and edit actions. Checked against the mockups in D1.1.
-2. Usability test: three to five students outside the team review the same 20 findings on the review screen and in the raw analyzer output. We report the time per finding, the wrong decisions and the System Usability Scale (SUS) score. Target: less time per finding than with the raw output, and a SUS score of at least 68, the average score in published SUS studies.
+2. Usability test: three to five students outside the team each review 20 findings, half on the review screen and half in the raw analyzer output. Which half comes first alternates between students, so that what they learn in the first half doesn't favour one side. We report the time per finding, the wrong decisions and the System Usability Scale (SUS) score. Target: less time per finding than with the raw output, and a SUS score of at least 68, the average score in published SUS studies.
 
 Built in T5.1. Verified in T5.1 (test 1) and T6.4 (test 2).
 
@@ -210,14 +226,16 @@ These versions stay fixed from the baseline run in week 4 to the final evaluatio
 | Semgrep CE | Python, Java, JavaScript/TypeScript | 1.183.0 | semgrep-rules at commit `16b9e6d` (21 Oct 2026), the `security` folders only | `--sarif` |
 | Bandit | Python | 1.9.4 | built in | `-f sarif`, with the `bandit[sarif]` extra |
 | SpotBugs with Find Security Bugs | Java | SpotBugs 4.10.5, Find Security Bugs 1.14.0 | built in, security patterns only | `-sarif` |
-| ESLint with eslint-plugin-security | JavaScript/TypeScript | ESLint 10.14.0, eslint-plugin-security 4.2.1, typescript-eslint 8.72.1 | the plug-in's recommended set | the `@microsoft/eslint-formatter-sarif` 3.1.0 formatter |
+| ESLint with eslint-plugin-security | JavaScript/TypeScript | ESLint 10.14.0, eslint-plugin-security 4.2.1, typescript-eslint 8.72.1, TypeScript 6.0.3 | the plug-in's recommended set | the `@microsoft/eslint-formatter-sarif` 3.1.0 formatter |
 | Gitleaks | secrets in any file | 8.30.1 | built in | `--report-format sarif`, run with `--redact` |
 
 Notes:
 
 - We tested Semgrep 1.183.0 with these rules on PyGoat (docs/finding-format.md). Semgrep 1.184.0 came out on 5 Nov 2026, but we keep the version we tested.
-- SpotBugs analyzes compiled code, so the Java plug-in's build step needs JDK 25 and Maven: WebGoat v2026.5 requires Java 25. Find Security Bugs 1.14.0 is from June 2025, so T2.2 checks that it loads in SpotBugs 4.10.5 and works on Java 25 class files, and records a working pair if it doesn't.
-- `@microsoft/eslint-formatter-sarif` was written for older ESLint versions. T2.2 checks it with ESLint 10 and writes our own small formatter if it fails.
+- SpotBugs analyzes compiled code, so the Java plug-in's build step needs JDK 25 and Maven: WebGoat v2026.5 requires Java 25. Find Security Bugs 1.14.0 is from June 2025, so we checked that it loads in SpotBugs 4.10.5 and reports findings on classes compiled for Java 25.
+- `@microsoft/eslint-formatter-sarif` was written for older ESLint versions. We checked that it works with ESLint 10.14.0 and a flat configuration file.
+- typescript-eslint 8.72.1 supports TypeScript versions below 6.1, so TypeScript is pinned to 6.0.3, not the current 7.0.2.
+- The base images of the plug-ins and services, such as the JDK, Maven, Node.js, Python and PostgreSQL images, are pinned by version in the Dockerfiles and the Compose file (requirement N6, test 4).
 - Gitleaks scans the files of the checked-out commit, not the Git history, because we report on that commit.
 - The semgrep-rules repository has its own license, the Semgrep Rules License. We use the rules only inside our own setup and don't publish the plug-in image.
 
