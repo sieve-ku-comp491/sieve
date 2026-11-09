@@ -41,42 +41,49 @@ rules = "semgrep-rules@16b9e6d45f10649f6a531ec4838ed9924372c3bc"
 |---|---|---|
 | `name` | yes | the plug-in's ID, lowercase. Findings store it in their `tool` field. |
 | `image` | yes | the image to run. Its tag includes the tool and rules versions, so updating either means building a new image on purpose. |
-| `languages` | yes | the languages it scans. The scan service skips a plug-in when the repository has no files in these languages. |
+| `languages` | yes | the languages it scans, or `["*"]` for a plug-in that scans every file, such as Gitleaks. The scan service skips a plug-in when the repository has no files in these languages. |
 | `adapter` | yes | the adapter that reads its SARIF (docs/finding-format.md) |
 | `timeout_seconds` | no | the time limit for the whole run, build step included. Default 600, at most 3600. |
-| `versions.tool`, `versions.rules` | yes | recorded with every run. `versions.rules` is the rules repository and commit, or the tool version when the rules ship with the tool. |
+| `versions.tool`, `versions.rules` | yes | recorded with every run. `versions.rules` is the rules repository and commit, or the plug-in that brings the rules. |
 | `build.image` | no | an image for a build step that runs before the scan, for the Java plug-in |
-| `build.network` | no | `true` to give the build step network access. Only the build step can have it. |
 
 The Java plug-in adds a build step and a longer time limit:
 
 ```toml
 name = "spotbugs"
-image = "sieve-plugin-spotbugs:<tool version>-<plug-in version>"
+image = "sieve-plugin-spotbugs:4.10.5-fsb1.14.0"
 languages = ["java"]
 adapter = "spotbugs"
 timeout_seconds = 1800
 
+[versions]
+tool = "4.10.5"
+rules = "find-sec-bugs 1.14.0"
+
 [build]
-image = "sieve-plugin-spotbugs-build:<maven version>"
-network = true
+image = "sieve-plugin-spotbugs-build:jdk25-<maven version>"
 ```
 
-### What the container gets
+### What the scan container gets
 
 | Path | Access | Contents |
 |---|---|---|
-| `/src` | read-only | the files of the scanned commit, exported with `git archive`, without the .git folder. Tools then scan the same files whatever their Git settings, and no tool sees the repository's history. |
-| `/out` | read and write, empty at start | where the plug-in writes `results.sarif` |
+| `/src` | read-only | the files of the scanned commit, exported with `git archive` (see below) |
+| `/out` | read and write, empty at start | where the plug-in writes `results.sarif` and `scan-info.json` |
 | `/build` | read-only | the build step's output, only for plug-ins with a build step |
 | `/tmp` | read and write, in memory | scratch space. `HOME` points here, because tools such as Semgrep write a cache to the home directory. |
+
+The export in /src has no .git folder, so tools scan the same files whatever their Git settings, and no tool sees the repository's history. The export also leaves out two kinds of files:
+
+- Everything that is not a regular file or a folder, such as symbolic links. A link in a scanned repository could point anywhere, for example to `/proc/self/environ`, and anything that reads the checkout later, inside the worker, would read the worker's environment, including the LLM API keys. We checked that `git archive` keeps such links.
+- The tools' own ignore and configuration files: `.semgrepignore`, `.gitleaks.toml`, `.gitleaksignore` and `.bandit`. The scanned repository is not ours, so it must not decide what is scanned.
 
 The runner starts every scan container like this:
 
     docker run --network none --read-only --tmpfs /tmp
       --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges
       --memory 4g --cpus 2 --pids-limit 512
-      --label sieve.scan_id=<scan ID> --label sieve.run_id=<run ID>
+      --label sieve.scan_id=<scan ID> --label sieve.run_id=<run ID> --label sieve.step=scan
       --mount <checkout>:/src,readonly --mount <run output>:/out
       -e SIEVE_SRC=/src -e SIEVE_OUT=/out -e HOME=/tmp
       <image>
@@ -85,19 +92,52 @@ The runner starts every scan container like this:
 - Only the variables above are passed. The container never sees API keys or the host's environment.
 - The labels let the worker find and remove containers left behind if it crashes in the middle of a scan.
 - The memory, CPU and process limits are defaults in the back end's settings, not in the manifest.
+- Before it starts the container, the worker creates the run's output folder and gives it to user 10001.
 
 We tested these flags with Semgrep 1.183.0 on PyGoat: the scan works with no network, a read-only root file system, a non-root user and all capabilities dropped.
 
+### Suppression in the scanned code
+
+Each plug-in turns off the ways the scanned code can switch off its own findings, where the tool allows it: Semgrep runs with `--disable-nosem`, Bandit with `--ignore-nosec`, and ESLint with `--no-inline-config` and our own configuration file. When a tool has no such option, the adapter still keeps the suppressed results and marks them (docs/finding-format.md).
+
+We tested this with Semgrep 1.183.0. A `# nosemgrep` comment removed the finding from Semgrep's JSON output and marked it as suppressed in SARIF. With `--disable-nosem` it was reported normally. A `.semgrepignore` file in /src made Semgrep skip the file it named, even with that flag, which is why the export leaves such files out.
+
 ### Build step
 
-SpotBugs scans compiled code, so the Java plug-in builds the project first. The build and the scan run in two separate containers:
+SpotBugs analyzes compiled classes, so the Java plug-in builds the project first, in its own container, before the scan container starts. The runner starts it like this:
 
-1. The build container copies /src to /build/work and runs Maven there, with `-DskipTests`. It has network access through its own Docker network, which has no other containers on it, so it can download dependencies but can't reach the database or the back end. Maven's local repository is a volume shared between scans, so later builds of the same project download little.
-2. The scan container runs SpotBugs on /build/work with no network, like any other plug-in.
+    docker run --network sieve-build --read-only --tmpfs /tmp
+      --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges
+      --memory 4g --cpus 2 --pids-limit 1024
+      --label sieve.scan_id=<scan ID> --label sieve.run_id=<run ID> --label sieve.step=build
+      --mount <checkout>:/src,readonly --mount <run build folder>:/build
+      --mount m2-<repository key>:/cache/m2
+      -e SIEVE_SRC=/src -e SIEVE_BUILD=/build -e HOME=/tmp
+      <build image>
 
-If the build fails, the run fails with the reason `build_failed`, and Semgrep still covers the Java code.
+The build image's entry point:
 
-The trade-off: a Maven build runs code from the scanned project, such as plug-ins named in its pom.xml, and that code has network access while it runs. We accept this only for the Java build step, for three reasons: we scan only public repositories listed in the scope file, the build container has no secrets, no capabilities and no access to other containers, and it stops at the time limit. Requirement N4 lists this as its one exception.
+1. copies /src to /build/work, because Maven writes into the project folder
+2. runs `mvn -B -DskipTests package` in /build/work, with the image's Maven settings and `/cache/m2` as Maven's local repository
+3. runs `mvn dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory=/build/deps`, which copies the libraries the app is compiled against, including `provided` ones such as the servlet API
+4. writes `/build/java-build.json` with the app's own class folders (`target/classes` of each module) and source folders (`src/main/java` of each module), as paths relative to the repository root
+
+If Maven exits with anything but 0, the run fails with the reason `build_failed`, and Semgrep still covers the Java code.
+
+The scan container then gets /build read-only. Its entry point runs SpotBugs with Find Security Bugs on the class folders listed in `java-build.json` only, with the libraries in /build/deps as `-auxclasspath` and the source folders under /src as `-sourcepath`. Scanning all of /build/work would also analyze every library: in a test with a small Spring app, 2,438 of 2,456 results came from library code. With the source folders under /src, SpotBugs writes file paths the adapter can map (docs/finding-format.md). `files_scanned` is the number of class files analyzed.
+
+Folders and owners:
+
+- The worker creates `runs/<run ID>/build` and `runs/<run ID>/out` in the `sieve-data` volume and gives them to user 10001 before the build starts.
+- The Maven cache is one volume per repository, named `m2-` plus the first 16 hex characters of the SHA-256 hash of the normalized repository URL. The build image creates /cache/m2 owned by user 10001, and Docker copies that owner into a new, empty volume the first time it is mounted, so the build can write to it without other setup. We tested this on Docker Desktop 29. One volume per repository means that one project's build can't plant files in a cache that another project's build later uses.
+
+Network:
+
+- `sieve-build` is an internal Docker network, with no route out. The build container's only neighbour on it is `maven-proxy`, a small forward proxy that is also on the `egress` network and allows connections only to Maven Central (`repo.maven.apache.org`, port 443).
+- The build image's Maven settings send every download through a mirror of Maven Central and through that proxy, so repositories that the project's pom.xml declares are not used.
+- We tested the difference on Docker Desktop: a container on an internal network could reach neither the host's published ports, through `host.docker.internal`, nor the internet. A container on an ordinary bridge network could reach both, including Sieve's API port.
+
+The trade-off: a Maven build runs code from the scanned project, such as plug-ins named in its pom.xml. That code can reach only Maven Central, its own build folder and its own repository's cache. It can't reach Sieve's API, the database, other containers, the researcher's network or other hosts, and it stops at the time limit. It could still change its own compiled classes, and so its own SpotBugs results, which affects only the scan of that same project. Requirement N4 lists the build step as its one exception to "no network".
 
 ### Results
 
@@ -107,24 +147,24 @@ The plug-in writes `/out/results.sarif`:
 - File paths relative to the repository root, or absolute under /src. The adapter turns both into paths relative to the repository root (docs/finding-format.md).
 - At most 100 MB.
 
-It also writes `/out/scan-info.json` with the number of files the tool scanned:
+It also writes `/out/scan-info.json` with the number of files the tool scanned. A plug-in that scans every file, such as Gitleaks, reports the number of files in /src.
 
 ```json
 {"files_scanned": 446}
 ```
 
-A scan that scans nothing reports success with no findings, which looks exactly like a scan of clean code. We saw this happen while testing: when /src was mounted from the wrong folder, Semgrep scanned 0 files and exited with 0. So the runner marks a run as failed when `files_scanned` is 0 but the checkout has files in the plug-in's languages.
+A scan that scans nothing reports success with no findings, which looks exactly like a scan of clean code. We saw this happen while testing: when /src was mounted from the wrong folder, Semgrep scanned 0 files and exited with 0. So the runner checks the count (see Run statuses).
 
 Other files the plug-in writes to /out are kept with the run for debugging, but nothing in Sieve reads them.
 
-The Gitleaks plug-in runs Gitleaks with `--redact`, so secret values never reach the SARIF file. The adapter also hides the secret's columns before it stores a snippet or computes a fingerprint (docs/finding-format.md), and the triage agent's context collector does the same before it puts the code of a Gitleaks finding into a prompt.
+The Gitleaks plug-in runs Gitleaks with `--redact`, so its SARIF file doesn't contain the secret values. The adapter also masks the lines Gitleaks flagged (docs/finding-format.md).
 
 ### Exit codes
 
 | Code | Meaning | Run status |
 |---|---|---|
-| 0 | the analyzer finished and wrote `results.sarif` | `succeeded` if the SARIF file is valid |
-| 3 | nothing to scan: no files the analyzer supports | `skipped` |
+| 0 | the analyzer finished and wrote `results.sarif` | `succeeded` if the checks below pass |
+| 3 | nothing to scan: no files the analyzer supports | `skipped` if the checkout really has no files in the plug-in's languages |
 | any other | the analyzer failed | `failed` |
 
 Tools use their own exit codes. Bandit, for example, exits with 1 when it finds issues. `run.sh` maps them to the codes above.
@@ -135,29 +175,41 @@ A plug-in run goes through `pending`, then `building` for plug-ins with a build 
 
 | Status | When | Reason recorded |
 |---|---|---|
-| `succeeded` | exit code 0 and a valid SARIF file | |
-| `skipped` | exit code 3 | |
+| `succeeded` | exit code 0, a valid SARIF file, and `files_scanned` above 0 when the checkout has files in the plug-in's languages | |
+| `skipped` | exit code 3, and the checkout has no files in the plug-in's languages | |
 | `failed` | exit code other than 0 or 3 | `exit_code` |
 | `failed` | `results.sarif` or `scan-info.json` is missing | `missing_sarif` |
-| `failed` | `files_scanned` is 0, but the checkout has files in the plug-in's languages | `nothing_scanned` |
+| `failed` | `files_scanned` is 0, or the exit code is 3, while the checkout has files in the plug-in's languages | `nothing_scanned` |
 | `failed` | the file is not JSON, its version is not 2.1.0, it fails the SARIF 2.1.0 JSON schema, or it is larger than 100 MB | `invalid_sarif` |
 | `failed` | the container ran out of memory | `out_of_memory` |
 | `failed` | the build step failed | `build_failed` |
+| `failed` | the image is missing, Docker can't be reached, or the container can't be created or started | `runner_error` |
+| `failed` | the worker stopped during the run. Set when the worker starts again. | `interrupted` |
 | `timed_out` | the run reached its time limit. The runner kills and removes the container. | |
 
-One plug-in failing doesn't stop the others. When all of a scan's plug-in runs have ended, the scan is `completed` if every run succeeded or was skipped, `partial` if some failed or timed out, and `failed` if none succeeded.
+A plug-in that tries to reach the network can't: its container has only a loopback interface, so every connection fails at once. The runner's test plug-in for this case tries to connect, then exits with 1, so its run ends as `failed` with `exit_code`. The test also checks that a listener on the host received nothing.
+
+One plug-in failing doesn't stop the others. When all of a scan's plug-in runs have ended, the scan gets the first of these statuses that applies:
+
+1. `failed`, if no run succeeded and at least one failed or timed out
+2. `partial`, if at least one run failed or timed out
+3. `completed`, in every other case, including when every run was skipped
+
+A scan whose clone or export fails is `failed` before any plug-in runs, and the error is recorded with the scan.
 
 ### Time limits
 
-The default limit is 10 minutes for a whole run, build step included, and the Java plug-in sets 30 minutes. We will check these limits against the real times of the baseline run in week 4.
+The default limit is 10 minutes for a whole run, build step included, and the Java plug-in sets 30 minutes. The scan step gets whatever time the build step left. We will check these limits against the real times of the baseline run in week 4.
 
 ### Logs and recorded versions
 
-The runner saves the container's standard output and error as the run's log, up to the first 5 MB, for every run, including failed ones.
+The runner saves the containers' standard output and error as the run's log, first the build step's and then the scan step's, up to 5 MB in total, for every run, including failed ones. After the run, the adapter adds its warnings and the number of results it dropped to the same log.
 
-Each run records the plug-in, the image digest, the tool and rules versions from the manifest, the status and reason, the exit code, the start and end times, the number of files scanned and of results, and the paths of its SARIF file and log (`analyzer_runs` in docs/database.md). The runner also compares the tool version in the manifest with `tool.driver.semanticVersion` in the SARIF file, and logs a warning when they differ.
+Each run records the plug-in, the image name and digest, the tool and rules versions from the manifest, the status and reason, the exit code, the start and end times, the number of files scanned, of results and of dropped results, and the paths of its SARIF file and log (`analyzer_runs` in docs/database.md).
 
-Rule versions stay fixed from the baseline run in week 4 to the final evaluation in week 9, so results can be compared. Updating rules means building a new image.
+The tool version that counts is the one in the manifest. The runner logs the version written in the SARIF file next to it, but doesn't compare them, because tools fill that field unreliably: Gitleaks 8.30.1 always writes `v8.0.0`, and SpotBugs and the ESLint formatter fill only `version`, not `semanticVersion`.
+
+Rule versions stay fixed from the baseline run in week 4 to the final evaluation in week 9, so results can be compared. Updating rules means building a new image. The plug-in's command counts as part of its version too: Semgrep builds rule IDs from the paths it loads rules from, so changing how `run.sh` passes `--config` changes every rule ID, and with it every fingerprint.
 
 ### Example: the Semgrep plug-in
 
@@ -171,6 +223,7 @@ configs=$(find python java javascript typescript -type d -name security \
   | sort | sed 's/^/--config /')
 # Semgrep exits with 0 when the scan finished, with or without findings.
 semgrep scan $configs --metrics off --disable-version-check --no-git-ignore \
+  --disable-nosem \
   --sarif-output "$SIEVE_OUT/results.sarif" \
   --json-output /tmp/semgrep.json "$SIEVE_SRC" || exit 1
 # Semgrep's JSON output lists the scanned files, its SARIF output doesn't.
@@ -180,7 +233,7 @@ json.dump({"files_scanned": len(d["paths"]["scanned"])}, sys.stdout)' \
   > "$SIEVE_OUT/scan-info.json" || exit 1
 ```
 
-We ran this script on three versions of PyGoat as user 10001, with no network and all capabilities dropped. It scanned 206, 446 and 451 files.
+We ran this script on three versions of PyGoat as user 10001, with no network and all capabilities dropped.
 
 The rules are referenced with paths relative to /opt/semgrep-rules, because Semgrep builds rule IDs from those paths. This gives IDs such as `python.lang.security.audit.formatted-sql-query`, the same as in the Semgrep registry.
 
