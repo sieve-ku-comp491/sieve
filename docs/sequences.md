@@ -150,6 +150,15 @@ sequenceDiagram
       RS->>API: save the edited fields
       API->>DB: save the edit as a new version of the report
     end
+    opt reviewer asks for a new draft
+      RS->>API: draft the report again
+      API->>RP: draft the report again
+      RP->>LC: ask report template, code as marked data
+      LC-->>RP: title, summary, impact, steps to reproduce and fix
+      RP->>DB: save the new draft as a new version of the report
+      RP-->>API: report
+      API-->>RS: report preview
+    end
     RS->>API: approve the report text
     API->>DB: save the approval of the current version
     RS->>API: export the report as Markdown
@@ -160,7 +169,7 @@ sequenceDiagram
       API-->>RS: error, nothing is exported
     end
     RP->>RP: render the report with MarkdownFormat
-    RP->>DB: set the status to exported and save exported_at
+    RP->>DB: set the status to exported, and save the exported text version, the review of each finding, the path and exported_at
     RP-->>API: Markdown file
     API-->>RS: Markdown file
   end
@@ -173,4 +182,5 @@ Notes on the steps:
 - The report is drafted from the finding as the reviewer left it, including edits to its text or severity. The references include at least the finding's CWE.
 - The reviewer can change any field of the report before export. An edit, or a new draft from the LLM, is saved as a new version and cancels the approval of the earlier one, so the reviewer approves the text again. The export uses the latest version, and only when that version is approved.
 - The `NotApproved` check at export is a second guard. In normal use it passes, because the export button stays disabled until the finding and the text are approved, but it also stops a direct call to the API for a finding or a text that was never approved.
+- At export Sieve also saves which version of the text was exported and the review that approved each finding, so every exported report links to the approvals behind it (requirement F5).
 - The report is exported as one Markdown file in the layout from docs/interfaces.md. The HackerOne and Bugcrowd formats are stretch goals and are not shown.
