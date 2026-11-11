@@ -1,6 +1,6 @@
 # Design documents
 
-These documents turn the design in the proposal (Section 2.1, Tables 1 to 3) into the requirements and the design that the implementation tasks build on (T1.1, issue #1). Each was reviewed in its own pull request, and with our advisor in the design review (M1.1, issue #12).
+These documents turn the design in the proposal (Section 2.1, Tables 1 to 3) into the requirements and the design that the implementation tasks build on (T1.1, issue #1). Each came in its own pull request, and our advisor went through them in the design review (M1.1, issue #12).
 
 | Document | What it covers | Issue |
 |---|---|---|
@@ -11,6 +11,7 @@ These documents turn the design in the proposal (Section 2.1, Tables 1 to 3) int
 | [finding-format.md](finding-format.md) | the finding format every adapter produces, the fingerprint and when a finding is hidden | #3 |
 | [interfaces.md](interfaces.md) | the plug-in contract, the triage API and the report schema | #3 |
 | [class-diagrams.md](class-diagrams.md) | the plug-in and SARIF adapter, the LLM provider and the report format | #8 |
+| [llm-provider.md](llm-provider.md) | how every LLM call goes through LLMClient: prompt templates, the response cache, the budget, the providers and the call log, and how to add a provider | #21 |
 | [sequences.md](sequences.md) | scan and import, triage of one finding, and approval and export | #9 |
 | [database.md](database.md) | the PostgreSQL tables of the findings store, with the ER diagram | #7 |
 | [finding-states.md](finding-states.md) | the states of a finding, the export check of F5, and repeated scans | #10 |
