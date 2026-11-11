@@ -94,11 +94,14 @@ class Catalog:
         models: dict[str, ModelInfo],
         checked_on: str,
         providers: dict[str, str] | None = None,
+        default_model: str | None = None,
     ):
         self._models = models
         self.checked_on = checked_on
         # Provider name to the "module:Class" of its LLMProvider.
         self.providers = providers or {}
+        # The model a call uses when it names none.
+        self.default_model = default_model
 
     def __contains__(self, model: str) -> bool:
         return self.find(model) is not None
@@ -189,7 +192,12 @@ def load_catalog(path: Path = MODELS_FILE) -> Catalog:
             temperature=entry.get("temperature", False),
             server_fallbacks=entry.get("server_fallbacks", False),
         )
-    return Catalog(models, checked_on=data["checked_on"], providers=providers)
+    default_model = data.get("default_model")
+    if default_model is not None and default_model not in models:
+        raise ValueError(f"default_model {default_model} in {path.name} is not one of its models")
+    return Catalog(
+        models, checked_on=data["checked_on"], providers=providers, default_model=default_model
+    )
 
 
 def _price(model: str, data: dict[str, str]) -> Price:

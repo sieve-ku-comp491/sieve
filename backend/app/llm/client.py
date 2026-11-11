@@ -50,17 +50,18 @@ class LLMClient:
         values: Mapping[str, object],
         code: Sequence[CodeBlock] = (),
         *,
-        model: str,
+        model: str | None = None,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         effort: str | None = None,
         history: Sequence[Message] = (),
     ) -> LLMRequest:
         """The request ask() would send, for example to check its worst-case cost first.
 
-        `history` holds earlier turns of the same conversation. They go between the system
-        message and the new data block. Each one is an answer from the model or a user message
-        made by data_block, such as a tool result, so text from the scanned repository can't
-        reach the model outside a data block.
+        Without a model, the request goes to default_model from models.json. `history` holds
+        earlier turns of the same conversation. They go between the system message and the new
+        data block. Each one is an answer from the model or a user message made by data_block,
+        such as a tool result, so text from the scanned repository can't reach the model outside
+        a data block.
         """
         for message in history:
             if message.role != "assistant" and not (
@@ -70,6 +71,7 @@ class LLMClient:
                     "history can hold only assistant messages and user messages made by "
                     f"data_block, and it has a {message.role} message that is neither"
                 )
+        model = self._model_or_default(model)
         info = self.catalog.get(model)
         system, data = template.render(values, code)
         return LLMRequest(
@@ -87,16 +89,18 @@ class LLMClient:
         values: Mapping[str, object],
         code: Sequence[CodeBlock] = (),
         *,
-        model: str,
+        model: str | None = None,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         effort: str | None = None,
         history: Sequence[Message] = (),
     ) -> LLMResponse:
         """Renders the template and sends it to the model, or answers from the cache.
 
-        Raises BudgetExceeded, before anything is sent, when the worst-case cost doesn't fit in
-        the budget, and ProviderError when the call fails.
+        Without a model, the call goes to default_model from models.json. Raises
+        BudgetExceeded, before anything is sent, when the worst-case cost doesn't fit in the
+        budget, and ProviderError when the call fails.
         """
+        model = self._model_or_default(model)
         request = self.build_request(
             template,
             values,
@@ -131,6 +135,13 @@ class LLMClient:
         if response.stop_reason is StopReason.COMPLETE and response.text.strip():
             self.cache.put(key, response)
         return response
+
+    def _model_or_default(self, model: str | None) -> str:
+        if model:
+            return model
+        if self.catalog.default_model is None:
+            raise ValueError("the call names no model and models.json has no default_model")
+        return self.catalog.default_model
 
     def _provider(self, name: str) -> LLMProvider:
         try:

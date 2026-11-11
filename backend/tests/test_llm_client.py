@@ -262,3 +262,21 @@ def test_every_provider_in_models_json_can_be_set_up(monkeypatch):
         monkeypatch.setenv(load_provider_class(target).api_key_variable, "test-key")
 
     assert set(providers_from_env(catalog)) == set(catalog.providers)
+
+
+def test_a_call_without_a_model_goes_to_the_default_model():
+    client, provider, _ = make_client()
+    client.catalog.default_model = "fake-model"
+
+    client.ask(TEMPLATE, {"rule": "python.sqli"}, CODE, max_tokens=1000)
+
+    assert provider.requests[0].model == "fake-model"
+
+
+def test_a_call_without_a_model_or_a_default_is_refused():
+    client, provider, _ = make_client()
+
+    with pytest.raises(ValueError, match="no default_model"):
+        client.ask(TEMPLATE, {"rule": "python.sqli"}, CODE, max_tokens=1000)
+
+    assert provider.requests == []

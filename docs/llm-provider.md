@@ -45,11 +45,12 @@ response = client.ask(
     load_template("fp_check"),  # app/llm/prompts/fp_check.md, which T3.3 adds
     {"rule": "python.django.security.injection.tainted-sql-string", "cwe": "CWE-89"},
     [CodeBlock("dvpa/views.py", 52, 54, snippet)],
-    model="claude-opus-5-5",
     max_tokens=16000,
     effort="medium",
 )
 ```
+
+Without `model`, the call goes to the default model, DeepSeek V4.1 Flash (`deepseek-flash`), which costs a small fraction of flagship models such as Claude Opus 5.5 and GPT-5.5. To use another model, pass it, for example `model="claude-opus-5-5"`.
 
 The response has the answer in `text` and how it ended in `stop_reason`: `COMPLETE`, `MAX_TOKENS`, `REFUSAL` or `OTHER`. Use the text only when the answer is complete. It also has `model_version`, `usage`, `cost_usd`, `duration_ms`, `cached` and `call_id`. `call_id` is the call's row in `llm_calls`: store it with whatever the answer decided, such as a verdict, so the decision links to its call (N3 test 1).
 
@@ -140,6 +141,7 @@ Every call is a row in `llm_calls`, including cache hits and failed calls (N3). 
 
 `app/llm/models.json` lists the providers and the models we can call.
 
+- `default_model` is the model a call goes to when it names none: `deepseek-flash`, DeepSeek V4.1 Flash, which costs a small fraction of the flagship models.
 - `providers` maps each provider's name to its class as `"module:Class"`. `providers_from_env` sets up each provider whose API key variable is set.
 - Each model has its provider and its prices in US dollars per million tokens: `input`, `output`, `cache_read` and `cache_write`. All four are required. Where a provider has no separate cache price, repeat the input price.
 - `long_context` gives a higher price for the whole request once the prompt is longer than `above_prompt_tokens`.
@@ -219,9 +221,9 @@ Run this once for each provider, with that provider's cheapest model, before its
 
     cd backend
     set -a; source ../.env; set +a
-    python -m app.llm.smoke claude-haiku-5-5
+    python -m app.llm.smoke
 
-It prints the reply, which should be `'OK'`, the exact model version, the stop reason, the tokens and the cost. A model whose worst case is more than US$0.01, such as `claude-opus-5-5`, is stopped by the budget before anything is sent. The cheapest model of each provider:
+Without a model, the check uses the default model, `deepseek-flash`. It prints the reply, which should be `'OK'`, the exact model version, the stop reason, the tokens and the cost. A model whose worst case is more than US$0.01, such as `claude-opus-5-5`, is stopped by the budget before anything is sent. The cheapest model of each provider:
 
 | Provider | Command |
 |---|---|

@@ -261,3 +261,10 @@ def test_deepseek_is_charged_at_the_peak_price():
     flash = load_catalog().get("deepseek-flash")
 
     assert flash.cost(Usage(output_tokens=1_000_000)) == Decimal("1.20")
+
+
+def test_deepseek_v4_1_flash_is_the_default_model():
+    catalog = load_catalog()
+
+    assert catalog.default_model == "deepseek-flash"
+    assert catalog.get(catalog.default_model).provider == "deepseek"

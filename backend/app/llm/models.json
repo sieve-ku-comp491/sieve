@@ -1,6 +1,7 @@
 {
   "prices_in": "US dollars per million tokens",
   "checked_on": "2026-11-11",
+  "default_model": "deepseek-flash",
   "sources": {
     "anthropic": ["https://platform.claude.com/docs/en/about-claude/pricing"],
     "openai": [
@@ -88,7 +89,7 @@
       "provider": "deepseek",
       "price": {"input": "0.30", "output": "1.20", "cache_read": "0.006", "cache_write": "0.30"},
       "temperature": true,
-      "note": "Peak-hour prices. Off-peak prices are half."
+      "note": "DeepSeek V4.1 Flash (DeepSeek-V4.1-Flash-1017). Peak-hour prices. Off-peak prices are half."
     },
     "qwen3.8-max": {
       "provider": "qwen",
