@@ -15,6 +15,7 @@ erDiagram
   scans ||--o{ duplicate_groups : "contains"
   duplicate_groups |o--|{ findings : "groups"
   findings |o--o{ findings : "matches an earlier"
+  reviews |o--o{ findings : "carried to"
   duplicate_groups ||--o{ duplicate_group_llm_calls : "decided by"
   llm_calls ||--o{ duplicate_group_llm_calls : "decided"
   findings |o--o{ verdicts : "judged in"
@@ -59,6 +60,8 @@ erDiagram
     uuid run_id FK
     uuid group_id FK
     uuid matched_finding_id FK
+    uuid carried_review_id FK
+    bool hidden
     text tool
     text tool_version
     text rule_id
@@ -200,7 +203,7 @@ One row per finding, in the format of docs/finding-format.md. Each field of that
 
 - `finding_id` is `id`.
 - The primary location is stored in the columns `file`, `start_line`, `end_line`, `start_column`, `end_column` and `snippet`, because almost every query filters or sorts by it. Related locations and data-flow steps are in `locations`.
-- `group_id` and `matched_finding_id` are added by deduplication.
+- `group_id`, `matched_finding_id`, `carried_review_id` and `hidden` are added by deduplication.
 
 | Column | Type | Can be empty | Meaning |
 |---|---|---|---|
@@ -209,6 +212,8 @@ One row per finding, in the format of docs/finding-format.md. Each field of that
 | `run_id` | uuid | no | the plug-in run that produced it, references `analyzer_runs` |
 | `group_id` | uuid | yes | its duplicate group, references `duplicate_groups` together with `scan_id`, so a finding can only join a group of its own scan. Empty when the finding has no duplicates, so it is a triage item on its own. |
 | `matched_finding_id` | uuid | yes | the latest earlier finding of the same repository with the same fingerprint, references `findings`. Set by deduplication. Whether that match lets the new finding be hidden is decided by the rules in docs/finding-format.md, "When a finding is hidden". |
+| `carried_review_id` | uuid | yes | the earlier review that applies to this finding, references `reviews`: the latest review of any earlier finding of the same repository with the same fingerprint. Set by deduplication. Empty when no earlier finding was reviewed. |
+| `hidden` | boolean | no | true when the rules in docs/finding-format.md let `carried_review_id` decide the finding, so it stays out of the review queue. When false and `carried_review_id` is set, the review screen shows the earlier decision as a suggestion. |
 | `tool` | text | no | the plug-in's name |
 | `tool_version` | text | no | from the plug-in run's manifest |
 | `rule_id` | text | no | |
@@ -236,7 +241,7 @@ One row per finding, in the format of docs/finding-format.md. Each field of that
 
 `(scan_id, fingerprint)` is unique: the fingerprint includes the tool, and the occurrence number in it keeps two identical results apart. `(id, group_id)` is unique too, so that `duplicate_groups` can check its representative (below).
 
-To decide whether a new finding can be hidden, deduplication looks up the latest review of any earlier finding with the same fingerprint in a scan of the same `repo_url`, not only in the previous scan. So a finding that was hidden in the second scan, and therefore never reviewed there, still counts as reviewed in the third. The lookup uses the `findings (fingerprint)` and `scans (repo_url, created_at)` indexes.
+To decide whether a new finding can be hidden, deduplication looks up the latest review of any earlier finding with the same fingerprint in a scan of the same `repo_url`, not only in the previous scan. So a finding that was hidden in the second scan, and therefore never reviewed there, still counts as reviewed in the third. That review can belong to an older finding than `matched_finding_id`, which is why it is stored on its own in `carried_review_id`, together with the decision in `hidden`. Both are fixed when the finding is imported, so a later review of the earlier finding doesn't change them. The lookup uses the `findings (fingerprint)` and `scans (repo_url, created_at)` indexes.
 
 ### locations
 
@@ -303,11 +308,13 @@ The queue of background jobs (docs/architecture.md, deployment view). Like `anal
 | `id` | uuid | no | primary key, returned by the API when it starts a job |
 | `kind` | text | no | `scan`, `triage` or `report_draft` |
 | `status` | text | no | `queued`, `running`, `succeeded` or `failed` |
-| `payload` | jsonb | no | only IDs, such as `{"scan_id": "..."}`. Never image names, paths or flags (docs/architecture.md). |
+| `payload` | jsonb | no | only IDs: `{"scan_id": "..."}` for a scan, `{"triage_run_id": "..."}` for a triage. Never image names, paths or flags (docs/architecture.md). |
 | `error` | text | yes | why the job failed |
 | `created_at` | timestamptz | no | |
 | `started_at` | timestamptz | yes | |
 | `finished_at` | timestamptz | yes | |
+
+A job's status only says whether the worker finished it. A triage run's budget, its cost and whether it stopped at the budget are in `triage_runs` on the review side, so a triage that stops at its budget is a `succeeded` job whose run has the status `stopped_at_budget`. The column that points to that run is called `triage_run_id`, never `run_id`, which in `findings` means the plug-in run.
 
 When the worker starts, it marks every job still `running` as `failed` with the error `interrupted`, together with that job's scan and the scan's unfinished plug-in runs (docs/architecture.md).
 
