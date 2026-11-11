@@ -6,8 +6,12 @@ This document shows how a finding moves from an analyzer's SARIF output to an ex
 
 Rectangles are processes, cylinders are data stores, and rounded boxes are people and outside services. The dashed box is the boundary of the researcher's machine: every arrow that crosses it to an outside service is listed in the next section. The researcher sits at the machine, so the arrows to and from the researcher are not network traffic. Dashed arrows are stretch goals.
 
+The flow is split in two. The checkout and the findings store appear in both halves.
+
+### From the repository to findings
+
 ```mermaid
-flowchart LR
+flowchart TB
   researcher([Researcher])
 
   subgraph machine [Researcher's machine]
@@ -20,20 +24,11 @@ flowchart LR
     sarif[(SARIF file)]
     adapter[Adapter]
     store[(Findings store)]
-    dedup[Deduplication]
-    fp[False-positive check]
-    sev[Severity scoring]
-    provider[Provider interface]
-    calls[(LLM calls table and cache)]
-    review[Review screen]
-    report[Report service]
-    exports[(./exports folder)]
     platform[Platform module]
   end
 
   git([Git hosting])
   maven([Maven Central])
-  llm([Hosted LLM APIs])
   h1([HackerOne API])
 
   researcher -->|repository URL| clone
@@ -51,6 +46,36 @@ flowchart LR
   sarif --> adapter
   checkout -->|flagged lines| adapter
   adapter -->|findings| store
+  platform -.->|token and program handle| h1
+  h1 -.->|program scope| platform
+  platform -.->|in-scope assets| scope
+
+  classDef stretch stroke-dasharray: 5 5
+  class h1,platform stretch
+  style machine stroke-dasharray: 8 4
+```
+
+### From findings to reports
+
+```mermaid
+flowchart TB
+  researcher([Researcher])
+
+  subgraph machine [Researcher's machine]
+    checkout[(Checkout in sieve-data)]
+    store[(Findings store)]
+    dedup[Deduplication]
+    fp[False-positive check]
+    sev[Severity scoring]
+    provider[Provider interface]
+    calls[(LLM calls table and cache)]
+    review[Review screen]
+    report[Report service]
+    exports[(./exports folder)]
+  end
+
+  llm([Hosted LLM APIs])
+
   store -->|findings| dedup
   dedup -->|duplicate groups| store
   store -->|triage items| fp
@@ -74,12 +99,7 @@ flowchart LR
   researcher -->|approve report text| review
   report -->|Markdown, after both approvals| exports
   exports -->|submits by hand| researcher
-  platform -.->|token and program handle| h1
-  h1 -.->|program scope| platform
-  platform -.->|in-scope assets| scope
 
-  classDef stretch stroke-dasharray: 5 5
-  class h1,platform stretch
   style machine stroke-dasharray: 8 4
 ```
 
@@ -102,13 +122,15 @@ During a scan and its triage:
 | HackerOne request (stretch) | out | platform module to the HackerOne API | when the researcher imports a program's scope | the researcher's HackerOne API name and token, in the authentication header, and the program's handle | stretch goal S3 |
 | Program scope (stretch) | in | HackerOne API to the platform module | the same | the program's assets and whether each is in scope | stretch goal S3 |
 
+The LLM providers can keep prompts and responses for a while under their API terms, for example for abuse monitoring. That is one more reason Sieve sends only public code.
+
 When Sieve is installed or updated, never during a scan:
 
 | Data | Direction | Between | What it contains |
 |---|---|---|---|
 | Image and package downloads | out and in | Docker and the image builds to Docker Hub, GitHub, PyPI, npm and Maven Central | requests for the pinned base images, the semgrep-rules repository, and the Python, JavaScript and Java packages the images install. No code or findings from a scan. |
 
-Prompts carry no repository name or URL and no CVE IDs or CVE descriptions, so the model judges the code and not what it may remember about the project. In the evaluation, benchmark files and test names are also renamed before triage, as planned in the proposal's risk analysis.
+Prompts carry no repository name or URL and no CVE IDs or CVE descriptions, so the model judges the code and not what it may remember about the project. File paths, package names and the code itself can still identify a well-known project such as WebGoat, which is why the evaluation also renames benchmark files and test names before triage, as planned in the proposal's risk analysis.
 
 ## What stays on the machine
 
