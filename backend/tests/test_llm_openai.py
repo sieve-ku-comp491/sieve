@@ -168,3 +168,12 @@ def test_gpt_models_charge_cache_writes_at_the_input_price():
         info = load_catalog().get(name)
         written = info.cost(Usage(cache_write_tokens=100_000))
         assert written == info.cost(Usage(input_tokens=100_000))
+
+
+def test_an_answer_from_a_snapshot_is_charged_at_its_model_price():
+    catalog = load_catalog()
+    result = provider_answering(200, response(), []).complete(REQUEST)
+
+    # The answer names gpt-5.4-mini-2026-03-17, which is priced as gpt-5.4-mini.
+    expected = catalog.get("gpt-5.4-mini").cost(result.usage)
+    assert catalog.cost("openai", result.attempts) == expected
