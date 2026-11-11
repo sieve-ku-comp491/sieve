@@ -166,13 +166,14 @@ DeepSeek, Qwen, GLM and Kimi all serve the format of OpenAI's Chat Completions A
 | Provider | Models | Key variable | Effort | Temperature 0 |
 |---|---|---|---|---|
 | DeepSeek | `deepseek-v4-pro`, `deepseek-flash` | `DEEPSEEK_API_KEY` | `reasoning_effort`: none, low, high, max | sent, but has no effect while the model thinks |
-| Qwen | `qwen3.8-max`, `qwen3.8-flash` | `DASHSCOPE_API_KEY` | none turns thinking off, any other level keeps it on | not sent, Alibaba advises against 0 |
+| Qwen | `qwen3.8-max`, `qwen3.8-flash` | `DASHSCOPE_API_KEY` | none turns thinking off, any other level or none at all keeps it on | not sent, Alibaba advises against 0 |
 | GLM | `glm-5.3`, `glm-5.3-flash` | `ZAI_API_KEY` | `reasoning_effort`: low, high or max, medium goes to high and xhigh to max, and thinking can't be turned off | sent as `do_sample: false`, which is greedy decoding |
 | Kimi | `kimi-k3.1-pro` | `MOONSHOT_API_KEY` | low, high or max, medium goes to high and xhigh to max | not sent, the docs don't say whether K3 takes one |
 
 Some things differ from Claude and GPT:
 
 - DeepSeek charges half price outside its peak hours (01:00 to 04:00 and 06:00 to 10:00 UTC on weekdays). models.json has the peak prices, so the logged cost of an off-peak call is twice what it cost. `created_at` shows which calls were off-peak.
+- Qwen's `max_tokens` limits only the answer, and its thinking has a separate `thinking_budget`. While Qwen may think, the provider sends half of the request's max_tokens as `thinking_budget` and the other half as `max_tokens`, so all output stays within max_tokens as the worst case expects.
 - Kimi's K3 models and the GLM-5.3 models always think, and without an effort they think at max, the most expensive level. Give an effort.
 - Qwen goes through the shared international endpoint by default. Alibaba now recommends a workspace endpoint: set `DASHSCOPE_BASE_URL` to `https://<WorkspaceId>.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` and use a key from that workspace. Since the Qwen key goes wherever that URL points, the provider accepts only an https URL on an `aliyuncs.com` host.
 - These APIs report the name of the model that was asked, not a dated version, so `model_version` is that name. The pricing page of the day the call was made (`created_at`) says which version it was.

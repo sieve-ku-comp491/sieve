@@ -37,9 +37,9 @@ class ChatCompletionsProvider(LLMProvider):
 
     A subclass sets name, label, api_key_variable and base_url. When base_url_variable is set
     in the environment, its value replaces base_url, as long as it is an https URL on a host
-    that ends in base_url_host. Effort and temperature go into the request body through
-    effort_fields and sampling_fields, which a subclass overrides when its API takes them
-    differently.
+    that ends in base_url_host. The output limit, effort and temperature go into the request
+    body through body_fields, effort_fields and sampling_fields, which a subclass overrides when
+    its API takes them differently.
     """
 
     label: str
@@ -84,6 +84,15 @@ class ChatCompletionsProvider(LLMProvider):
             )
         return value
 
+    def body_fields(self, request: LLMRequest) -> dict[str, Any]:
+        """The output limit, temperature and effort, the way this provider's API takes them."""
+        fields: dict[str, Any] = {self.max_tokens_field: request.max_tokens}
+        if request.temperature is not None:
+            fields |= self.sampling_fields(request.temperature)
+        if request.effort:
+            fields |= self.effort_fields(request.effort)
+        return fields
+
     def effort_fields(self, effort: str) -> dict[str, Any]:
         return {"reasoning_effort": effort}
 
@@ -96,16 +105,10 @@ class ChatCompletionsProvider(LLMProvider):
         params: dict[str, Any] = {
             "model": request.model,
             "messages": messages + conversation,
-            self.max_tokens_field: request.max_tokens,
+            # The openai SDK puts these into the request body unchanged, also the fields it
+            # doesn't know.
+            "extra_body": self.body_fields(request),
         }
-        # Fields that the openai SDK doesn't know go into the body unchanged.
-        extra: dict[str, Any] = {}
-        if request.temperature is not None:
-            extra |= self.sampling_fields(request.temperature)
-        if request.effort:
-            extra |= self.effort_fields(request.effort)
-        if extra:
-            params["extra_body"] = extra
         try:
             response = self._client.chat.completions.create(**params)
         except openai.AuthenticationError as error:

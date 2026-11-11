@@ -89,7 +89,8 @@ def test_the_instructions_go_first_as_a_system_message(provider_class):
         {"role": "system", "content": "Decide."},
         {"role": "user", "content": DATA},
     ]
-    assert body[provider_class.max_tokens_field] == 1000
+    # Thinking and answer together stay within the request's max_tokens.
+    assert body[provider_class.max_tokens_field] + body.get("thinking_budget", 0) == 1000
 
 
 @pytest.mark.parametrize(
@@ -228,6 +229,20 @@ def test_kimi_gets_the_nearest_effort_level_it_has(effort, sent):
 @pytest.mark.parametrize(("effort", "enabled"), [("none", False), ("medium", True)])
 def test_qwen_switches_thinking_with_the_effort(effort, enabled):
     assert sent_body(QwenProvider, effort=effort)["enable_thinking"] is enabled
+
+
+@pytest.mark.parametrize("effort", [None, "medium"])
+def test_qwen_splits_max_tokens_between_thinking_and_answer(effort):
+    body = sent_body(QwenProvider, effort=effort, max_tokens=1001)
+
+    assert (body["thinking_budget"], body["max_tokens"]) == (500, 501)
+
+
+def test_qwen_gives_the_answer_all_of_max_tokens_when_it_does_not_think():
+    body = sent_body(QwenProvider, effort="none", max_tokens=1001)
+
+    assert body["max_tokens"] == 1001
+    assert "thinking_budget" not in body
 
 
 def test_qwen_can_use_a_workspace_endpoint(monkeypatch):
