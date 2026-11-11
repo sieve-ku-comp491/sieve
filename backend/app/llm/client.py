@@ -1,6 +1,7 @@
 """The one way Sieve calls an LLM: template, cache, budget, provider, cost, call log."""
 
 import importlib
+import logging
 import os
 import time
 from collections.abc import Mapping, Sequence
@@ -16,6 +17,8 @@ from app.llm.templates import PromptTemplate
 from app.llm.types import CodeBlock, LLMRequest, LLMResponse, Message, StopReason
 
 DEFAULT_MAX_TOKENS = 16000
+
+log = logging.getLogger(__name__)
 
 
 class LLMClient:
@@ -157,7 +160,7 @@ class LLMClient:
             job_id=self.job_id,
             request_id=response.request_id,
         )
-        self.call_log.record(record)
+        self._record(record)
         return replace(response, call_id=record.id)
 
     def _log_failure(
@@ -169,7 +172,7 @@ class LLMClient:
         error: Exception,
         duration_ms: int,
     ) -> None:
-        self.call_log.record(
+        self._record(
             CallRecord(
                 provider=provider.name,
                 model=request.model,
@@ -187,6 +190,17 @@ class LLMClient:
                 error=f"{type(error).__name__}: {error}",
             )
         )
+
+    def _record(self, record: CallRecord) -> None:
+        """Writes the record to the call log, or to the error log if that write fails.
+
+        A failed write doesn't raise, so a paid answer still reaches the caller and a failed
+        call still raises its own ProviderError. The error log keeps the whole record.
+        """
+        try:
+            self.call_log.record(record)
+        except Exception:
+            log.exception("could not write call %s to the call log: %r", record.id, record)
 
 
 def providers_from_env(catalog: Catalog) -> dict[str, LLMProvider]:

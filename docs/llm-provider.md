@@ -106,7 +106,7 @@ Only complete answers are cached. A refusal, a cut-off answer or a failed call i
 
 ## Call log
 
-Every call is a row in `llm_calls`, including cache hits and failed calls (N3). `PostgresCallStore.create_table()` creates the table from `app/llm/llm_calls.sql` until the findings store (T2.3) adds migrations. `job_id` will reference `jobs` once that table exists.
+Every call is a row in `llm_calls`, including cache hits and failed calls (N3). If the row can't be written, for example because the database is down, `ask` still returns the answer or raises the call's own `ProviderError`, and the whole record goes to the error log, so a paid answer is never lost. `PostgresCallStore.create_table()` creates the table from `app/llm/llm_calls.sql` until the findings store (T2.3) adds migrations. `job_id` will reference `jobs` once that table exists.
 
 | Column | Contents |
 |---|---|

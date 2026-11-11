@@ -156,6 +156,37 @@ def test_a_failed_call_is_logged_and_costs_nothing():
     assert record.response_text is None
 
 
+class BrokenCallLog:
+    def record(self, record):
+        raise RuntimeError("the database is down")
+
+
+def test_a_paid_answer_is_returned_when_the_call_log_cannot_be_written(caplog):
+    client, provider, _ = make_client(FakeProvider(replies=["true positive"]))
+    client.call_log = BrokenCallLog()
+
+    response = ask(client)
+
+    assert response.text == "true positive"
+    assert client.budget.spent_usd == response.cost_usd > 0
+    assert "the database is down" in caplog.text
+    assert f"could not write call {response.call_id}" in caplog.text
+    assert "true positive" in caplog.text
+
+
+def test_a_failed_call_keeps_its_own_error_when_the_call_log_cannot_be_written(caplog):
+    error = ProviderError("Anthropic API error 529: overloaded", retryable=True)
+    client, _, _ = make_client(FakeProvider(error=error))
+    client.call_log = BrokenCallLog()
+
+    with pytest.raises(ProviderError) as raised:
+        ask(client)
+
+    assert raised.value is error
+    assert raised.value.retryable is True
+    assert "the database is down" in caplog.text
+
+
 def test_a_model_without_a_provider_gives_a_clear_error():
     client, _, _ = make_client()
     client.providers = {}
