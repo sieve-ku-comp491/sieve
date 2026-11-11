@@ -2,10 +2,15 @@
   "prices_in": "US dollars per million tokens",
   "checked_on": "2026-11-11",
   "sources": {
-    "anthropic": ["https://platform.claude.com/docs/en/about-claude/pricing"]
+    "anthropic": ["https://platform.claude.com/docs/en/about-claude/pricing"],
+    "openai": [
+      "https://developers.openai.com/api/docs/pricing",
+      "https://developers.openai.com/api/docs/guides/prompt-caching"
+    ]
   },
   "providers": {
-    "anthropic": "app.llm.anthropic_provider:AnthropicProvider"
+    "anthropic": "app.llm.anthropic_provider:AnthropicProvider",
+    "openai": "app.llm.openai_provider:OpenAIProvider"
   },
   "models": {
     "claude-opus-5-5": {
@@ -47,6 +52,20 @@
       "price": {"input": "2.00", "output": "10.00", "cache_read": "0.20", "cache_write": "2.50"},
       "temperature": false,
       "server_fallbacks": false
+    },
+    "gpt-5.5": {
+      "provider": "openai",
+      "price": {"input": "5.00", "output": "30.00", "cache_read": "0.50", "cache_write": "5.00"},
+      "long_context": {
+        "above_prompt_tokens": 272000,
+        "price": {"input": "10.00", "output": "45.00", "cache_read": "1.00", "cache_write": "10.00"}
+      },
+      "temperature": false
+    },
+    "gpt-5.4-mini": {
+      "provider": "openai",
+      "price": {"input": "0.75", "output": "4.50", "cache_read": "0.075", "cache_write": "0.75"},
+      "temperature": false
     }
   }
 }
