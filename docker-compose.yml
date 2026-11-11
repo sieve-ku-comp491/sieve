@@ -8,6 +8,13 @@ services:
       db:
         condition: service_healthy
 
+  web:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - backend
+
   db:
     image: postgres:17
     env_file: .env
