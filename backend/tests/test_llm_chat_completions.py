@@ -238,6 +238,26 @@ def test_qwen_can_use_a_workspace_endpoint(monkeypatch):
 
 
 @pytest.mark.parametrize(
+    "url",
+    [
+        "http://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        "https://proxy.example/compatible-mode/v1",
+        "https://dashscope-intl.aliyuncs.com.proxy.example/compatible-mode/v1",
+        "https://dashscope-intl.aliyuncs.com@proxy.example/compatible-mode/v1",
+        "https://proxy.example/#.aliyuncs.com",
+        "not a url",
+    ],
+)
+def test_qwen_sends_its_key_only_to_an_https_aliyuncs_com_host(url, monkeypatch):
+    monkeypatch.setenv("DASHSCOPE_BASE_URL", url)
+
+    with pytest.raises(ProviderError, match="DASHSCOPE_BASE_URL") as raised:
+        QwenProvider.resolved_base_url()
+
+    assert raised.value.retryable is False
+
+
+@pytest.mark.parametrize(
     ("status", "retryable"), [(400, False), (401, False), (429, True), (503, True)]
 )
 def test_api_errors_say_whether_a_retry_can_help(status, retryable):

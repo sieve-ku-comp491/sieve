@@ -11,7 +11,7 @@ class QwenProvider(ChatCompletionsProvider):
 
     Alibaba now recommends a workspace endpoint over the shared one. To use it, set
     DASHSCOPE_BASE_URL to https://<WorkspaceId>.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1
-    with a key from that workspace.
+    with a key from that workspace. Only an https URL on an aliyuncs.com host is accepted.
     """
 
     name = "qwen"
@@ -19,6 +19,7 @@ class QwenProvider(ChatCompletionsProvider):
     api_key_variable = "DASHSCOPE_API_KEY"
     base_url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
     base_url_variable = "DASHSCOPE_BASE_URL"
+    base_url_host = ".aliyuncs.com"
 
     def effort_fields(self, effort: str) -> dict[str, Any]:
         return {"enable_thinking": effort != "none"}

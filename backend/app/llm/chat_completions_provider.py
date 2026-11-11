@@ -8,6 +8,7 @@ and temperature.
 import os
 from typing import Any
 
+import httpx2
 import openai
 
 from app.llm.openai_provider import OPENAI_SDK_VARIABLES
@@ -35,14 +36,16 @@ class ChatCompletionsProvider(LLMProvider):
     """Calls a Chat Completions API through the openai SDK at the provider's base URL.
 
     A subclass sets name, label, api_key_variable and base_url. When base_url_variable is set
-    in the environment, its value replaces base_url. Effort and temperature go into the request
-    body through effort_fields and sampling_fields, which a subclass overrides when its API
-    takes them differently.
+    in the environment, its value replaces base_url, as long as it is an https URL on a host
+    that ends in base_url_host. Effort and temperature go into the request body through
+    effort_fields and sampling_fields, which a subclass overrides when its API takes them
+    differently.
     """
 
     label: str
     base_url: str
     base_url_variable: str | None = None
+    base_url_host: str | None = None
     max_tokens_field = "max_tokens"
     stop_reasons: dict[str, StopReason] = STOP_REASONS
     # The openai SDK would send these to this provider's API too.
@@ -57,9 +60,29 @@ class ChatCompletionsProvider(LLMProvider):
 
     @classmethod
     def resolved_base_url(cls) -> str:
-        if cls.base_url_variable:
-            return os.environ.get(cls.base_url_variable, "").strip() or cls.base_url
-        return cls.base_url
+        """base_url, or the URL in base_url_variable when that is set and points to our API.
+
+        The key goes wherever this URL points, so any other host, or plain http, is refused.
+        """
+        value = os.environ.get(cls.base_url_variable, "").strip() if cls.base_url_variable else ""
+        if not value:
+            return cls.base_url
+        try:
+            url = httpx2.URL(value)
+        except httpx2.InvalidURL:
+            url = None
+        if (
+            url is None
+            or url.scheme != "https"
+            or not cls.base_url_host
+            or not url.host.endswith(cls.base_url_host)
+        ):
+            raise ProviderError(
+                f"{cls.base_url_variable} has to be an https URL on a host that ends in "
+                f"{cls.base_url_host}",
+                retryable=False,
+            )
+        return value
 
     def effort_fields(self, effort: str) -> dict[str, Any]:
         return {"reasoning_effort": effort}

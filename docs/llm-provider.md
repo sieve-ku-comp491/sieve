@@ -174,7 +174,7 @@ Some things differ from Claude and GPT:
 
 - DeepSeek charges half price outside its peak hours (01:00 to 04:00 and 06:00 to 10:00 UTC on weekdays). models.json has the peak prices, so the logged cost of an off-peak call is twice what it cost. `created_at` shows which calls were off-peak.
 - Kimi's K3 models and the GLM-5.3 models always think, and without an effort they think at max, the most expensive level. Give an effort.
-- Qwen goes through the shared international endpoint by default. Alibaba now recommends a workspace endpoint: set `DASHSCOPE_BASE_URL` to `https://<WorkspaceId>.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` and use a key from that workspace.
+- Qwen goes through the shared international endpoint by default. Alibaba now recommends a workspace endpoint: set `DASHSCOPE_BASE_URL` to `https://<WorkspaceId>.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` and use a key from that workspace. Since the Qwen key goes wherever that URL points, the provider accepts only an https URL on an `aliyuncs.com` host.
 - These APIs report the name of the model that was asked, not a dated version, so `model_version` is that name. The pricing page of the day the call was made (`created_at`) says which version it was.
 - Only public code goes to these APIs, as to every provider (N4).
 
