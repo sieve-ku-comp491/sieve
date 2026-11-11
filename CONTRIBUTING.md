@@ -104,7 +104,7 @@ Body:
     - [ ] ...
     - [ ] ...
 
-Put links or open questions at the end if there are any. A checklist item has to be something you can check: a test passes, a file exists, a number is reported. Split a big task into sub-issues under one parent issue. For meetings, link the notes in Notion from the issue.
+Put links or open questions at the end if there are any. A checklist item has to be something you can check: a test passes, a file exists, a number is reported. Split a big task into sub-issues under one parent issue. For meetings, put the outcome in a comment on the issue.
 
 The templates in .github/ISSUE_TEMPLATE give you this format when you open a new issue.
 
