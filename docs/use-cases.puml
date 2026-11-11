@@ -1,0 +1,86 @@
+@startuml use-cases
+title Sieve: use cases of the researcher
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam defaultFontName Helvetica
+skinparam nodesep 25
+skinparam ranksep 70
+skinparam ArrowColor #444444
+skinparam actor {
+  BorderColor #444444
+  BackgroundColor White
+}
+skinparam usecase {
+  BorderColor #444444
+  BackgroundColor White
+}
+skinparam note {
+  BorderColor #999999
+  BackgroundColor #FFFBE6
+}
+
+actor "Researcher" as R
+
+rectangle "Sieve" {
+
+  usecase "Edit the scope file" as UC1
+  usecase "Start a scan" as UC2
+  usecase "Triage findings with AI\n(duplicates, verdict, severity)" as UC3
+  usecase "View findings and\nduplicate groups" as UC4
+  usecase "Read the AI verdict\nand reasoning" as UC5
+  usecase "Approve, reject or\nedit a finding" as UC6
+  usecase "Generate and export\na report" as UC7
+  usecase "Set the LLM provider\nand budget" as UC8
+
+  usecase "Import the scope\nfrom HackerOne" as S1 #EEEEEE;line:777777;line.dashed
+  usecase "Run a PoC check" as S2 #EEEEEE;line:777777;line.dashed
+  usecase "Export in platform\nformats" as S3 #EEEEEE;line:777777;line.dashed
+  usecase "Submit to the\nmock server" as S4 #EEEEEE;line:777777;line.dashed
+}
+
+actor "Hosted LLM APIs\n(DeepSeek, Claude, GPT\nand others)" as LLM
+actor "HackerOne API" as H1
+actor "Mock platform server" as MOCK
+
+R -right- UC1
+R -right- UC2
+R -right- UC4
+R -right- UC6
+R -right- UC7
+R -right- UC8
+
+UC2 ..> UC3 : <<include>>
+UC5 .up.> UC4 : <<extend>>
+S1 .left.> UC1 : <<extend>>
+S2 .left.> UC7 : <<extend>>
+S3 .left.> UC7 : <<extend>>
+S4 .up.> S3 : <<extend>>
+
+UC3 -right- LLM
+UC7 -right- LLM
+S1 -right- H1
+S4 -right- MOCK
+
+UC1 -[hidden]down- UC2
+UC2 -[hidden]down- UC3
+UC3 -[hidden]down- UC4
+UC4 -[hidden]down- UC5
+UC5 -[hidden]down- UC6
+UC6 -[hidden]down- UC7
+UC7 -[hidden]down- UC8
+S1 -[hidden]down- S2
+S2 -[hidden]down- S3
+S3 -[hidden]down- S4
+
+note right of UC7
+  Only approved findings
+  are exported.
+end note
+
+legend bottom
+  Dashed grey use cases are stretch goals. The submission
+  goes to a mock server, never to a real bug bounty program.
+endlegend
+
+@enduml
