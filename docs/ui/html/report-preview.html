@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sieve: report preview</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  .crumbs { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+  .crumbs a { color: var(--accent); text-decoration: none; }
+  .head { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .head .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 14px; }
+  .doc { padding: 26px 34px; }
+  .doc h1 { font-size: 22px; margin-bottom: 10px; }
+  .doc h3 { font-size: 16px; margin: 20px 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--soft); }
+  .doc p, .doc li { margin: 0 0 6px; }
+  .doc ol, .doc ul { margin: 0; padding-left: 22px; }
+  .sev { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; font-size: 13px; background: #f6f8fa; border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; }
+  .sev dt { color: var(--muted); }
+  .sev dd { margin: 0; }
+  pre { background: #f6f8fa; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin: 6px 0; font-size: 12.5px; white-space: pre-wrap; }
+  .side > .panel { margin-bottom: 14px; }
+  .check { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+  .check li { padding: 5px 0; border-bottom: 1px solid var(--soft); display: flex; gap: 8px; }
+  .yes { color: var(--green); font-weight: 700; }
+  .no { color: var(--red); font-weight: 700; }
+  .ver { font-size: 12.5px; }
+  .ver div { padding: 5px 0; border-bottom: 1px solid var(--soft); }
+  .empty { padding: 60px 30px; text-align: center; color: var(--muted); }
+  .empty b { display: block; color: var(--text); font-size: 16px; margin-bottom: 6px; }
+  .demo { padding: 0 24px 18px; font-size: 11.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">Sieve</span>
+  <nav class="nav"><a href="#">Scans</a><a class="active" href="#">Review</a><a href="#">Reports</a></nav>
+  <span class="right">PyGoat at 2aa4cc1 · scan of 11 Nov 2026 · researcher: Furkan</span>
+</header>
+<main>
+  <div class="crumbs"><a href="review-screen.html">Review queue</a> / <a href="finding-detail.html">Duplicate group of 6 findings</a> / Report</div>
+  <div class="head">
+    <h1>Report preview</h1>
+    <span data-show="none" class="pill s s-triaged">finding triaged</span>
+    <span data-show="draft ready" class="pill s s-approved">finding approved</span>
+    <span data-show="draft" class="pill s">text not approved</span>
+    <span data-show="ready" class="pill s s-approved">text approved</span>
+    <div class="right">
+      <span class="small muted">Format</span>
+      <span class="field">Markdown ▾</span>
+      <span data-show="draft"><button class="btn">Edit text</button></span>
+      <span data-show="draft"><button class="btn">Draft again</button></span>
+      <span data-show="draft"><button class="btn">Approve text</button></span>
+      <span data-show="ready"><button class="btn">Edit text</button></span>
+      <span data-show="none draft"><button class="btn btn-primary" disabled>Export</button></span>
+      <span data-show="ready"><button class="btn btn-primary">Export</button></span>
+    </div>
+  </div>
+
+  <div data-show="none" class="banner info"><span class="ico">ⓘ</span><div><b>Export is disabled until the finding is approved.</b> Sieve drafts the report after you approve the finding, from the finding as you left it, including your edits.</div></div>
+  <div data-show="draft" class="banner info"><span class="ico">ⓘ</span><div><b>Approve the text to export it.</b> Version 2, your edit of the AI's draft, isn't approved yet. Any later edit or new draft needs approving again.</div></div>
+  <div data-show="ready" class="banner ok"><span class="ico">✓</span><div><b>Ready to export.</b> Version 2 of the text was approved by Furkan at 13:55. Exporting writes one Markdown file to ./exports and marks the 6 findings reported.</div></div>
+
+  <div class="layout">
+    <div class="panel">
+      <div data-show="none" class="empty"><b>No report yet</b>Approve the finding on its detail page. Rejected and unreviewed findings never get a report.</div>
+      <div data-show="draft ready" class="doc">
+        <h1>SQL injection in the login form of the SQL injection lab</h1>
+        <dl class="sev">
+          <dt>Severity</dt><dd><span class="pill lv-critical">Critical</span> CVSS 4.0 score 9.3</dd>
+          <dt>Vector</dt><dd class="mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:N/SC:N/SI:N/SA:N</dd>
+          <dt>Location</dt><dd class="mono">dockerized_labs/sql_injection_lab/app.py, lines 46 to 57</dd>
+          <dt>Repository</dt><dd>github.com/adeyosemanputra/pygoat at 2aa4cc1</dd>
+        </dl>
+
+        <h3>Summary</h3>
+        <p>The <span class="mono">/lab</span> route of the SQL injection lab builds its login query by formatting the submitted username and password into an SQL string, and runs it with <span class="mono">sqlite3</span>'s <span class="mono">execute()</span> without query parameters.</p>
+
+        <h3>Impact</h3>
+        <p>An unauthenticated attacker can log in as any user, including <span class="mono">admin</span>, without knowing the password, and can read other rows of the <span class="mono">users</span> table through the query's result.</p>
+
+        <h3>Steps to reproduce</h3>
+        <ol>
+          <li>Start the SQL injection lab from <span class="mono">dockerized_labs/sql_injection_lab</span>.</li>
+          <li>Open the lab's <span class="mono">/lab</span> page.</li>
+          <li>Enter <span class="mono">admin' --</span> as the username and any password, and submit the form.</li>
+          <li>The page shows that you are logged in as admin.</li>
+        </ol>
+
+        <h3>Fix</h3>
+        <p>Pass the values as query parameters instead of formatting them into the string:</p>
+        <pre class="mono">result = c.execute(
+    "SELECT * FROM users WHERE username = ? AND password = ?",
+    (username, password),
+).fetchone()</pre>
+
+        <h3>References</h3>
+        <ul>
+          <li>https://cwe.mitre.org/data/definitions/89.html</li>
+          <li>https://docs.python.org/3/library/sqlite3.html#sqlite3-placeholders</li>
+          <li>https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="panel pad">
+        <h2>Export check</h2>
+        <ul class="check">
+          <li data-show="none"><span class="no">✕</span>Every finding in the report is approved</li>
+          <li data-show="draft ready"><span class="yes">✓</span>Every finding in the report is approved (6 of 6)</li>
+          <li data-show="none draft"><span class="no">✕</span>The current text is approved</li>
+          <li data-show="ready"><span class="yes">✓</span>The current text is approved</li>
+          <li data-show="draft ready"><span class="yes">✓</span>Title, summary, impact, steps, fix and references are filled in</li>
+          <li data-show="draft ready"><span class="yes">✓</span>References include the CWE</li>
+        </ul>
+        <div class="note">The report service checks the first two again when it exports, so no client can skip them.</div>
+      </div>
+
+      <div data-show="draft ready" class="panel pad">
+        <h2>Text versions</h2>
+        <div class="ver">
+          <div><b>Version 2</b>, edited by Furkan, 13:53<br><span class="muted">changed the title and the impact</span><span data-show="ready"><br><span class="yes">approved by Furkan, 13:55</span></span></div>
+          <div><b>Version 1</b>, drafted by the AI, 13:51<br><span class="muted">kept next to the edit</span></div>
+        </div>
+      </div>
+
+      <div data-show="draft ready" class="panel pad">
+        <h2>Findings covered</h2>
+        <div class="small">6 findings of the group, each approved by Furkan at 13:50. A member you reject is left out of the report.</div>
+      </div>
+    </div>
+  </div>
+</main>
+<div class="demo">Mockup. The finding is a real Semgrep 1.183.0 result on PyGoat 2aa4cc1. The report text is illustrative.</div>
+<script>
+  // ?state=none (finding not approved), default draft (text not approved), ?state=ready
+  const asked = new URLSearchParams(location.search).get('state')
+  const state = ['none', 'ready'].includes(asked) ? asked : 'draft'
+  document.querySelectorAll('[data-show]').forEach((el) => {
+    if (!el.dataset.show.split(' ').includes(state)) el.remove()
+  })
+</script>
+</body>
+</html>
