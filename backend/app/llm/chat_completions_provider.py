@@ -144,9 +144,20 @@ class ChatCompletionsProvider(LLMProvider):
 
 
 def usage_from(usage: Any) -> Usage:
-    """prompt_tokens includes the cache reads and writes, so they are taken out of it here."""
+    """prompt_tokens includes the cache reads and writes, so they are taken out of it here.
+
+    All four APIs report cache reads in prompt_tokens_details. DeepSeek also sends them as
+    prompt_cache_hit_tokens, and Kimi's schema has a top-level cached_tokens, which are read
+    when prompt_tokens_details has none.
+    """
     details = usage.prompt_tokens_details
     cached = (getattr(details, "cached_tokens", None) or 0) if details else 0
+    if not cached:
+        cached = (
+            getattr(usage, "prompt_cache_hit_tokens", None)
+            or getattr(usage, "cached_tokens", None)
+            or 0
+        )
     written = (getattr(details, "cache_write_tokens", None) or 0) if details else 0
     return Usage(
         input_tokens=max(usage.prompt_tokens - cached - written, 0),

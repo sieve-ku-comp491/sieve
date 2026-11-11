@@ -129,6 +129,86 @@ def test_the_answer_gives_text_model_and_usage_split_by_price(provider_class):
     assert response.request_id == "req_789"
 
 
+# Usage as each API reports it: DeepSeek and Qwen from real calls, GLM and Kimi from their API
+# references, and the top-level fields that DeepSeek and Kimi also have.
+REPORTED_USAGE = [
+    (
+        DeepSeekProvider,
+        {
+            "prompt_tokens": 3117,
+            "completion_tokens": 16,
+            "total_tokens": 3133,
+            "completion_tokens_details": {"reasoning_tokens": 16},
+            "prompt_tokens_details": {"cached_tokens": 2944},
+            "prompt_cache_hit_tokens": 2944,
+            "prompt_cache_miss_tokens": 173,
+        },
+        Usage(input_tokens=173, output_tokens=16, cache_read_tokens=2944),
+    ),
+    (
+        DeepSeekProvider,
+        {
+            "prompt_tokens": 3117,
+            "completion_tokens": 16,
+            "total_tokens": 3133,
+            "prompt_cache_hit_tokens": 2944,
+            "prompt_cache_miss_tokens": 173,
+        },
+        Usage(input_tokens=173, output_tokens=16, cache_read_tokens=2944),
+    ),
+    (
+        QwenProvider,
+        {
+            "prompt_tokens": 3434,
+            "completion_tokens": 1,
+            "total_tokens": 3435,
+            "prompt_tokens_details": {"cached_tokens": 3072, "text_tokens": 3434},
+        },
+        Usage(input_tokens=362, output_tokens=1, cache_read_tokens=3072),
+    ),
+    (
+        GLMProvider,
+        {
+            "prompt_tokens": 1500,
+            "completion_tokens": 400,
+            "total_tokens": 1900,
+            "prompt_tokens_details": {"cached_tokens": 1000},
+        },
+        Usage(input_tokens=500, output_tokens=400, cache_read_tokens=1000),
+    ),
+    (
+        KimiProvider,
+        {
+            "prompt_tokens": 1500,
+            "completion_tokens": 400,
+            "total_tokens": 1900,
+            "cached_tokens": 1000,
+            "prompt_tokens_details": {"cached_tokens": 1000, "cache_write_tokens": 300},
+        },
+        Usage(input_tokens=200, output_tokens=400, cache_read_tokens=1000, cache_write_tokens=300),
+    ),
+    (
+        KimiProvider,
+        {
+            "prompt_tokens": 1500,
+            "completion_tokens": 400,
+            "total_tokens": 1900,
+            "cached_tokens": 1000,
+        },
+        Usage(input_tokens=500, output_tokens=400, cache_read_tokens=1000),
+    ),
+]
+
+
+@pytest.mark.parametrize(("provider_class", "usage", "expected"), REPORTED_USAGE)
+def test_cache_reads_are_found_where_each_api_reports_them(provider_class, usage, expected):
+    body = completion(MODELS[provider_class], usage=usage)
+
+    response = answering(provider_class, 200, body, []).complete(request_for(provider_class))
+
+    assert response.usage == expected
+
+
 def test_cache_writes_are_taken_out_of_the_prompt_tokens():
     usage = completion()["usage"] | {
         "prompt_tokens_details": {"cached_tokens": 1000, "cache_write_tokens": 300}
