@@ -197,7 +197,7 @@ A provider is one module, its tests, its entries in models.json and its SDK in r
    - Turn the SDK's errors into `ProviderError`, with `retryable=True` for rate limits, server errors and network errors.
    - Don't cache, price, budget or log anything. LLMClient does that.
 
-   If the API follows OpenAI's Chat Completions format, extend `ChatCompletionsProvider` instead, as `deepseek_provider.py` does. Set `name`, `label`, `api_key_variable` and `base_url`, and override `effort_fields` or `sampling_fields` if the API takes effort or temperature in its own way.
+   If the API follows OpenAI's Chat Completions format, extend `ChatCompletionsProvider` instead, as `deepseek_provider.py` does. Set `name`, `label`, `api_key_variable` and `base_url`, and override `effort_fields` or `sampling_fields` if the API takes effort or temperature in its own way, or `body_fields` if its output limit leaves out thinking, as Qwen's does. A base URL from the environment needs `base_url_variable` and `base_url_host`, the end of the only host it may point to.
 2. Add the provider under `providers` in models.json, and its models with their prices and sources.
 3. Pin the SDK and any new dependency to exact versions in `backend/requirements.txt`, and add the key variable to `.env.example` if it isn't there.
 4. Write `tests/test_llm_<name>.py`. Run the real SDK against `httpx2.MockTransport`, as `tests/test_llm_anthropic.py` does, so the tests check the JSON that is sent and how the answer is read, with no network and no key. Cover the request, the usage, every stop reason, the errors and a missing key.
