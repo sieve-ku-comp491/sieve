@@ -250,6 +250,32 @@ def test_api_errors_say_whether_a_retry_can_help(status, retryable):
 
 
 @pytest.mark.parametrize("provider_class", PROVIDERS)
+def test_requests_go_to_the_providers_own_api_whatever_openai_base_url_says(
+    provider_class, monkeypatch
+):
+    monkeypatch.setenv(provider_class.api_key_variable, "test-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://proxy.example/v1")
+    monkeypatch.delenv("DASHSCOPE_BASE_URL", raising=False)
+
+    client = provider_class()._client
+
+    assert str(client.base_url).rstrip("/") == provider_class.base_url.rstrip("/")
+
+
+@pytest.mark.parametrize("provider_class", PROVIDERS)
+def test_a_provider_refuses_to_start_while_openai_custom_headers_are_set(
+    provider_class, monkeypatch
+):
+    monkeypatch.setenv(provider_class.api_key_variable, "test-key")
+    monkeypatch.setenv("OPENAI_CUSTOM_HEADERS", "Authorization: Bearer another-key")
+
+    with pytest.raises(ProviderError, match="unset OPENAI_CUSTOM_HEADERS") as raised:
+        provider_class()
+
+    assert raised.value.retryable is False
+
+
+@pytest.mark.parametrize("provider_class", PROVIDERS)
 def test_each_key_comes_only_from_the_environment(provider_class, monkeypatch):
     monkeypatch.delenv(provider_class.api_key_variable, raising=False)
     with pytest.raises(MissingAPIKey, match=provider_class.api_key_variable):

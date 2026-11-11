@@ -10,10 +10,12 @@ from typing import Any
 
 import openai
 
+from app.llm.openai_provider import OPENAI_SDK_VARIABLES
 from app.llm.provider import (
     LLMProvider,
     ProviderError,
     api_key_from_env,
+    refuse_sdk_variables,
     split_system,
     status_error,
 )
@@ -43,13 +45,14 @@ class ChatCompletionsProvider(LLMProvider):
     base_url_variable: str | None = None
     max_tokens_field = "max_tokens"
     stop_reasons: dict[str, StopReason] = STOP_REASONS
+    # The openai SDK would send these to this provider's API too.
+    refused_variables = OPENAI_SDK_VARIABLES
 
     def __init__(self, client: openai.OpenAI | None = None):
         if client is None:
-            client = openai.OpenAI(
-                api_key=api_key_from_env(self.api_key_variable),
-                base_url=self.resolved_base_url(),
-            )
+            api_key = api_key_from_env(self.api_key_variable)
+            refuse_sdk_variables("openai", self.refused_variables)
+            client = openai.OpenAI(api_key=api_key, base_url=self.resolved_base_url())
         self._client = client
 
     @classmethod
