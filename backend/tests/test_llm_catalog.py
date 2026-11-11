@@ -101,6 +101,24 @@ def test_a_model_without_a_price_is_charged_at_the_highest_price():
     assert load_catalog().cost("anthropic", (attempt,)) == Decimal("25.00")
 
 
+def test_a_dated_snapshot_is_charged_at_its_model_price():
+    catalog = load_catalog()
+    attempts = (
+        Attempt("claude-sonnet-5-2026-10-01", Usage(output_tokens=MILLION)),
+        Attempt("claude-haiku-5-5-20261001", Usage(output_tokens=MILLION)),
+    )
+
+    assert catalog.cost("anthropic", attempts) == Decimal("10.00") + Decimal("0.50")
+    assert catalog.get("claude-sonnet-5-20261001").name == "claude-sonnet-5"
+
+
+def test_a_name_that_only_starts_like_a_model_is_not_that_model():
+    attempt = Attempt("claude-sonnet-5-turbo", Usage(output_tokens=MILLION))
+
+    assert "claude-sonnet-5-turbo" not in load_catalog()
+    assert load_catalog().cost("anthropic", (attempt,)) == Decimal("25.00")
+
+
 def test_the_input_bound_counts_bytes_not_characters():
     # "é" is one character and two bytes in UTF-8.
     accented = request("claude-haiku-5-5", text="é" * 10)

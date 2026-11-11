@@ -6,6 +6,7 @@ pricing page and update "checked_on".
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -15,6 +16,10 @@ from app.llm.types import Attempt, LLMRequest, Usage
 MODELS_FILE = Path(__file__).with_name("models.json")
 MILLION = Decimal(1_000_000)
 PRICE_KINDS = ("input", "output", "cache_read", "cache_write")
+
+# APIs can answer with a dated snapshot of the model that was asked, such as
+# gpt-5.4-mini-2026-03-17 or claude-haiku-4-5-20251001. A snapshot has its model's price.
+SNAPSHOT_DATE = re.compile(r"-(\d{4}-\d{2}-\d{2}|\d{8})$")
 
 # Every token covers at least one byte of text, so the UTF-8 length of the messages bounds the
 # number of input tokens. These allowances cover the tokens the API adds around each message.
@@ -96,16 +101,22 @@ class Catalog:
         self.providers = providers or {}
 
     def __contains__(self, model: str) -> bool:
-        return model in self._models
+        return self.find(model) is not None
 
     def names(self) -> list[str]:
         return sorted(self._models)
 
-    def get(self, model: str) -> ModelInfo:
-        try:
+    def find(self, model: str) -> ModelInfo | None:
+        """The model's entry, also when the name is a dated snapshot of a model in the file."""
+        if model in self._models:
             return self._models[model]
-        except KeyError:
-            raise UnknownModel(model) from None
+        return self._models.get(SNAPSHOT_DATE.sub("", model))
+
+    def get(self, model: str) -> ModelInfo:
+        info = self.find(model)
+        if info is None:
+            raise UnknownModel(model)
+        return info
 
     def ceiling_price(self, provider: str) -> Price:
         """The highest price of each kind among a provider's models.
@@ -127,8 +138,9 @@ class Catalog:
         """What a response cost, with each attempt charged at its own model's price."""
         total = Decimal(0)
         for attempt in attempts:
-            if attempt.model in self._models:
-                total += self._models[attempt.model].cost(attempt.usage)
+            info = self.find(attempt.model)
+            if info is not None:
+                total += info.cost(attempt.usage)
             else:
                 log.warning(
                     "no price for %s, charging the highest %s price", attempt.model, provider
