@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sieve: review queue</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  .scanbar { display: flex; gap: 22px; flex-wrap: wrap; align-items: center; padding: 10px 16px; margin-bottom: 12px; font-size: 13px; }
+  .scanbar b { font-weight: 600; }
+  .states { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .state { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; min-width: 104px; }
+  .state b { display: block; font-size: 19px; }
+  .state span { font-size: 12px; color: var(--muted); }
+  .state.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .f { display: flex; flex-direction: column; gap: 3px; }
+  .f label { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .f .field { min-width: 132px; }
+  .search { min-width: 250px; color: var(--muted); }
+  .chips { display: flex; gap: 6px; align-items: center; padding: 7px 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .chip { background: #ddf4ff; color: #0550ae; border-radius: 10px; padding: 1px 8px; font-weight: 600; }
+  td .rule { word-break: break-all; }
+  td .file { color: var(--accent); }
+  .grp { font-size: 12px; color: var(--muted); }
+  tr.sel td { background: #f1f8ff; }
+  tr.member td { background: #fbfcfd; font-size: 12.5px; }
+  tr.member td:first-child { padding-left: 30px; }
+  .warn { color: #9a6700; font-weight: 700; }
+  .foot { display: flex; justify-content: space-between; padding: 9px 14px; color: var(--muted); font-size: 12.5px; }
+  .demo { padding: 0 24px 18px; font-size: 11.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">Sieve</span>
+  <nav class="nav"><a href="#">Scans</a><a class="active" href="#">Review</a><a href="#">Reports</a></nav>
+  <span class="right">researcher: Furkan</span>
+</header>
+<main>
+  <h1>Review queue</h1>
+  <p class="sub">Decide on each finding: read the AI's verdict, then approve, reject or edit it. Only approved findings get a report.</p>
+
+  <div class="panel scanbar">
+    <span><b>PyGoat</b> at <span class="mono">2aa4cc1</span></span>
+    <span>Scan of 11 Nov 2026, 13:39 · <span class="pill s s-approved">completed</span></span>
+    <span>Semgrep 1.183.0 · 451 files</span>
+    <span>Triage run 1 · <span class="pill s s-approved">finished</span> · $0.41 of $5.00</span>
+  </div>
+
+  <div class="states">
+    <div class="state"><b>153</b><span>findings</span></div>
+    <div class="state"><b>0</b><span>new or grouped</span></div>
+    <div class="state on"><b>121</b><span>triaged</span></div>
+    <div class="state"><b>3</b><span>edited</span></div>
+    <div class="state"><b>18</b><span>approved</span></div>
+    <div class="state"><b>11</b><span>rejected</span></div>
+    <div class="state"><b>0</b><span>reported</span></div>
+  </div>
+
+  <div class="panel">
+    <div class="filters">
+      <div class="f"><label>Status</label><div class="field">triaged, edited ▾</div></div>
+      <div class="f"><label>Tool</label><div class="field">All tools ▾</div></div>
+      <div class="f"><label>Severity</label><div class="field">All levels ▾</div></div>
+      <div class="f"><label>Verdict</label><div class="field">All verdicts ▾</div></div>
+      <div class="f"><label>File or rule</label><div class="field search">dockerized_labs/</div></div>
+      <button class="btn" style="margin-left:auto">Clear filters</button>
+    </div>
+    <div class="chips">Filters: <span class="chip">Status: triaged, edited ✕</span><span class="chip">File: dockerized_labs/ ✕</span> · sorted by severity · duplicates shown as one group</div>
+    <table class="grid">
+      <thead>
+        <tr><th>Tool</th><th>Rule</th><th>File</th><th>Severity</th><th>Verdict</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr class="sel">
+          <td>Semgrep</td>
+          <td><span class="rule mono">python.lang.security.audit.formatted-sql-query</span><div class="grp">▾ group of 6 from 5 rules · CWE-89</div></td>
+          <td><span class="file mono">dockerized_labs/sql_injection_lab/app.py:46</span></td>
+          <td><span class="pill lv-critical">Critical 9.3</span></td>
+          <td><span class="pill v-tp">true positive</span></td>
+          <td><span class="pill s s-triaged">triaged</span></td>
+        </tr>
+        <tr class="member"><td>Semgrep</td><td class="mono">python.django.security.injection.sql.sql-injection-db-cursor-execute</td><td class="mono">app.py:46 to 69</td><td class="muted">tool: warning</td><td></td><td><span class="pill s s-triaged">triaged</span></td></tr>
+        <tr class="member"><td>Semgrep</td><td class="mono">python.django.security.injection.sql.sql-injection-db-cursor-execute</td><td class="mono">app.py:47 to 69</td><td class="muted">tool: warning</td><td></td><td><span class="pill s s-triaged">triaged</span></td></tr>
+        <tr class="member"><td>Semgrep</td><td class="mono">python.django.security.injection.tainted-sql-string</td><td class="mono">app.py:50 to 52</td><td class="muted">tool: error</td><td></td><td><span class="pill s s-triaged">triaged</span></td></tr>
+        <tr class="member"><td>Semgrep</td><td class="mono">python.flask.security.injection.tainted-sql-string</td><td class="mono">app.py:50 to 52</td><td class="muted">tool: error</td><td></td><td><span class="pill s s-triaged">triaged</span></td></tr>
+        <tr class="member"><td>Semgrep</td><td class="mono">python.sqlalchemy.security.sqlalchemy-execute-raw-query</td><td class="mono">app.py:57</td><td class="muted">tool: error</td><td></td><td><span class="pill s s-triaged">triaged</span></td></tr>
+        <tr>
+          <td>Semgrep</td>
+          <td><span class="rule mono">python.flask.security.injection.subprocess-injection</span><div class="grp">▸ group of 4 from 4 rules · CWE-78</div></td>
+          <td><span class="file mono">dockerized_labs/command_injection_lab/app.py:29</span> <span class="warn" title="A comment looks like an instruction to an AI">⚠</span></td>
+          <td><span class="pill lv-critical">Critical 9.3</span></td>
+          <td><span class="pill v-tp">true positive</span></td>
+          <td><span class="pill s s-triaged">triaged</span></td>
+        </tr>
+        <tr>
+          <td>Semgrep</td>
+          <td><span class="rule mono">python.flask.security.injection.eval-injection</span><div class="grp">▸ group of 3 from 3 rules · CWE-95</div></td>
+          <td><span class="file mono">dockerized_labs/command_injection_lab/app.py:48</span></td>
+          <td><span class="pill lv-critical">Critical 9.3</span></td>
+          <td><span class="pill v-tp">true positive</span></td>
+          <td><span class="pill s s-edited">edited</span></td>
+        </tr>
+        <tr>
+          <td>Semgrep</td>
+          <td><span class="rule mono">python.flask.security.audit.avoid_hardcoded_config_SECRET_KEY</span><div class="grp">CWE-489</div></td>
+          <td><span class="file mono">dockerized_labs/command_injection_lab/app.py:6</span></td>
+          <td><span class="pill lv-medium">Medium 6.3</span></td>
+          <td><span class="pill v-tp">true positive</span></td>
+          <td><span class="pill s s-triaged">triaged</span></td>
+        </tr>
+        <tr>
+          <td>Semgrep</td>
+          <td><span class="rule mono">python.flask.security.audit.debug-enabled</span><div class="grp">▸ group of 2 from 2 rules · CWE-489, CWE-668</div></td>
+          <td><span class="file mono">dockerized_labs/sql_injection_lab/app.py:78</span></td>
+          <td><span class="pill lv-medium">Medium 6.3</span></td>
+          <td><span class="pill v-unsure">unsure</span></td>
+          <td><span class="pill s s-triaged">triaged</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="foot"><span>Click a row to open its detail. ⚠ a comment in the code looks like an instruction to an AI.</span><span>5 of 38 items · page 1 of 1</span></div>
+  </div>
+</main>
+<div class="demo">Mockup. Findings, rules, files and lines are a real Semgrep 1.183.0 scan of PyGoat 2aa4cc1. Groups, verdicts, scores, costs and counts are illustrative.</div>
+</body>
+</html>

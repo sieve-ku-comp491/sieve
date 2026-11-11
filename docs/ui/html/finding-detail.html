@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sieve: finding detail</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  .crumbs { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+  .crumbs a { color: var(--accent); text-decoration: none; }
+  .head { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 12px; }
+  .meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; }
+  .stack > .panel { margin-bottom: 14px; }
+  .verdict { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .reason p { margin: 0 0 6px; }
+  .score { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+  .score b { font-size: 26px; }
+  .metrics { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .metrics td { padding: 3px 6px; border-bottom: 1px solid var(--soft); vertical-align: top; }
+  .metrics td:first-child { width: 64px; font-weight: 600; white-space: nowrap; }
+  .metrics td:nth-child(2) { width: 46px; font-family: ui-monospace, Menlo, monospace; }
+  .members td { font-size: 12.5px; }
+  .members .rule .mono { word-break: break-all; }
+  .members td:nth-child(n+2) { white-space: nowrap; }
+  .kv { display: grid; grid-template-columns: 110px 1fr; gap: 4px 10px; font-size: 12.5px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; }
+  .hist { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
+  .hist li { padding: 5px 0; border-bottom: 1px solid var(--soft); color: var(--muted); }
+  .hist b { color: var(--text); font-weight: 600; }
+  .edit { display: none; }
+  body.editing .edit { display: block; }
+  body.editing .view { display: none; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  textarea.field { width: 100%; font: inherit; min-height: 92px; resize: none; }
+  .orig { background: #f6f8fa; border: 1px dashed var(--line); border-radius: 6px; padding: 8px 10px; font-size: 12.5px; }
+  .demo { padding: 0 24px 18px; font-size: 11.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">Sieve</span>
+  <nav class="nav"><a href="#">Scans</a><a class="active" href="#">Review</a><a href="#">Reports</a></nav>
+  <span class="right">PyGoat at 2aa4cc1 · scan of 11 Nov 2026 · researcher: Furkan</span>
+</header>
+<main>
+  <div class="crumbs"><a href="review-screen.html">Review queue</a> / Duplicate group of 6 findings</div>
+  <div class="head">
+    <div>
+      <h1>Formatted SQL query built from the login form</h1>
+      <div class="meta">
+        <span class="pill s s-triaged view">triaged</span>
+        <span class="pill s s-edited edit">edited, not saved yet</span>
+        <span class="pill lv-critical">Critical 9.3</span>
+        <span>Semgrep · 6 results from 5 rules</span>
+        <span>· CWE-89, CWE-915, CWE-704</span>
+        <span>· dockerized_labs/sql_injection_lab/app.py</span>
+      </div>
+    </div>
+    <div class="actions view">
+      <button class="btn btn-danger">Reject</button>
+      <button class="btn">Edit</button>
+      <button class="btn btn-primary">Approve all 6</button>
+    </div>
+    <div class="actions edit">
+      <button class="btn">Cancel</button>
+      <button class="btn btn-primary">Save edit</button>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="stack">
+      <div class="panel">
+        <div class="pad" style="padding-bottom:8px">
+          <h2>Code</h2>
+          <div class="small muted">The enclosing function, as the triage agent read it. Yellow lines are the lines the AI cited, red lines are where the analyzers flagged it.</div>
+        </div>
+        <div class="code">
+          <div class="fname"><span class="mono">dockerized_labs/sql_injection_lab/app.py</span><span>lines 42 to 69</span></div>
+          <div class="ln"><span class="n">42</span><span class="c">@app.route('/lab', methods=['GET', 'POST'])</span></div>
+          <div class="ln"><span class="n">43</span><span class="c">def lab():</span></div>
+          <div class="ln"><span class="n">44</span><span class="c">    """Lab page with the vulnerable login form"""</span></div>
+          <div class="ln"><span class="n">45</span><span class="c">    if request.method == "POST":</span></div>
+          <div class="ln cited"><span class="n">46</span><span class="c">        username = request.form.get("username", "")</span></div>
+          <div class="ln cited"><span class="n">47</span><span class="c">        password = request.form.get("password", "")</span></div>
+          <div class="ln"><span class="n">48</span><span class="c"></span></div>
+          <div class="ln"><span class="n">49</span><span class="c">        # Vulnerable SQL query construction (intentional)</span></div>
+          <div class="ln cited"><span class="n">50</span><span class="c">        sql_query = (</span></div>
+          <div class="ln cited"><span class="n">51</span><span class="c">            f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"</span></div>
+          <div class="ln cited"><span class="n">52</span><span class="c">        )</span></div>
+          <div class="ln"><span class="n">53</span><span class="c"></span></div>
+          <div class="ln"><span class="n">54</span><span class="c">        try:</span></div>
+          <div class="ln"><span class="n">55</span><span class="c">            conn = sqlite3.connect("database.db")</span></div>
+          <div class="ln"><span class="n">56</span><span class="c">            c = conn.cursor()</span></div>
+          <div class="ln flag"><span class="n">57</span><span class="c">            result = c.execute(sql_query).fetchone()</span></div>
+          <div class="ln"><span class="n">58</span><span class="c">            conn.close()</span></div>
+          <div class="ln"><span class="n">59</span><span class="c"></span></div>
+          <div class="ln"><span class="n">60</span><span class="c">            if result:</span></div>
+          <div class="ln"><span class="n">61</span><span class="c">                return render_template("lab.html", logged_in_user=result[0])</span></div>
+          <div class="ln"><span class="n">62</span><span class="c">            else:</span></div>
+          <div class="ln"><span class="n">63</span><span class="c">                return render_template(</span></div>
+          <div class="ln"><span class="n">64</span><span class="c">                    "lab.html",</span></div>
+          <div class="ln"><span class="n">65</span><span class="c">                    error="Invalid username or password",</span></div>
+          <div class="ln"><span class="n">66</span><span class="c">                    sql_query=sql_query,</span></div>
+          <div class="ln"><span class="n">67</span><span class="c">                )</span></div>
+          <div class="ln"><span class="n">68</span><span class="c">        except sqlite3.Error as e:</span></div>
+          <div class="ln"><span class="n">69</span><span class="c">            return render_template("lab.html", error=str(e), sql_query=sql_query)</span></div>
+          <div class="legend">
+            <span><i class="sw" style="background:#fff8c5;border-color:#d4a72c"></i>cited by the AI</span>
+            <span><i class="sw" style="background:#ffebe9;border-color:#cf222e"></i>flagged by an analyzer (also 46 to 69 and 50 to 52)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="pad" style="padding-bottom:6px">
+          <h2>Findings in this group</h2>
+          <div class="small muted">Grouped by rule same_function_related_cwe: same function, related CWEs. Each member is reviewed; Approve all approves the ones not rejected.</div>
+        </div>
+        <table class="grid members">
+          <thead><tr><th>Rule and analyzer message</th><th>Lines</th><th>CWE</th><th>Tool severity</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td class="rule"><span class="mono">python.django.security.injection.sql.sql-injection-db-cursor-execute</span><div class="muted">User-controlled data from a request is passed to 'execute()'.</div></td><td>46 to 69</td><td>CWE-89</td><td>warning</td><td><span class="pill s s-triaged">triaged</span></td></tr>
+            <tr><td class="rule"><span class="mono">python.django.security.injection.sql.sql-injection-db-cursor-execute</span><div class="muted">User-controlled data from a request is passed to 'execute()'.</div></td><td>47 to 69</td><td>CWE-89</td><td>warning</td><td><span class="pill s s-triaged">triaged</span></td></tr>
+            <tr><td class="rule"><span class="mono">python.django.security.injection.tainted-sql-string</span><div class="muted">Detected user input used to manually construct a SQL string.</div></td><td>50 to 52</td><td>CWE-915</td><td>error</td><td><span class="pill s s-triaged">triaged</span></td></tr>
+            <tr><td class="rule"><span class="mono">python.flask.security.injection.tainted-sql-string</span><div class="muted">Detected user input used to manually construct a SQL string.</div></td><td>50 to 52</td><td>CWE-704</td><td>error</td><td><span class="pill s s-triaged">triaged</span></td></tr>
+            <tr><td class="rule"><span class="mono">python.lang.security.audit.formatted-sql-query</span><div class="muted">Detected possible formatted SQL query. Use parameterized queries instead.</div></td><td>57</td><td>CWE-89</td><td>warning</td><td><span class="pill s s-triaged">triaged</span></td></tr>
+            <tr><td class="rule"><span class="mono">python.sqlalchemy.security.sqlalchemy-execute-raw-query</span><div class="muted">Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection.</div></td><td>57</td><td>CWE-89</td><td>error</td><td><span class="pill s s-triaged">triaged</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="panel pad view">
+        <h2>AI verdict</h2>
+        <div class="verdict"><span class="pill v-tp">true positive</span><span class="small muted">from the cheaper model, not asked again</span></div>
+        <div class="label">Reasoning</div>
+        <div class="reason">
+          <p>The username and password from the login form (lines 46 and 47) are put into the SQL string with an f-string on line 51, and the string is run with <span class="mono">c.execute()</span> on line 57 without query parameters.</p>
+          <p>Nothing between the form and the query checks or escapes the values, so input such as <span class="mono">' OR '1'='1' --</span> changes the query.</p>
+        </div>
+        <dl class="kv" style="margin-top:8px">
+          <dt>Cited lines</dt><dd class="mono">app.py 46 to 47, 50 to 52</dd>
+          <dt>Model</dt><dd>cheaper model · 2 calls · $0.004</dd>
+        </dl>
+      </div>
+
+      <div class="panel pad view">
+        <h2>Severity, CVSS v4.0</h2>
+        <div class="score"><b>9.3</b><span class="pill lv-critical">Critical</span><span class="small muted">computed from the vector, not chosen by the AI</span></div>
+        <div class="mono small" style="margin-bottom:8px">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N</div>
+        <table class="metrics">
+          <tr><td>AV</td><td>N</td><td>Reachable over the network through the login form.</td></tr>
+          <tr><td>AC</td><td>L</td><td>A single request is enough, with no special conditions.</td></tr>
+          <tr><td>AT</td><td>N</td><td>No deployment conditions are needed.</td></tr>
+          <tr><td>PR</td><td>N</td><td>The form is available before login.</td></tr>
+          <tr><td>UI</td><td>N</td><td>No other user has to do anything.</td></tr>
+          <tr><td>VC</td><td>H</td><td>The attacker can read every row of the users table.</td></tr>
+          <tr><td>VI</td><td>H</td><td>The attacker logs in as any user, including admin.</td></tr>
+          <tr><td>VA</td><td>H</td><td>A query can lock or corrupt the SQLite file the lab uses.</td></tr>
+          <tr><td>SC</td><td>N</td><td>No other system is affected.</td></tr>
+          <tr><td>SI</td><td>N</td><td>No other system is affected.</td></tr>
+          <tr><td>SA</td><td>N</td><td>No other system is affected.</td></tr>
+        </table>
+      </div>
+
+      <div class="panel pad view">
+        <h2>History</h2>
+        <ul class="hist">
+          <li><b>triaged</b> by triage run 1 · 11 Nov 13:42</li>
+          <li><b>grouped</b> with 5 others by rule same_function_related_cwe · 13:41</li>
+          <li><b>new</b> from the Semgrep run of the scan · 13:39</li>
+        </ul>
+      </div>
+
+      <div class="panel pad edit">
+        <h2>Edit before deciding</h2>
+        <div class="small muted" style="margin-bottom:10px">The AI's text stays as it is. Your changes are saved next to it, and the finding is edited until you approve or reject it.</div>
+        <div class="two">
+          <div>
+            <div class="label">Verdict</div>
+            <div class="field">true positive ▾</div>
+          </div>
+          <div>
+            <div class="label">AI verdict</div>
+            <div class="orig">true positive</div>
+          </div>
+        </div>
+        <div class="label" style="margin-top:10px">CVSS v4.0 vector</div>
+        <div class="field mono small">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:<b>N</b>/SC:N/SI:N/SA:N</div>
+        <div class="small" style="margin-top:4px">Score 9.3 Critical, computed. <span class="muted">AI: VA:H, 9.3 Critical.</span></div>
+        <div class="label" style="margin-top:10px">Reasoning</div>
+        <textarea class="field">The username and password from the login form are put into the SQL string with an f-string on line 51 and run with c.execute() on line 57 without parameters. A single statement can't drop tables in sqlite3's execute(), so availability isn't affected.</textarea>
+        <div class="label" style="margin-top:10px">Why you changed it</div>
+        <div class="field">sqlite3 runs one statement per execute(), so VA is None.</div>
+      </div>
+    </div>
+  </div>
+</main>
+<div class="demo">Mockup. Findings and code are a real Semgrep 1.183.0 scan of PyGoat 2aa4cc1. The verdict, reasoning, model and score are illustrative.</div>
+<script>
+  if (location.search.includes('edit')) document.body.classList.add('editing')
+</script>
+</body>
+</html>
