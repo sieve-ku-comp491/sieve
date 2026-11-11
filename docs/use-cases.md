@@ -16,7 +16,7 @@ The researcher is the only person who uses Sieve: someone who reviews public sou
 4. View findings and duplicate groups. The researcher sees the findings of a scan on the review screen, with duplicates shown together as one group.
 5. Read the AI verdict and reasoning. From the list the researcher opens a finding and sees the verdict (true positive, false positive or unsure), the reasoning, the cited code lines and the CVSS severity.
 6. Approve, reject or edit a finding. The researcher decides on each finding, and can correct its text or severity before approving it.
-7. Generate and export a report. For every approved finding Sieve writes a report with a summary, impact, steps to reproduce, a fix and references, and exports it as Markdown. Rejected and unreviewed findings are never exported.
+7. Generate and export a report. For every approved finding Sieve drafts a report with a summary, impact, steps to reproduce, a fix and references. The researcher edits and approves its text, and only then is it exported as Markdown. Rejected and unreviewed findings are never exported.
 8. Set the LLM provider and budget. The researcher chooses which hosted model Sieve uses and the most a run may spend. A run stops when the next call would go over the budget.
 
 ## Stretch use cases
