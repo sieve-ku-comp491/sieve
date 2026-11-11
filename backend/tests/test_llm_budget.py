@@ -42,3 +42,12 @@ def test_a_reservation_settles_only_once():
 
     with pytest.raises(RuntimeError):
         reservation.release()
+
+
+def test_a_call_that_costs_more_than_its_worst_case_is_reported(caplog):
+    budget = Budget("1.00")
+
+    budget.reserve(Decimal("0.10")).charge(Decimal("0.25"))
+
+    assert budget.spent_usd == Decimal("0.25")
+    assert "more than the worst case" in caplog.text

@@ -1,7 +1,10 @@
 """A spending limit for one run, checked before every LLM call (requirement N1)."""
 
+import logging
 import threading
 from decimal import Decimal
+
+log = logging.getLogger(__name__)
 
 
 class BudgetExceeded(Exception):
@@ -59,3 +62,10 @@ class Budget:
             reservation.settled = True
             self._reserved_usd -= reservation.amount_usd
             self.spent_usd += cost_usd
+        if cost_usd > reservation.amount_usd:
+            # The worst case was too low, so the run can end up over its limit. Find out why.
+            log.warning(
+                "a call cost $%s, more than the worst case of $%s set aside for it",
+                cost_usd,
+                reservation.amount_usd,
+            )
