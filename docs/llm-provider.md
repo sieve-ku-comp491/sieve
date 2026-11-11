@@ -153,7 +153,7 @@ Claude Haiku 5.5 has no server-side fallback, so its refusals come back with sto
 
 API keys are read only from environment variables, such as `ANTHROPIC_API_KEY`, and never from a file in the repository (N4 test 5). Docker Compose passes them in from `.env`. A provider whose key isn't set is not set up, and a call to one of its models fails with "no anthropic provider is set up, check its API key in .env".
 
-The SDKs also read other settings from the environment, which another tool may have set in the same shell. Each provider passes its API's address to the SDK, so `ANTHROPIC_BASE_URL` can't send the key and the prompts to another host. A provider refuses to start while a variable is set that its SDK would still add to every request: `ANTHROPIC_CUSTOM_HEADERS` for Claude, since one of those headers could be another API key.
+The SDKs also read other settings from the environment, which another tool may have set in the same shell. Each provider passes its API's address to the SDK, so `ANTHROPIC_BASE_URL` or `OPENAI_BASE_URL` can't send the key and the prompts to another host. A provider refuses to start while a variable is set that its SDK would still add to every request: `ANTHROPIC_CUSTOM_HEADERS` for Claude, and `OPENAI_CUSTOM_HEADERS`, `OPENAI_ORG_ID` and `OPENAI_PROJECT_ID` for GPT. A custom header could be another API key, and the ids would send requests to whatever OpenAI organization and project another tool set them for.
 
 ## Adding a provider
 
