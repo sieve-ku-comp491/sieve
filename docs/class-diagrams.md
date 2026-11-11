@@ -583,6 +583,9 @@ classDiagram
     +references: list~str~
     +severity: CvssScore
     +locations: list~Location~
+    +version: int
+    +approved_by: str
+    +approved_at: datetime
     +status: str
   }
   class CvssScore {
@@ -592,6 +595,9 @@ classDiagram
   }
   class ReportService {
     +draft(finding_ids: list~str~) Report
+    +edit(report_id: str, fields: dict, editor: str) Report
+    +redraft(report_id: str) Report
+    +approve_text(report_id: str, version: int, approver: str)
     +export(report_id: str, format: str) str
   }
   class NotApproved {
@@ -608,4 +614,4 @@ classDiagram
   ReportService ..> NotApproved : raises
 ```
 
-`ReportService.export()` checks that every finding in the report is approved and raises `NotApproved` otherwise, so nothing leaves Sieve without a person's approval (requirement F5). `draft()` writes the text through `LLMClient`, and the reviewer can edit any field before export. HackerOne's format maps the severity to its CVSS-based rating, and Bugcrowd's maps it to a VRT priority.
+`ReportService.export()` checks that every finding in the report is approved and that a person approved the report's current text, and raises `NotApproved` otherwise, so nothing leaves Sieve without a person's approval (requirement F5). `draft()` writes the first version of the text through `LLMClient`. `edit()`, when the reviewer changes a field, and `redraft()`, when the reviewer asks for a new draft, each save a new version without an approval, so the text has to be approved again with `approve_text()`. It takes the version the reviewer read, so a newer text can't be approved unseen. At export, the service saves which version was exported and the review that approved each finding (requirement F5, test 4). HackerOne's format maps the severity to its CVSS-based rating, and Bugcrowd's maps it to a VRT priority.
