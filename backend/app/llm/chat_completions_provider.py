@@ -10,7 +10,13 @@ from typing import Any
 
 import openai
 
-from app.llm.provider import LLMProvider, ProviderError, api_key_from_env, split_system
+from app.llm.provider import (
+    LLMProvider,
+    ProviderError,
+    api_key_from_env,
+    split_system,
+    status_error,
+)
 from app.llm.types import Attempt, LLMRequest, LLMResponse, StopReason, Usage
 
 STOP_REASONS = {
@@ -81,15 +87,8 @@ class ChatCompletionsProvider(LLMProvider):
                 f"the {self.label} API rejected the key in {self.api_key_variable}",
                 retryable=False,
             ) from error
-        except openai.RateLimitError as error:
-            raise ProviderError(
-                f"rate limited by the {self.label} API: {error.message}", retryable=True
-            ) from error
         except openai.APIStatusError as error:
-            raise ProviderError(
-                f"{self.label} API error {error.status_code}: {error.message}",
-                retryable=error.status_code >= 500,
-            ) from error
+            raise status_error(self.label, error.status_code, error.message) from error
         except openai.APIConnectionError as error:
             raise ProviderError(
                 f"could not reach the {self.label} API: {error}", retryable=True

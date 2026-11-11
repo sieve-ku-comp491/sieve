@@ -57,7 +57,7 @@ The response has the answer in `text` and how it ended in `stop_reason`: `COMPLE
 `ask` raises:
 
 - `BudgetExceeded` before anything is sent, when the call could take the run over its budget. End the run and show the message.
-- `ProviderError` when the call fails. The SDKs already retry twice with a backoff, and `retryable` says whether trying again later can help, as it can after a rate limit, a server error or a network error.
+- `ProviderError` when the call fails. The SDKs already retry twice with a backoff, and `retryable` says whether trying again later can help, as it can after a rate limit, a server error or a network error. An account without credit is reported as "out of credit" and is not retryable, also where the API answers with HTTP 429 as for a rate limit.
 - `UnknownModel` when the model isn't in models.json.
 
 ## Prompt templates and data blocks

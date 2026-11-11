@@ -278,3 +278,24 @@ def test_deepseek_v4_1_flash_is_the_default_model():
 
     assert catalog.default_model == "deepseek-flash"
     assert catalog.get(catalog.default_model).provider == "deepseek"
+
+
+@pytest.mark.parametrize(
+    ("provider_class", "status", "message"),
+    [
+        (GLMProvider, 429, "Insufficient balance or no resource package. Please recharge."),
+        (
+            KimiProvider,
+            429,
+            "Your account is suspended due to insufficient balance, please recharge",
+        ),
+        (DeepSeekProvider, 402, "Insufficient Balance"),
+    ],
+)
+def test_an_account_without_credit_is_not_a_rate_limit(provider_class, status, message):
+    error = {"error": {"message": message, "type": "error", "code": None, "param": None}}
+
+    with pytest.raises(ProviderError, match="out of credit") as raised:
+        answering(provider_class, status, error, []).complete(request_for(provider_class))
+
+    assert raised.value.retryable is False

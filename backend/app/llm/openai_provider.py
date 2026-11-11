@@ -10,6 +10,7 @@ from app.llm.provider import (
     api_key_from_env,
     refuse_sdk_variables,
     split_system,
+    status_error,
 )
 from app.llm.types import Attempt, LLMRequest, LLMResponse, StopReason, Usage
 
@@ -61,15 +62,8 @@ class OpenAIProvider(LLMProvider):
             raise ProviderError(
                 f"the OpenAI API rejected the key in {self.api_key_variable}", retryable=False
             ) from error
-        except openai.RateLimitError as error:
-            raise ProviderError(
-                f"rate limited by the OpenAI API: {error.message}", retryable=True
-            ) from error
         except openai.APIStatusError as error:
-            raise ProviderError(
-                f"OpenAI API error {error.status_code}: {error.message}",
-                retryable=error.status_code >= 500,
-            ) from error
+            raise status_error("OpenAI", error.status_code, error.message) from error
         except openai.APIConnectionError as error:
             raise ProviderError(
                 f"could not reach the OpenAI API: {error}", retryable=True
