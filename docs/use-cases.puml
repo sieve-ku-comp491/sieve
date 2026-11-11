@@ -21,8 +21,6 @@ skinparam note {
 }
 
 actor "Researcher" as R
-actor "Hosted LLM APIs\n(Claude, GPT)" as LLM
-actor "HackerOne API" as H1
 
 rectangle "Sieve" {
 
@@ -41,6 +39,10 @@ rectangle "Sieve" {
   usecase "Submit to the\nmock server" as S4 #EEEEEE;line:777777;line.dashed
 }
 
+actor "Hosted LLM APIs\n(Claude, GPT)" as LLM
+actor "HackerOne API" as H1
+actor "Mock platform server" as MOCK
+
 R -right- UC1
 R -right- UC2
 R -right- UC4
@@ -58,7 +60,7 @@ S4 .up.> S3 : <<extend>>
 UC3 -right- LLM
 UC7 -right- LLM
 S1 -right- H1
-S4 -right- H1
+S4 -right- MOCK
 
 UC1 -[hidden]down- UC2
 UC2 -[hidden]down- UC3
