@@ -7,7 +7,7 @@ import openai
 import pytest
 
 from app.llm.catalog import load_catalog
-from app.llm.openai_provider import OpenAIProvider
+from app.llm.openai_provider import OPENAI_SDK_VARIABLES, OpenAIProvider
 from app.llm.provider import MissingAPIKey, ProviderError
 from app.llm.types import Attempt, LLMRequest, Message, StopReason, Usage
 
@@ -146,6 +146,26 @@ def test_the_key_comes_only_from_the_environment(monkeypatch):
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     assert OpenAIProvider().name == "openai"
+
+
+def test_requests_go_to_the_openai_api_whatever_openai_base_url_says(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://proxy.example/v1")
+
+    client = OpenAIProvider()._client
+
+    assert str(client.base_url).rstrip("/") == "https://api.openai.com/v1"
+
+
+@pytest.mark.parametrize("variable", OPENAI_SDK_VARIABLES)
+def test_the_provider_refuses_to_start_while_an_sdk_header_variable_is_set(variable, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv(variable, "Authorization: Bearer another-key")
+
+    with pytest.raises(ProviderError, match=f"unset {variable}") as raised:
+        OpenAIProvider()
+
+    assert raised.value.retryable is False
 
 
 def test_the_gpt_models_are_in_models_json():

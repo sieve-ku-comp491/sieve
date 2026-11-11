@@ -4,8 +4,19 @@ from typing import Any
 
 import openai
 
-from app.llm.provider import LLMProvider, ProviderError, api_key_from_env, split_system
+from app.llm.provider import (
+    LLMProvider,
+    ProviderError,
+    api_key_from_env,
+    refuse_sdk_variables,
+    split_system,
+)
 from app.llm.types import Attempt, LLMRequest, LLMResponse, StopReason, Usage
+
+# The openai SDK adds these to every request even when it is given a key and a base URL: the
+# headers in OPENAI_CUSTOM_HEADERS, where an Authorization header replaces the key, and the
+# OpenAI organization and project ids.
+OPENAI_SDK_VARIABLES = ("OPENAI_CUSTOM_HEADERS", "OPENAI_ORG_ID", "OPENAI_PROJECT_ID")
 
 
 class OpenAIProvider(LLMProvider):
@@ -18,10 +29,16 @@ class OpenAIProvider(LLMProvider):
 
     name = "openai"
     api_key_variable = "OPENAI_API_KEY"
+    # Passed to the SDK, so that OPENAI_BASE_URL, which it would otherwise follow, can't send the
+    # key and the prompt to another host.
+    base_url = "https://api.openai.com/v1"
+    refused_variables = OPENAI_SDK_VARIABLES
 
     def __init__(self, client: openai.OpenAI | None = None):
         if client is None:
-            client = openai.OpenAI(api_key=api_key_from_env(self.api_key_variable))
+            api_key = api_key_from_env(self.api_key_variable)
+            refuse_sdk_variables("openai", self.refused_variables)
+            client = openai.OpenAI(api_key=api_key, base_url=self.base_url)
         self._client = client
 
     def complete(self, request: LLMRequest) -> LLMResponse:
