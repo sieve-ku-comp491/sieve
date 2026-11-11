@@ -51,3 +51,11 @@ def test_a_call_that_costs_more_than_its_worst_case_is_reported(caplog):
 
     assert budget.spent_usd == Decimal("0.25")
     assert "more than the worst case" in caplog.text
+
+
+def test_every_call_is_refused_once_the_run_is_over_its_limit():
+    budget = Budget("1.00")
+    budget.reserve(Decimal("0.50")).charge(Decimal("1.20"))
+
+    with pytest.raises(BudgetExceeded):
+        budget.reserve(Decimal("0.000001"))
