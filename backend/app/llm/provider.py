@@ -2,6 +2,7 @@
 
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 
 from app.llm.types import LLMRequest, LLMResponse, Message
 
@@ -30,6 +31,22 @@ def api_key_from_env(variable: str) -> str:
     return value
 
 
+def refuse_sdk_variables(sdk: str, variables: Sequence[str]) -> None:
+    """Stops when the environment sets a variable that the SDK would apply to every request.
+
+    The SDKs read some settings from the environment even when the key and the base URL are
+    passed in. A header meant for another tool could then replace our key or reach the wrong API.
+    """
+    found = [variable for variable in variables if os.environ.get(variable, "").strip()]
+    if found:
+        them = "it" if len(found) == 1 else "them"
+        raise ProviderError(
+            f"unset {' and '.join(found)} before running Sieve, the {sdk} SDK would send "
+            f"{them} with every request",
+            retryable=False,
+        )
+
+
 def split_system(messages: tuple[Message, ...]) -> tuple[str, list[dict[str, str]]]:
     """Separates the leading system messages from the conversation that follows them."""
     system: list[str] = []
@@ -52,6 +69,9 @@ class LLMProvider(ABC):
 
     name: str
     api_key_variable: str
+    # Variables that the provider's SDK applies to every request even though the key and the
+    # base URL are passed in. The provider refuses to start while one of them is set.
+    refused_variables: tuple[str, ...] = ()
 
     @abstractmethod
     def complete(self, request: LLMRequest) -> LLMResponse:

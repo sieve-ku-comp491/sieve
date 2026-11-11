@@ -140,3 +140,22 @@ def test_the_key_comes_only_from_the_environment(monkeypatch):
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     assert AnthropicProvider().name == "anthropic"
+
+
+def test_requests_go_to_the_anthropic_api_whatever_anthropic_base_url_says(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://proxy.example")
+
+    client = AnthropicProvider()._client
+
+    assert str(client.base_url).rstrip("/") == "https://api.anthropic.com"
+
+
+def test_the_provider_refuses_to_start_while_custom_headers_are_set(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_CUSTOM_HEADERS", "x-api-key: another-key")
+
+    with pytest.raises(ProviderError, match="unset ANTHROPIC_CUSTOM_HEADERS") as raised:
+        AnthropicProvider()
+
+    assert raised.value.retryable is False

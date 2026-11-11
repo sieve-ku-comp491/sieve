@@ -153,11 +153,13 @@ Claude Haiku 5.5 has no server-side fallback, so its refusals come back with sto
 
 API keys are read only from environment variables, such as `ANTHROPIC_API_KEY`, and never from a file in the repository (N4 test 5). Docker Compose passes them in from `.env`. A provider whose key isn't set is not set up, and a call to one of its models fails with "no anthropic provider is set up, check its API key in .env".
 
+The SDKs also read other settings from the environment, which another tool may have set in the same shell. Each provider passes its API's address to the SDK, so `ANTHROPIC_BASE_URL` can't send the key and the prompts to another host. A provider refuses to start while a variable is set that its SDK would still add to every request: `ANTHROPIC_CUSTOM_HEADERS` for Claude, since one of those headers could be another API key.
+
 ## Adding a provider
 
 A provider is one module, its tests, its entries in models.json and its SDK in requirements.txt. Nothing else changes, because LLMClient, the budget, the cache and the call log work the same way for every provider (N5 test 2).
 
-1. Write `app/llm/<name>_provider.py` with a class that extends `LLMProvider`. Set `name` and `api_key_variable`. Its `__init__` takes an SDK client, which the tests pass in, and otherwise builds one with the key from `api_key_from_env`. Then implement `complete(request)`:
+1. Write `app/llm/<name>_provider.py` with a class that extends `LLMProvider`. Set `name` and `api_key_variable`, and in `refused_variables` the environment variables that the SDK applies to every request even when it is given a key and a base URL. Its `__init__` takes an SDK client, which the tests pass in, and otherwise calls `refuse_sdk_variables` and builds one with the key from `api_key_from_env` and the API's base URL. Then implement `complete(request)`:
    - Split the messages with `split_system`. The leading system message is the instructions and the rest is the conversation.
    - Send `max_tokens` and `effort` the way the API expects them, and `temperature` only when the request has one.
    - Return the answer's text, the exact model version the API reports, the stop reason mapped to `StopReason` with the API's own value kept, the request id, and one `Attempt` with its `Usage` for each model run. `Usage.input_tokens` counts only tokens at the normal input price, so take cache reads and writes out of the API's input count if it includes them.

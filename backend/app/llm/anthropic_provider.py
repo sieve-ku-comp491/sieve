@@ -4,7 +4,13 @@ from typing import Any
 
 import anthropic
 
-from app.llm.provider import LLMProvider, ProviderError, api_key_from_env, split_system
+from app.llm.provider import (
+    LLMProvider,
+    ProviderError,
+    api_key_from_env,
+    refuse_sdk_variables,
+    split_system,
+)
 from app.llm.types import Attempt, LLMRequest, LLMResponse, StopReason, Usage
 
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
@@ -28,10 +34,17 @@ class AnthropicProvider(LLMProvider):
 
     name = "anthropic"
     api_key_variable = "ANTHROPIC_API_KEY"
+    # Passed to the SDK, so that ANTHROPIC_BASE_URL, which it would otherwise follow, can't send
+    # the key and the prompt to another host.
+    base_url = "https://api.anthropic.com"
+    # The SDK adds these headers to every request, and one of them can be another API key.
+    refused_variables = ("ANTHROPIC_CUSTOM_HEADERS",)
 
     def __init__(self, client: anthropic.Anthropic | None = None):
         if client is None:
-            client = anthropic.Anthropic(api_key=api_key_from_env(self.api_key_variable))
+            api_key = api_key_from_env(self.api_key_variable)
+            refuse_sdk_variables("anthropic", self.refused_variables)
+            client = anthropic.Anthropic(api_key=api_key, base_url=self.base_url)
         self._client = client
 
     def complete(self, request: LLMRequest) -> LLMResponse:
