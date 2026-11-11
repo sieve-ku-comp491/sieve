@@ -96,8 +96,8 @@ A repeated scan doesn't reuse finding rows. It stores new findings, and deduplic
 
 | Case | State of the new finding |
 |---|---|
-| An earlier finding with this fingerprint has a review, the context hash is the same, neither finding is ambiguous (except in two scans of the same commit), and the tool is not Gitleaks | Hidden from the review queue. The latest earlier review is carried over, so it goes from `new` straight to `approved` or `rejected`. Requirement F5 counts it with that decision. No report is drafted for it again. |
-| An earlier finding matches, but any of those rules fails, for example the code around it changed | Shown again. It goes `new`, `grouped`, `triaged` like any other finding, and the review screen shows the earlier decision as a suggestion. |
+| An earlier finding with this fingerprint has a review, the context hash is the same, neither finding is ambiguous (except in two scans of the same commit), and the tool is not Gitleaks | Hidden from the review queue. Deduplication sets `hidden` and stores the latest earlier review in `carried_review_id`, so it goes from `new` straight to `approved` or `rejected`. Requirement F5 counts it with that decision. No report is drafted for it again. |
+| An earlier finding matches, but any of those rules fails, for example the code around it changed | Shown again. `hidden` is false, so it goes `new`, `grouped`, `triaged` like any other finding, and the review screen shows the review in `carried_review_id` as a suggestion. |
 | No earlier finding has this fingerprint | A new finding, from `new` as usual. |
 | An earlier finding is not found by the new scan | Nothing changes. The earlier finding keeps its state in its own scan. |
 
@@ -117,7 +117,7 @@ The first rule that matches gives the state:
 | 6 | `grouped` | a triage run of its scan has `grouped_at` set |
 | 7 | `new` | none of the above |
 
-The review that counts is the finding's own latest review, or, if it has none, the review carried over from an earlier scan (`carried_reviews`).
+The review that counts is the finding's own latest review, or, if it has none and `findings.hidden` is true, the earlier review in `findings.carried_review_id`. When `hidden` is false, the carried review is only a suggestion and doesn't count.
 
 This SQL view computes the state, and the function gives the reasons an export is refused. We tested both on PostgreSQL 17.5 with the tables of docs/database.md: every case in this document and the three F5 acceptance tests give the state and the refusals described here. The findings store (T2.3) and the report service (T5.2) can start from them.
 
@@ -148,7 +148,7 @@ left join lateral (
   select r.* from reviews r where r.finding_id = f.id order by r.created_at desc limit 1
 ) own on true
 left join lateral (
-  select r.* from carried_reviews c join reviews r on r.id = c.review_id where c.finding_id = f.id
+  select r.* from reviews r where f.hidden and r.id = f.carried_review_id
 ) car on true
 left join lateral (
   select coalesce(own.id, car.id) as id,
