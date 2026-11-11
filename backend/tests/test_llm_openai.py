@@ -197,3 +197,15 @@ def test_an_answer_from_a_snapshot_is_charged_at_its_model_price():
     # The answer names gpt-5.4-mini-2026-03-17, which is priced as gpt-5.4-mini.
     expected = catalog.get("gpt-5.4-mini").cost(result.usage)
     assert catalog.cost("openai", result.attempts) == expected
+
+
+def test_an_account_without_credit_is_not_a_rate_limit():
+    message = "You exceeded your current quota, please check your plan and billing details."
+    error = {
+        "error": {"message": message, "type": "insufficient_quota", "code": None, "param": None}
+    }
+
+    with pytest.raises(ProviderError, match="out of credit") as raised:
+        provider_answering(429, error, []).complete(REQUEST)
+
+    assert raised.value.retryable is False

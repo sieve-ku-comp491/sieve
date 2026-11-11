@@ -1,3 +1,5 @@
+from dataclasses import replace
+from datetime import UTC, datetime, time
 from decimal import Decimal
 
 import pytest
@@ -5,7 +7,7 @@ import pytest
 from app.llm.budget import Budget, BudgetExceeded
 from app.llm.cache import InMemoryResponseCache
 from app.llm.call_log import InMemoryCallLog
-from app.llm.catalog import Catalog, ModelInfo, Price, load_catalog
+from app.llm.catalog import Catalog, ModelInfo, OffPeak, Price, load_catalog
 from app.llm.client import LLMClient, load_provider_class, providers_from_env
 from app.llm.fake import FakeProvider
 from app.llm.provider import ProviderError
@@ -142,6 +144,23 @@ def test_the_run_stops_when_the_next_call_would_go_over_the_budget():
     assert client.budget.spent_usd <= client.budget.limit_usd
 
 
+def test_a_call_made_off_peak_is_charged_the_off_peak_price(monkeypatch):
+    client, _, log = make_client()
+    peak_on_weekdays = OffPeak(
+        Decimal("0.5"), peak_hours=((time(1), time(4)),), peak_days=frozenset(range(5))
+    )
+    model = replace(client.catalog.get("fake-model"), off_peak=peak_on_weekdays)
+    client.catalog = Catalog({"fake-model": model}, checked_on="test")
+    saturday = datetime(2026, 11, 14, 2, tzinfo=UTC)
+    monkeypatch.setattr("app.llm.client._utc_now", lambda: saturday)
+
+    response = ask(client)
+
+    peak_cost = client.catalog.cost("fake", response.attempts)
+    assert response.cost_usd == log.records[0].cost_usd == peak_cost / 2
+    assert client.budget.spent_usd == peak_cost / 2
+
+
 def test_temperature_is_zero_only_for_models_that_accept_it():
     client, provider, _ = make_client(temperature=True)
     ask(client)
@@ -262,3 +281,21 @@ def test_every_provider_in_models_json_can_be_set_up(monkeypatch):
         monkeypatch.setenv(load_provider_class(target).api_key_variable, "test-key")
 
     assert set(providers_from_env(catalog)) == set(catalog.providers)
+
+
+def test_a_call_without_a_model_goes_to_the_default_model():
+    client, provider, _ = make_client()
+    client.catalog.default_model = "fake-model"
+
+    client.ask(TEMPLATE, {"rule": "python.sqli"}, CODE, max_tokens=1000)
+
+    assert provider.requests[0].model == "fake-model"
+
+
+def test_a_call_without_a_model_or_a_default_is_refused():
+    client, provider, _ = make_client()
+
+    with pytest.raises(ValueError, match="no default_model"):
+        client.ask(TEMPLATE, {"rule": "python.sqli"}, CODE, max_tokens=1000)
+
+    assert provider.requests == []

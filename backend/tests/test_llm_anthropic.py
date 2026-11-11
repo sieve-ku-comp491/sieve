@@ -159,3 +159,13 @@ def test_the_provider_refuses_to_start_while_custom_headers_are_set(monkeypatch)
         AnthropicProvider()
 
     assert raised.value.retryable is False
+
+
+def test_an_account_without_credit_says_so():
+    message = "Your credit balance is too low to access the Anthropic API."
+    error = {"type": "error", "error": {"type": "invalid_request_error", "message": message}}
+
+    with pytest.raises(ProviderError, match="out of credit") as raised:
+        provider_answering(400, error, []).complete(REQUEST)
+
+    assert raised.value.retryable is False

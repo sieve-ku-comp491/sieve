@@ -1,10 +1,12 @@
 """Sends one tiny request through LLMClient, to check a provider and its API key by hand.
 
+    python -m app.llm.smoke
     python -m app.llm.smoke claude-haiku-5-5
 
-Run it once for each provider, with that provider's cheapest model in models.json. The run's
-budget is US$0.01, so the check can never cost more than that. A model whose worst case doesn't
-fit, such as claude-opus-5-5, is stopped by the budget before anything is sent.
+Without a model it checks default_model from models.json. Run it once for each provider, with
+that provider's cheapest model in models.json. The run's budget is US$0.01, so the check can
+never cost more than that. A model whose worst case doesn't fit, such as claude-opus-5-5, is
+stopped by the budget before anything is sent.
 """
 
 import argparse
@@ -25,7 +27,9 @@ BUDGET_USD = Decimal("0.01")
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Check that a model answers through LLMClient.")
-    parser.add_argument("model", help="a model from app/llm/models.json")
+    parser.add_argument(
+        "model", nargs="?", help="a model from app/llm/models.json (default: its default_model)"
+    )
     parser.add_argument("--effort", default="low", help="effort for the request (default: low)")
     parser.add_argument("--max-tokens", type=int, default=512)
     args = parser.parse_args(argv)
@@ -46,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
             max_tokens=args.max_tokens,
             effort=args.effort,
         )
-    except (BudgetExceeded, ProviderError, UnknownModel) as error:
+    except (BudgetExceeded, ProviderError, UnknownModel, ValueError) as error:
         print(f"check failed: {error}", file=sys.stderr)
         return 1
 

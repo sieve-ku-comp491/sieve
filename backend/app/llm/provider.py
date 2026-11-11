@@ -47,6 +47,26 @@ def refuse_sdk_variables(sdk: str, variables: Sequence[str]) -> None:
         )
 
 
+# What the APIs say when an account has no credit left. Some of them answer with HTTP 429, as for
+# a rate limit, but waiting doesn't help.
+OUT_OF_CREDIT_PHRASES = (
+    "insufficient balance",
+    "insufficient_quota",
+    "exceeded your current quota",
+    "credit balance is too low",
+    "recharge",
+)
+
+
+def status_error(label: str, status: int, message: str) -> ProviderError:
+    """The ProviderError for an HTTP error from the API that `label` names."""
+    if any(phrase in message.lower() for phrase in OUT_OF_CREDIT_PHRASES):
+        return ProviderError(f"the {label} account is out of credit: {message}", retryable=False)
+    if status == 429:
+        return ProviderError(f"rate limited by the {label} API: {message}", retryable=True)
+    return ProviderError(f"{label} API error {status}: {message}", retryable=status >= 500)
+
+
 def split_system(messages: tuple[Message, ...]) -> tuple[str, list[dict[str, str]]]:
     """Separates the leading system messages from the conversation that follows them."""
     system: list[str] = []

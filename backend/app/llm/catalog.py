@@ -8,6 +8,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime, time
 from decimal import Decimal
 from pathlib import Path
 
@@ -25,6 +26,8 @@ SNAPSHOT_DATE = re.compile(r"-(\d{4}-\d{2}-\d{2}|\d{8})$")
 # number of input tokens. These allowances cover the tokens the API adds around each message.
 TOKENS_PER_MESSAGE = 16
 TOKENS_PER_REQUEST = 64
+
+DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +62,22 @@ class Price:
 
 
 @dataclass(frozen=True)
+class OffPeak:
+    """A lower price outside the provider's peak hours, which are in UTC."""
+
+    price_factor: Decimal
+    peak_hours: tuple[tuple[time, time], ...]
+    # Days with peak hours, Monday as 0.
+    peak_days: frozenset[int]
+
+    def is_peak(self, moment: datetime) -> bool:
+        moment = moment.astimezone(UTC)
+        return moment.weekday() in self.peak_days and any(
+            start <= moment.time() < end for start, end in self.peak_hours
+        )
+
+
+@dataclass(frozen=True)
 class ModelInfo:
     name: str
     provider: str
@@ -67,6 +86,7 @@ class ModelInfo:
     long_context_above: int | None = None
     temperature: bool = False
     server_fallbacks: bool = False
+    off_peak: OffPeak | None = None
 
     def price_for(self, prompt_tokens: int) -> Price:
         """Some models charge more for the whole request once the prompt passes a threshold."""
@@ -76,8 +96,16 @@ class ModelInfo:
             return self.long_context_price
         return self.price
 
-    def cost(self, usage: Usage) -> Decimal:
-        return self.price_for(usage.prompt_tokens).cost(usage)
+    def cost(self, usage: Usage, during: tuple[datetime, datetime] | None = None) -> Decimal:
+        """What the tokens cost for a call that ran `during` (its start and end).
+
+        The off-peak price applies only when the call started and ended off-peak, since the
+        providers don't say which of the two times counts. Without `during`, it doesn't apply.
+        """
+        cost = self.price_for(usage.prompt_tokens).cost(usage)
+        if self.off_peak and during and not any(map(self.off_peak.is_peak, during)):
+            cost *= self.off_peak.price_factor
+        return cost
 
     def prices(self) -> list[Price]:
         return [self.price] + ([self.long_context_price] if self.long_context_price else [])
@@ -94,11 +122,14 @@ class Catalog:
         models: dict[str, ModelInfo],
         checked_on: str,
         providers: dict[str, str] | None = None,
+        default_model: str | None = None,
     ):
         self._models = models
         self.checked_on = checked_on
         # Provider name to the "module:Class" of its LLMProvider.
         self.providers = providers or {}
+        # The model a call uses when it names none.
+        self.default_model = default_model
 
     def __contains__(self, model: str) -> bool:
         return self.find(model) is not None
@@ -134,13 +165,21 @@ class Catalog:
             cache_write=max(p.cache_write for p in prices),
         )
 
-    def cost(self, provider: str, attempts: tuple[Attempt, ...]) -> Decimal:
-        """What a response cost, with each attempt charged at its own model's price."""
+    def cost(
+        self,
+        provider: str,
+        attempts: tuple[Attempt, ...],
+        during: tuple[datetime, datetime] | None = None,
+    ) -> Decimal:
+        """What a response cost, with each attempt charged at its own model's price.
+
+        `during` is when the call started and ended, for models with an off-peak price.
+        """
         total = Decimal(0)
         for attempt in attempts:
             info = self.find(attempt.model)
             if info is not None:
-                total += info.cost(attempt.usage)
+                total += info.cost(attempt.usage, during)
             else:
                 log.warning(
                     "no price for %s, charging the highest %s price", attempt.model, provider
@@ -151,7 +190,8 @@ class Catalog:
     def worst_case_cost(self, info: ModelInfo, request: LLMRequest) -> Decimal:
         """The most a request can cost, reserved from the budget before it is sent.
 
-        It assumes every input token at its highest price and an answer of max_tokens. With
+        It assumes every input token at its highest price, peak price included, and an answer
+        of max_tokens. With
         refusal fallbacks, a declined attempt can be billed and a substitute model then runs
         the same request, so a second attempt is added at the provider's highest prices. A model
         that declines partway through passes its partial answer on to the substitute, so the
@@ -180,6 +220,7 @@ def load_catalog(path: Path = MODELS_FILE) -> Catalog:
                 'which is not listed under "providers"'
             )
         long_context = entry.get("long_context")
+        off_peak = entry.get("off_peak")
         models[name] = ModelInfo(
             name=name,
             provider=entry["provider"],
@@ -188,8 +229,14 @@ def load_catalog(path: Path = MODELS_FILE) -> Catalog:
             long_context_above=long_context["above_prompt_tokens"] if long_context else None,
             temperature=entry.get("temperature", False),
             server_fallbacks=entry.get("server_fallbacks", False),
+            off_peak=_off_peak(name, off_peak) if off_peak else None,
         )
-    return Catalog(models, checked_on=data["checked_on"], providers=providers)
+    default_model = data.get("default_model")
+    if default_model is not None and default_model not in models:
+        raise ValueError(f"default_model {default_model} in {path.name} is not one of its models")
+    return Catalog(
+        models, checked_on=data["checked_on"], providers=providers, default_model=default_model
+    )
 
 
 def _price(model: str, data: dict[str, str]) -> Price:
@@ -198,3 +245,24 @@ def _price(model: str, data: dict[str, str]) -> Price:
     if missing:
         raise ValueError(f"{model} in models.json has no {' or '.join(missing)} price")
     return Price(*(Decimal(data[kind]) for kind in PRICE_KINDS))
+
+
+def _off_peak(model: str, data: dict) -> OffPeak:
+    """Peak hours as "HH:MM-HH:MM" in UTC on the days named Mon to Sun."""
+    hours = []
+    for span in data["peak_hours_utc"]:
+        start, _, end = span.partition("-")
+        start_time, end_time = time.fromisoformat(start), time.fromisoformat(end)
+        if not start_time < end_time:
+            raise ValueError(
+                f"{model} in models.json has peak hours {span} that end before they start"
+            )
+        hours.append((start_time, end_time))
+    unknown = [day for day in data["peak_days"] if day not in DAYS]
+    if unknown:
+        raise ValueError(f"{model} in models.json has peak days {unknown}, use {', '.join(DAYS)}")
+    return OffPeak(
+        price_factor=Decimal(data["price_factor"]),
+        peak_hours=tuple(hours),
+        peak_days=frozenset(DAYS.index(day) for day in data["peak_days"]),
+    )

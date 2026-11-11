@@ -10,6 +10,7 @@ from app.llm.provider import (
     api_key_from_env,
     refuse_sdk_variables,
     split_system,
+    status_error,
 )
 from app.llm.types import Attempt, LLMRequest, LLMResponse, StopReason, Usage
 
@@ -69,15 +70,8 @@ class AnthropicProvider(LLMProvider):
             raise ProviderError(
                 f"the Anthropic API rejected the key in {self.api_key_variable}", retryable=False
             ) from error
-        except anthropic.RateLimitError as error:
-            raise ProviderError(
-                f"rate limited by the Anthropic API: {error.message}", retryable=True
-            ) from error
         except anthropic.APIStatusError as error:
-            raise ProviderError(
-                f"Anthropic API error {error.status_code}: {error.message}",
-                retryable=error.status_code >= 500,
-            ) from error
+            raise status_error("Anthropic", error.status_code, error.message) from error
         except anthropic.APIConnectionError as error:
             raise ProviderError(
                 f"could not reach the Anthropic API: {error}", retryable=True
