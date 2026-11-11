@@ -202,9 +202,19 @@ def test_glm_gets_greedy_decoding_instead_of_temperature_zero():
     assert sent_body(GLMProvider, temperature=0.5)["temperature"] == 0.5
 
 
-@pytest.mark.parametrize(("effort", "thinking"), [("none", "disabled"), ("high", "enabled")])
-def test_glm_switches_thinking_with_the_effort(effort, thinking):
-    assert sent_body(GLMProvider, effort=effort)["thinking"] == {"type": thinking}
+@pytest.mark.parametrize(("effort", "sent"), [("low", "low"), ("medium", "high"), ("xhigh", "max")])
+def test_glm_gets_thinking_and_the_nearest_effort_level_it_has(effort, sent):
+    body = sent_body(GLMProvider, effort=effort)
+
+    assert body["thinking"] == {"type": "enabled"}
+    assert body["reasoning_effort"] == sent
+
+
+def test_glm_is_asked_to_turn_thinking_off_for_effort_none():
+    body = sent_body(GLMProvider, effort="none")
+
+    assert body["thinking"] == {"type": "disabled"}
+    assert "reasoning_effort" not in body
 
 
 @pytest.mark.parametrize(("effort", "sent"), [("low", "low"), ("medium", "high"), ("xhigh", "max")])

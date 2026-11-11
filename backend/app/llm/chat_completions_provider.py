@@ -19,6 +19,9 @@ STOP_REASONS = {
     "content_filter": StopReason.REFUSAL,
 }
 
+# For APIs whose reasoning_effort takes only low, high and max: the nearest of those.
+NEAREST_LEVEL = {"low": "low", "medium": "high", "high": "high", "xhigh": "max", "max": "max"}
+
 
 class ChatCompletionsProvider(LLMProvider):
     """Calls a Chat Completions API through the openai SDK at the provider's base URL.
