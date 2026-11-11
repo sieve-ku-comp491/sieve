@@ -79,10 +79,12 @@ def test_the_latest_complete_answer_is_served_from_the_store(store):
     assert cached.attempts == (Attempt("claude-haiku-5-5", Usage(1000, 200, cache_read_tokens=50)),)
 
 
-def test_cache_hits_failures_and_incomplete_answers_are_never_served(store):
+def test_cache_hits_failures_and_incomplete_or_empty_answers_are_never_served(store):
     store.record(record("test:miss", cached=True))
     store.record(record("test:miss", error="ProviderError: overloaded", response_text=None))
     store.record(record("test:miss", stop_reason=StopReason.REFUSAL.value))
     store.record(record("test:miss", stop_reason=StopReason.MAX_TOKENS.value))
+    store.record(record("test:miss", response_text=""))
+    store.record(record("test:miss", response_text=" \n"))
 
     assert store.get("test:miss") is None

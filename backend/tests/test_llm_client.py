@@ -101,6 +101,16 @@ def test_incomplete_answers_are_not_cached(stop_reason):
     assert not any(record.cached for record in log.records)
 
 
+def test_a_complete_answer_without_text_is_not_cached():
+    client, provider, log = make_client(FakeProvider(replies=["", " \n"]))
+
+    ask(client)
+    ask(client)
+
+    assert len(provider.requests) == 2
+    assert not any(record.cached for record in log.records)
+
+
 def test_nothing_is_sent_when_the_worst_case_does_not_fit():
     client, provider, log = make_client(budget="0.0001")
 

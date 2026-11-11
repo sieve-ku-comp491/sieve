@@ -27,11 +27,13 @@ INSERT INTO llm_calls (
 )
 """
 
-# Only complete answers from real calls are reused. Refusals, cut-off answers and errors are not.
+# Only complete answers with text from real calls are reused. Refusals, cut-off or empty
+# answers and errors are not.
 LOOKUP = """
 SELECT response_text, model_version, stop_reason, raw_stop_reason, attempts, request_id
 FROM llm_calls
 WHERE cache_key = %(key)s AND NOT cached AND error IS NULL AND stop_reason = 'complete'
+    AND response_text ~ '[^[:space:]]'
 ORDER BY created_at DESC
 LIMIT 1
 """
@@ -41,7 +43,7 @@ class PostgresCallStore:
     """CallLog and ResponseCache backed by the llm_calls table.
 
     put() stores nothing, because record() already saved the response. get() finds the latest
-    complete answer with the same cache key.
+    complete answer with text and the same cache key.
     """
 
     def __init__(self, conninfo: str | None = None):

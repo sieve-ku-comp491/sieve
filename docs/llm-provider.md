@@ -100,9 +100,9 @@ Code takes about 3 to 4 bytes per token, so the worst case is several times the 
 
 The cache key is the SHA-256 of the model, the messages, max_tokens, effort, temperature and the fallback setting. A repeated request with the same model, prompt and settings is answered from the cache without an API call. The hit is logged with `cached` set, no tokens and no cost. Editing a template changes the system message, and with it the key.
 
-Only complete answers are cached. A refusal, a cut-off answer or a failed call is sent again the next time.
+Only complete answers with text are cached. A refusal, a cut-off or empty answer, or a failed call is sent again the next time.
 
-`PostgresCallStore` is both the call log and the cache. Its `get` returns the latest complete answer with the same key from `llm_calls`, leaving out cache hits and failed calls. Running a finished evaluation again therefore makes no API calls (N6 test 3). Tests and the manual check use `InMemoryResponseCache` and `InMemoryCallLog` instead.
+`PostgresCallStore` is both the call log and the cache. Its `get` returns the latest complete answer with text and the same key from `llm_calls`, leaving out cache hits and failed calls. Running a finished evaluation again therefore makes no API calls (N6 test 3). Tests and the manual check use `InMemoryResponseCache` and `InMemoryCallLog` instead.
 
 ## Call log
 

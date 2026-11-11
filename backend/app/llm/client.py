@@ -118,7 +118,7 @@ class LLMClient:
 
         response = replace(response, cost_usd=cost, duration_ms=_elapsed_ms(started), cached=False)
         response = self._log(provider, request, key, template, response)
-        if response.stop_reason is StopReason.COMPLETE:
+        if response.stop_reason is StopReason.COMPLETE and response.text.strip():
             self.cache.put(key, response)
         return response
 
