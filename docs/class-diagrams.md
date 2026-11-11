@@ -291,33 +291,25 @@ The Bandit adapter (T2.2) follows the same pattern. Each adapter is tested again
 
 ## LLM provider
 
-Every LLM call goes through `LLMClient`. It renders the prompt template, answers a repeated request from the cache, checks the run's budget, calls the provider and logs the call. A provider only knows how to send one request to one API, so adding a provider means writing one class.
+Every LLM call goes through `LLMClient`. It renders the prompt template, answers a repeated request from the cache, checks the run's budget, calls the provider, prices the answer and logs the call. A provider only knows how to send one request to one API, so adding a provider means writing one class and adding its models to `backend/app/llm/models.json`. docs/llm-provider.md has the details.
+
+### Client
 
 ```mermaid
 classDiagram
   direction LR
-  class LLMProvider {
-    <<interface>>
-    +name: str
-    +complete(request: LLMRequest) LLMResponse
-    +price(model: str) Price
-  }
-  class AnthropicProvider {
-    +complete(request: LLMRequest) LLMResponse
-    +price(model: str) Price
-  }
-  class OpenAIProvider {
-    +complete(request: LLMRequest) LLMResponse
-    +price(model: str) Price
-  }
   class LLMClient {
-    +ask(template: PromptTemplate, values: dict, code: list~CodeBlock~, model: str) LLMResponse
+    +providers: dict
+    +job_id: str
+    +build_request(template: PromptTemplate, values: dict, code: list~CodeBlock~, model: str, max_tokens: int, effort: str, history: list~Message~) LLMRequest
+    +ask(template: PromptTemplate, values: dict, code: list~CodeBlock~, model: str, max_tokens: int, effort: str, history: list~Message~) LLMResponse
   }
   class PromptTemplate {
     +name: str
     +version: str
     +text: str
-    +render(values: dict, code: list~CodeBlock~) list~Message~
+    +system_message() Message
+    +render(values: dict, code: list~CodeBlock~) tuple~Message~
   }
   class CodeBlock {
     +path: str
@@ -325,64 +317,237 @@ classDiagram
     +end_line: int
     +text: str
   }
-  class LLMRequest {
-    +model: str
-    +messages: list~Message~
-    +temperature: float
-    +max_tokens: int
+  class Message {
+    +role: str
+    +content: str
   }
-  class LLMResponse {
-    +text: str
-    +model_version: str
-    +input_tokens: int
-    +output_tokens: int
-    +cost_usd: float
-    +duration_ms: int
-    +cached: bool
+  class Catalog {
+    +checked_on: str
+    +providers: dict
+    +default_model: str
+    +get(model: str) ModelInfo
+    +worst_case_cost(info: ModelInfo, request: LLMRequest) Decimal
+    +cost(provider: str, attempts: list~Attempt~, during: tuple) Decimal
+    +ceiling_price(provider: str) Price
+  }
+  class ModelInfo {
+    +name: str
+    +provider: str
+    +price: Price
+    +long_context_price: Price
+    +long_context_above: int
+    +off_peak: OffPeak
+    +temperature: bool
+    +server_fallbacks: bool
+    +cost(usage: Usage, during: tuple) Decimal
   }
   class Price {
-    +input_usd_per_million: float
-    +output_usd_per_million: float
+    +input: Decimal
+    +output: Decimal
+    +cache_read: Decimal
+    +cache_write: Decimal
+    +cost(usage: Usage) Decimal
   }
-  class ResponseCache {
-    +get(key: str) LLMResponse
-    +put(key: str, response: LLMResponse)
+  class OffPeak {
+    +price_factor: Decimal
+    +peak_hours: list
+    +peak_days: set
+    +is_peak(moment: datetime) bool
   }
   class Budget {
-    +limit_usd: float
-    +spent_usd: float
-    +reserve(estimate_usd: float)
-    +charge(cost_usd: float)
+    +limit_usd: Decimal
+    +spent_usd: Decimal
+    +remaining_usd: Decimal
+    +reserve(amount_usd: Decimal) Reservation
   }
-  class CallLog {
-    +record(run_id: str, request: LLMRequest, response: LLMResponse) str
+  class Reservation {
+    +amount_usd: Decimal
+    +charge(cost_usd: Decimal)
+    +release()
   }
   class BudgetExceeded {
     <<exception>>
   }
+  class ResponseCache {
+    <<interface>>
+    +get(key: str) LLMResponse
+    +put(key: str, response: LLMResponse)
+  }
+  class CallLog {
+    <<interface>>
+    +record(record: CallRecord)
+  }
+  class PostgresCallStore {
+    +create_table()
+    +record(record: CallRecord)
+    +get(key: str) LLMResponse
+    +put(key: str, response: LLMResponse)
+  }
+  class CallRecord {
+    +id: str
+    +job_id: str
+    +provider: str
+    +model: str
+    +model_version: str
+    +template_name: str
+    +template_version: str
+    +messages: list~Message~
+    +response_text: str
+    +stop_reason: str
+    +attempts: list~Attempt~
+    +cost_usd: Decimal
+    +duration_ms: int
+    +cached: bool
+    +cache_key: str
+    +request_id: str
+    +error: str
+    +created_at: datetime
+  }
+  class LLMProvider {
+    <<abstract>>
+    +complete(request: LLMRequest) LLMResponse
+  }
 
-  LLMProvider <|.. AnthropicProvider
-  LLMProvider <|.. OpenAIProvider
-  LLMClient --> LLMProvider
-  LLMClient --> ResponseCache
+  LLMClient --> Catalog
   LLMClient --> Budget
+  LLMClient --> ResponseCache
   LLMClient --> CallLog
+  LLMClient --> LLMProvider
   LLMClient ..> PromptTemplate
   PromptTemplate ..> CodeBlock
-  LLMClient ..> LLMRequest
-  LLMProvider ..> LLMResponse
-  LLMProvider ..> Price
+  PromptTemplate ..> Message
+  Catalog o-- ModelInfo
+  ModelInfo *-- Price
+  ModelInfo *-- OffPeak
+  Budget ..> Reservation : returns
   Budget ..> BudgetExceeded : raises
+  ResponseCache <|.. PostgresCallStore
+  CallLog <|.. PostgresCallStore
+  CallLog ..> CallRecord : stores
 ```
 
 How `ask()` works:
 
-1. `PromptTemplate.render()` builds the messages. Code goes only into the template's marked data block, never into the instructions (requirement N4).
-2. The cache key is a hash of the model, the rendered messages, the temperature, `max_tokens` and the template version. On a hit, `ask()` returns the cached response with `cached` set, and nothing is charged.
-3. Before the call, `Budget.reserve()` checks the worst case: the input tokens at the input price plus `max_tokens` at the output price. If that doesn't fit in what is left, it raises `BudgetExceeded` and no request is sent. So a run never goes over its limit (requirement N1).
-4. After the call, `Budget.charge()` records the actual cost, and `CallLog.record()` stores the request, the response, the exact model version, the tokens and the cost in the LLM calls table, and returns the call ID that verdicts link to (requirement N3).
+1. `build_request()` takes the model from the `Catalog`, or its `default_model` when the call names none. `PromptTemplate.render()` gives a system message with the template text and the rules for data, and a user message made by `data_block()`: one JSON object with the values and each `CodeBlock`'s path, lines and text, between markers whose id is a hash of the content. Code never goes into the instructions (requirement N4). Earlier turns in `history` have to be the model's answers or blocks made by `data_block()`.
+2. The cache key is a hash of the model, the messages, `max_tokens`, the effort, the temperature and the fallback setting. On a hit, `ask()` returns the cached response with `cached` set, and logs it at no cost.
+3. Before the call, `Budget.reserve()` sets aside `Catalog.worst_case_cost()`: every byte of the prompt counted as a token at the model's highest input price, and `max_tokens` at its output price, with a second attempt added when Claude's refusal fallbacks are on. If that doesn't fit in what is left, it raises `BudgetExceeded` and nothing is sent (requirement N1).
+4. The provider sends the request. `Catalog.cost()` prices each `Attempt` at its own model's price, with the long-context or off-peak price where models.json has one, and `Reservation.charge()` replaces the reservation with that cost. A failed call releases its reservation.
+5. `CallLog.record()` stores a `CallRecord` with the prompt, the response, the exact model version, the attempts with their tokens, the cost and the duration in the llm_calls table. Its id comes back as `call_id`, which verdicts link to (requirement N3). If the write fails, the record goes to the error log, and the answer is still returned.
 
-Temperature is 0 wherever the API allows it. API keys are read from environment variables by each provider. `LLMClient` doesn't choose between models: the triage agent asks the cheaper model first and the stronger one only when the first is unsure.
+`PostgresCallStore` is both the call log and the cache: `get()` returns the latest complete answer with the same key from llm_calls. The tests use `InMemoryCallLog` and `InMemoryResponseCache` instead.
+
+### Providers
+
+```mermaid
+classDiagram
+  direction LR
+  class LLMProvider {
+    <<abstract>>
+    +name: str
+    +api_key_variable: str
+    +refused_variables: list~str~
+    +complete(request: LLMRequest)* LLMResponse
+  }
+  class AnthropicProvider {
+    +base_url: str
+    +complete(request: LLMRequest) LLMResponse
+  }
+  class OpenAIProvider {
+    +base_url: str
+    +complete(request: LLMRequest) LLMResponse
+  }
+  class ChatCompletionsProvider {
+    +label: str
+    +base_url: str
+    +base_url_variable: str
+    +base_url_host: str
+    +max_tokens_field: str
+    +resolved_base_url()$ str
+    +body_fields(request: LLMRequest) dict
+    +effort_fields(effort: str) dict
+    +sampling_fields(temperature: float) dict
+    +complete(request: LLMRequest) LLMResponse
+  }
+  class DeepSeekProvider
+  class QwenProvider {
+    +body_fields(request: LLMRequest) dict
+    +effort_fields(effort: str) dict
+  }
+  class GLMProvider {
+    +effort_fields(effort: str) dict
+    +sampling_fields(temperature: float) dict
+  }
+  class KimiProvider {
+    +effort_fields(effort: str) dict
+  }
+  class LLMRequest {
+    +model: str
+    +messages: list~Message~
+    +max_tokens: int
+    +effort: str
+    +temperature: float
+    +server_fallbacks: bool
+  }
+  class LLMResponse {
+    +text: str
+    +model_version: str
+    +stop_reason: StopReason
+    +raw_stop_reason: str
+    +attempts: list~Attempt~
+    +usage: Usage
+    +request_id: str
+    +cost_usd: Decimal
+    +duration_ms: int
+    +cached: bool
+    +call_id: str
+  }
+  class Attempt {
+    +model: str
+    +usage: Usage
+  }
+  class Usage {
+    +input_tokens: int
+    +output_tokens: int
+    +cache_read_tokens: int
+    +cache_write_tokens: int
+  }
+  class StopReason {
+    <<enumeration>>
+    complete
+    max_tokens
+    refusal
+    other
+  }
+  class ProviderError {
+    <<exception>>
+    +retryable: bool
+  }
+  class MissingAPIKey {
+    <<exception>>
+    +variable: str
+  }
+
+  LLMProvider <|-- AnthropicProvider
+  LLMProvider <|-- OpenAIProvider
+  LLMProvider <|-- ChatCompletionsProvider
+  ChatCompletionsProvider <|-- DeepSeekProvider
+  ChatCompletionsProvider <|-- QwenProvider
+  ChatCompletionsProvider <|-- GLMProvider
+  ChatCompletionsProvider <|-- KimiProvider
+  LLMProvider ..> LLMRequest
+  LLMProvider ..> LLMResponse : returns
+  LLMProvider ..> ProviderError : raises
+  ProviderError <|-- MissingAPIKey
+  LLMResponse *-- Attempt
+  LLMResponse --> StopReason
+  Attempt *-- Usage
+```
+
+`providers_from_env()` imports each class listed under `providers` in models.json and sets it up when its key variable is set. A provider reads its key only from the environment, passes its API's base URL to the SDK, and refuses to start while one of its `refused_variables` is set, because the SDK would add that to every request. It turns the SDK's errors into `ProviderError`, whose `retryable` says whether trying again later can help.
+
+DeepSeek, Qwen, GLM and Kimi serve OpenAI's Chat Completions format, so they extend `ChatCompletionsProvider` and override only how their API takes the output limit, the effort and the temperature. `QwenProvider.body_fields()` splits `max_tokens` between thinking and answer, because Qwen's own `max_tokens` leaves out the thinking. `GLMProvider.sampling_fields()` sends `do_sample: false` instead of a temperature of 0, and `KimiProvider` sends `max_completion_tokens`. Each `Attempt` in a response is one model run with its own tokens: a Claude refusal fallback adds a second one, charged at its own model's price.
+
+Temperature 0 goes only to models that accept it, as marked in models.json. `LLMClient` doesn't choose between models: a call that names none goes to `default_model`, deepseek-flash, and the triage agent asks the cheaper model first and the stronger one only when the first is unsure.
 
 ## Report format
 
