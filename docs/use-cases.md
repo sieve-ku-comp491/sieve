@@ -6,7 +6,7 @@ This is what Sieve does for its user, before the screens and the API are built. 
 
 ## Actors
 
-The researcher is the only person who uses Sieve: someone who reviews public source code, for example on an open-source bug bounty program. The hosted LLM APIs (DeepSeek, Claude, GPT and others) are an outside service that Sieve calls during triage and report writing, and they only receive public code. The HackerOne API is an outside service used only by the stretch goals.
+The researcher is the only person who uses Sieve: someone who reviews public source code, for example on an open-source bug bounty program. The hosted LLM APIs (DeepSeek, Claude, GPT and others) are an outside service that Sieve calls during triage and report writing, and they only receive public code. The HackerOne API is an outside service used only by the stretch goals. The mock platform server is a test server that stands in for a bug bounty platform, so nothing is ever submitted to a real program.
 
 ## Use cases
 
