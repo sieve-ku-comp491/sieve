@@ -114,7 +114,7 @@ Notes on the steps:
 
 ## Approval and export
 
-The reviewer decides on each finding on the review screen. A rejected finding never gets a report. When a finding is approved, the report service drafts its report through `LLMClient`, the reviewer can edit it, and only then is it exported. The report service checks the approval again at export, so nothing leaves Sieve for a finding that is not approved (requirement F5).
+The reviewer decides on each finding on the review screen. A rejected finding never gets a report. When a finding is approved, the report service drafts its report through `LLMClient`. The reviewer edits the text if needed and approves it, and only then is it exported. The report service checks both approvals again at export, so nothing leaves Sieve for a finding that is not approved or for text that no person approved (requirement F5).
 
 ```mermaid
 sequenceDiagram
@@ -148,12 +148,14 @@ sequenceDiagram
     API-->>RS: report preview
     opt reviewer edits the report
       RS->>API: save the edited fields
-      API->>DB: update the report
+      API->>DB: save the edit as a new version of the report
     end
+    RS->>API: approve the report text
+    API->>DB: save the approval of the current version
     RS->>API: export the report as Markdown
     API->>RP: export the report
-    RP->>DB: read the review of every finding in the report
-    break any finding is not approved
+    RP->>DB: read the review of every finding in the report and the approval of the text
+    break a finding is not approved, or the text is not approved
       RP-->>API: NotApproved
       API-->>RS: error, nothing is exported
     end
@@ -169,6 +171,6 @@ Notes on the steps:
 - A rejected finding is not deleted. It stays in the findings store with its review, so a repeated scan matches it by its fingerprint and doesn't show it again.
 - The `ask` goes through the same cache and budget steps as in the triage diagram. If the budget has run out, no draft is created and the approval stays saved.
 - The report is drafted from the finding as the reviewer left it, including edits to its text or severity. The references include at least the finding's CWE.
-- The reviewer can change any field of the report before export. The export uses the saved version.
-- The `NotApproved` check at export is a second guard. In normal use it passes, because a report is only drafted after approval, but it also stops a direct call to the API for a finding that was never approved.
+- The reviewer can change any field of the report before export. An edit, or a new draft from the LLM, is saved as a new version and cancels the approval of the earlier one, so the reviewer approves the text again. The export uses the latest version, and only when that version is approved.
+- The `NotApproved` check at export is a second guard. In normal use it passes, because the export button stays disabled until the finding and the text are approved, but it also stops a direct call to the API for a finding or a text that was never approved.
 - The report is exported as one Markdown file in the layout from docs/interfaces.md. The HackerOne and Bugcrowd formats are stretch goals and are not shown.
