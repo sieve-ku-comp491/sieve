@@ -4,7 +4,7 @@ Sieve keeps its data in one PostgreSQL database, the findings store. This docume
 
 ## ER diagram
 
-The scan side is complete. The review-side tables show only their keys and their links to the scan side, and Furkan adds their columns and the links between them.
+Ali wrote the scan side and Furkan the review side.
 
 ```mermaid
 erDiagram
@@ -21,7 +21,23 @@ erDiagram
   findings |o--o{ verdicts : "judged in"
   duplicate_groups |o--o{ verdicts : "judged in"
   findings ||--o{ reviews : "reviewed in"
-  reports }o--|{ findings : "covers"
+  scans ||--o{ triage_runs : "triaged in"
+  jobs ||--o{ llm_calls : "made"
+  triage_runs ||--o{ llm_calls : "charged to"
+  triage_runs ||--o{ verdicts : "produced"
+  verdicts ||--|{ verdict_llm_calls : "decided by"
+  llm_calls ||--o{ verdict_llm_calls : "decided"
+  findings ||--o{ finding_edits : "edited in"
+  verdicts ||--o{ finding_edits : "changed by"
+  verdicts |o--o{ reviews : "shown in"
+  finding_edits |o--o{ reviews : "decided on"
+  findings |o--o{ reports : "reported in"
+  duplicate_groups |o--o{ reports : "reported in"
+  reports ||--|{ report_texts : "has versions"
+  llm_calls |o--o{ report_texts : "drafted"
+  reports ||--o{ report_findings : "covers"
+  findings ||--o{ report_findings : "covered by"
+  reviews |o--o{ report_findings : "approved"
 
   scans {
     uuid id PK
@@ -114,20 +130,127 @@ erDiagram
     uuid group_id PK
     uuid llm_call_id PK
   }
+  triage_runs {
+    uuid id PK
+    uuid scan_id FK
+    text cheap_model
+    text strong_model
+    numeric budget_usd
+    numeric cost_usd
+    text status
+    timestamptz grouped_at
+    timestamptz created_at
+    timestamptz finished_at
+  }
+  llm_calls {
+    uuid id PK
+    uuid job_id FK
+    uuid triage_run_id FK
+    text template
+    text template_version
+    text provider
+    text model
+    text model_version
+    jsonb messages
+    numeric temperature
+    int max_tokens
+    text response
+    text status
+    text error
+    bool cached
+    text cache_key
+    int input_tokens
+    int output_tokens
+    numeric cost_usd
+    int duration_ms
+    timestamptz created_at
+  }
   verdicts {
     uuid id PK
+    uuid triage_run_id FK
     uuid finding_id FK
     uuid group_id FK
+    text verdict
+    text reasoning
+    jsonb cited_lines
+    bool injection_suspected
+    jsonb injection_lines
+    text model_version
+    text cvss_v4_vector
+    numeric cvss_v4_score
+    text cvss_v4_level
+    jsonb cvss_v4_justifications
+    text cvss_v31_vector
+    numeric cvss_v31_score
+    text cvss_v31_level
+    jsonb cvss_v31_justifications
+    timestamptz created_at
+  }
+  verdict_llm_calls {
+    uuid verdict_id PK
+    uuid llm_call_id PK
+    text role
+  }
+  finding_edits {
+    uuid id PK
+    uuid finding_id FK
+    uuid verdict_id FK
+    text editor
+    text verdict
+    text reasoning
+    text cvss_v4_vector
+    numeric cvss_v4_score
+    text cvss_v4_level
+    text note
+    timestamptz created_at
   }
   reviews {
     uuid id PK
     uuid finding_id FK
+    text decision
+    text reviewer
+    text comment
+    uuid verdict_id FK
+    uuid finding_edit_id FK
+    timestamptz created_at
   }
   reports {
     uuid id PK
+    uuid finding_id FK
+    uuid group_id FK
+    text status
+    text format
+    uuid exported_text_id FK
+    text export_path
+    text exported_by
+    timestamptz created_at
+    timestamptz exported_at
   }
-  llm_calls {
+  report_texts {
     uuid id PK
+    uuid report_id FK
+    int version
+    text source
+    uuid llm_call_id FK
+    text author
+    text title
+    text summary
+    text impact
+    text_array steps_to_reproduce
+    text fix
+    text_array references
+    text cvss_v4_vector
+    numeric cvss_v4_score
+    text cvss_v4_level
+    jsonb locations
+    text approved_by
+    timestamptz approved_at
+    timestamptz created_at
+  }
+  report_findings {
+    uuid report_id PK
+    uuid finding_id PK
+    uuid review_id FK
   }
   jobs {
     uuid id PK
@@ -141,7 +264,7 @@ erDiagram
   }
 ```
 
-`text_array` stands for PostgreSQL's `text[]`, and `bool` for `boolean`, because Mermaid can't show those names. The two keys of `duplicate_group_llm_calls` together form its primary key, and each is also a foreign key.
+`text_array` stands for PostgreSQL's `text[]`, and `bool` for `boolean`, because Mermaid can't show those names. The two keys of `duplicate_group_llm_calls`, `verdict_llm_calls` and `report_findings` together form each table's primary key, and each is also a foreign key. `reports.exported_text_id` points to the report's own text, so the diagram shows that link once, from `reports` to `report_texts`.
 
 ## Conventions
 
@@ -320,13 +443,208 @@ When the worker starts, it marks every job still `running` as `failed` with the 
 
 ## Review side
 
-To be written by Furkan: the columns of `verdicts`, `reviews`, `reports` and `llm_calls`, and the tables that link them, such as the findings each report covers and the LLM calls behind each verdict. The diagram above shows the links to the scan side that these tables need:
+These tables hold everything that happens after a scan: the triage runs, the AI's verdicts and severities, the LLM calls behind them, the reviewer's edits and decisions, and the reports. They are shaped around what the review screen shows (docs/ui-mockups.md) and the states in docs/finding-states.md. A finding's state is not a column: it follows from these tables, and docs/finding-states.md gives the rules and a SQL view that computes it.
 
-- A verdict is for one triage item: either a finding (`finding_id`) or a duplicate group (`group_id`), never both.
-- A review is about one finding. Requirement F5 counts a finding as approved when its latest review approves it.
-- Requirement F5 also needs the approval of a report's text: who approved which version of the text, and when. A new draft or an edit undoes that approval.
-- A report covers the approved members of one finding or one group, and links to the reviews that approved them and its text.
-- A duplicate group decided by the LLM links to its calls through `duplicate_group_llm_calls`.
+What the AI produced is never overwritten. A reviewer's change goes into its own row next to the original, so both stay (requirement F5), and every AI decision links to the calls that produced it (requirement N3).
+
+Like `analyzer_runs` and `jobs`, five of these tables are not among the eight in the proposal: `triage_runs`, `verdict_llm_calls`, `finding_edits`, `report_texts` and `report_findings`. Each one stores something a requirement asks for, given in its section.
+
+### triage_runs
+
+One row per triage run of a scan: the `TriageRun` of docs/interfaces.md. It holds the run's budget, so a run can't spend more than its limit (requirement N1). Its triage job points to it with `triage_run_id` in the job's `payload` (`jobs`, above).
+
+| Column | Type | Can be empty | Meaning |
+|---|---|---|---|
+| `id` | uuid | no | primary key |
+| `scan_id` | uuid | no | the scan, references `scans` |
+| `cheap_model` | text | no | the model asked first |
+| `strong_model` | text | no | the model asked when the cheaper one is unsure |
+| `budget_usd` | numeric(10,4) | no | the most the run may spend. Greater than 0. |
+| `cost_usd` | numeric(10,4) | no | the cost so far, the sum of its calls' `cost_usd`. Default 0. A check constraint keeps it between 0 and `budget_usd`. When the run ends, this is its total cost (requirement N1, test 1). |
+| `status` | text | no | `running`, `finished` or `stopped_at_budget` |
+| `grouped_at` | timestamptz | yes | when the group step finished. From then on, the scan's findings are past `new`. |
+| `created_at` | timestamptz | no | |
+| `finished_at` | timestamptz | yes | |
+
+A run that stops at its budget keeps the results it saved. The next run of the same scan picks up the items without a verdict.
+
+Report drafts are charged to the latest triage run of the finding's scan, so the same budget limits them: when it has run out, no draft is created and the approval stays saved (docs/sequences.md, approval and export).
+
+### llm_calls
+
+Every call that goes through `LLMClient` (docs/class-diagrams.md): triage, severity, deduplication and report drafts. `CallLog.record()` writes one row per call, and returns its `id`, the call ID that verdicts and groups link to (requirement N3).
+
+| Column | Type | Can be empty | Meaning |
+|---|---|---|---|
+| `id` | uuid | no | primary key, the call ID |
+| `job_id` | uuid | no | the job that made the call, references `jobs`. Every call happens in a triage job or a report draft job. |
+| `triage_run_id` | uuid | no | the run whose budget the call is charged to, references `triage_runs`: the triage run itself, or for a report draft the latest triage run of the finding's scan. Not called `run_id`, because `findings.run_id` is the analyzer run. |
+| `template` | text | no | `false_positive`, `severity`, `dedup` or `report`: which prompt template was used |
+| `template_version` | text | no | the template's version, part of the cache key |
+| `provider` | text | no | the `name` of the provider class that made the call (docs/class-diagrams.md) |
+| `model` | text | no | the model that was asked for |
+| `model_version` | text | yes | the exact model version the API answered with. Empty only when the call failed. |
+| `messages` | jsonb | no | the rendered messages of the `LLMRequest`, as sent. Code is only inside the marked data block (requirement N4). |
+| `temperature` | numeric(3,2) | no | from the `LLMRequest`, 0 wherever the API allows it |
+| `max_tokens` | integer | no | from the `LLMRequest`, also used for the worst-case cost that `Budget.reserve()` checks |
+| `response` | text | yes | the text of the answer. Empty only when the call failed. |
+| `status` | text | no | `succeeded` or `failed` |
+| `error` | text | yes | why the call failed, required when `status` is `failed` |
+| `cached` | boolean | no | true when the answer came from the response cache. A cached call is still logged, so a run replayed from the cache links its verdicts to calls too (requirement N6, test 3). It costs nothing: a check constraint keeps its `cost_usd` at 0. |
+| `cache_key` | text | no | the hash `LLMClient` looks up in the cache |
+| `input_tokens` | integer | yes | |
+| `output_tokens` | integer | yes | |
+| `cost_usd` | numeric(12,6) | no | the actual cost charged to the budget. Default 0. |
+| `duration_ms` | integer | yes | |
+| `created_at` | timestamptz | no | |
+
+A check constraint requires `response` and `model_version` when `status` is `succeeded`. API keys are never stored here (docs/data-flow.md).
+
+`duplicate_group_llm_calls` on the scan side now references this table.
+
+### verdicts
+
+The result of triage for one triage item: the false-positive check and the severity score together, as the triage agent saves them (docs/sequences.md). A triage item is one finding or one duplicate group, so a verdict has exactly one of `finding_id` and `group_id`. A group's verdict applies to all its members.
+
+| Column | Type | Can be empty | Meaning |
+|---|---|---|---|
+| `id` | uuid | no | primary key |
+| `triage_run_id` | uuid | no | the run that produced it, references `triage_runs` |
+| `finding_id` | uuid | yes | the finding, for an item that is one finding. References `findings`. |
+| `group_id` | uuid | yes | the group, for an item that is a duplicate group. References `duplicate_groups`. |
+| `verdict` | text | no | `true_positive`, `false_positive` or `unsure` |
+| `reasoning` | text | no | why, in a few sentences a reviewer can check |
+| `cited_lines` | jsonb | no | the code the reasoning relies on: a list of `{"file", "start_line", "end_line"}`, at least one (requirement F4). The review screen highlights these lines. |
+| `injection_suspected` | boolean | no | true when the code has comments or strings that look like instructions to an AI. The review screen shows a warning (requirement N4). |
+| `injection_lines` | jsonb | no | the comments or strings that set the flag, as a list of `{"file", "start_line", "end_line"}`, so the review screen can mark them. Empty list when the flag is false. |
+| `model_version` | text | no | the exact version of the model that gave the final verdict |
+| `cvss_v4_vector` | text | no | the CVSS v4.0 base vector, such as `CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N` |
+| `cvss_v4_score` | numeric(3,1) | no | computed from the vector with FIRST's algorithm, never chosen by the LLM. From 0.0 to 10.0. |
+| `cvss_v4_level` | text | no | `none`, `low`, `medium`, `high` or `critical`, from the score |
+| `cvss_v4_justifications` | jsonb | no | one line for each of the 11 base metrics, keyed `AV`, `AC`, `AT`, `PR`, `UI`, `VC`, `VI`, `VA`, `SC`, `SI` and `SA`. A check constraint requires all 11 keys. |
+| `cvss_v31_vector`, `cvss_v31_score`, `cvss_v31_level`, `cvss_v31_justifications` | text, numeric(3,1), text, jsonb | yes | the same for CVSS v3.1. Filled only in evaluation runs, for CVEs that only have a v3.1 vector. Either all four are set or none. |
+| `created_at` | timestamptz | no | |
+
+A new triage of the same item adds a new row, and the latest one counts. The review screen shows the latest verdict of the finding, or of its group.
+
+### verdict_llm_calls
+
+The LLM calls behind each verdict: the false-positive check, any tool calls and the stronger model's second opinion, and the severity call that chose the metrics. Requirement N3 needs every verdict and every metric choice to link to its calls.
+
+| Column | Type | Can be empty | Meaning |
+|---|---|---|---|
+| `verdict_id` | uuid | no | references `verdicts` |
+| `llm_call_id` | uuid | no | references `llm_calls` |
+| `role` | text | no | `verdict` for the false-positive check, its tool calls and the stronger model's second opinion, or `severity` for the call that chose the CVSS metrics. Like `duplicate_group_llm_calls`, so N3, test 1 can list the calls of each part. |
+
+`(verdict_id, llm_call_id)` is the primary key. "Every verdict has at least one call" can't be a constraint, because a verdict and its links are written in one transaction. The triage agent enforces it, and this query is the check of requirement N3, test 2. It must return no rows:
+
+```sql
+select v.id from verdicts v
+where not exists (select 1 from verdict_llm_calls l where l.verdict_id = v.id);
+```
+
+### finding_edits
+
+A reviewer's changes to a finding before deciding on it: a different verdict, better reasoning or a different severity. The AI's original stays in `verdicts`, so both are kept (requirement F5). Each save is a new row, and the latest one counts.
+
+| Column | Type | Can be empty | Meaning |
+|---|---|---|---|
+| `id` | uuid | no | primary key |
+| `finding_id` | uuid | no | the finding, references `findings` |
+| `verdict_id` | uuid | no | the AI verdict that was edited, references `verdicts` |
+| `editor` | text | no | who saved it |
+| `verdict` | text | yes | the reviewer's verdict, if it differs from the AI's |
+| `reasoning` | text | yes | the reviewer's reasoning, if it differs |
+| `cvss_v4_vector` | text | yes | the reviewer's vector, if it differs |
+| `cvss_v4_score` | numeric(3,1) | yes | computed from the reviewer's vector by the same calculator |
+| `cvss_v4_level` | text | yes | from that score |
+| `note` | text | yes | why the reviewer changed it |
+| `created_at` | timestamptz | no | |
+
+Check constraints: at least one of `verdict`, `reasoning` and `cvss_v4_vector` is set, and the three CVSS columns are set together or not at all.
+
+### reviews
+
+One row per decision of the reviewer on a finding. Rows are never changed or deleted. Requirement F5 counts a finding as approved when its latest review approves it and covers its latest edit.
+
+| Column | Type | Can be empty | Meaning |
+|---|---|---|---|
+| `id` | uuid | no | primary key |
+| `finding_id` | uuid | no | the finding, references `findings` |
+| `decision` | text | no | `approve` or `reject` |
+| `reviewer` | text | no | who decided. Sieve has one user, the researcher, so there is no users table. |
+| `comment` | text | yes | the reviewer's note, such as why a finding was rejected |
+| `verdict_id` | uuid | yes | the AI verdict shown when the reviewer decided, references `verdicts`. Empty only if the finding had no verdict yet, for example after a run stopped at its budget. |
+| `finding_edit_id` | uuid | yes | the latest edit when the reviewer decided, references `finding_edits`. Empty when there was no edit. An edit saved after this review undoes the approval (docs/finding-states.md). |
+| `created_at` | timestamptz | no | |
+
+A group's members are reviewed one by one, so the reviewer can reject a member that deduplication put in the wrong group. The review screen can offer one button that writes a review for each member.
+
+### reports
+
+One report for one triage item: an approved finding, or the approved members of a duplicate group. Its text is in `report_texts`, and the findings it covers are in `report_findings`.
+
+| Column | Type | Can be empty | Meaning |
+|---|---|---|---|
+| `id` | uuid | no | primary key, the `report_id` of the report schema (docs/interfaces.md) |
+| `finding_id` | uuid | yes | the finding, for a report on one finding. References `findings`. |
+| `group_id` | uuid | yes | the group, for a report on a duplicate group. References `duplicate_groups`. |
+| `status` | text | no | `draft` or `exported` |
+| `format` | text | no | the report format's `name`. Default `markdown`. |
+| `exported_text_id` | uuid | yes | the text version that was exported, references `report_texts` together with `id`, so it must be one of this report's own versions |
+| `export_path` | text | yes | the file written in `./exports` |
+| `exported_by` | text | yes | who exported it |
+| `created_at` | timestamptz | no | |
+| `exported_at` | timestamptz | yes | |
+
+Check constraints: exactly one of `finding_id` and `group_id` is set, and `exported_at`, `exported_text_id`, `export_path` and `exported_by` are set exactly when `status` is `exported`.
+
+### report_texts
+
+Every version of a report's text. The report service writes version 1 from the LLM's draft, and each edit or new draft adds a version. A person approves one version: approving it sets `approved_by` and `approved_at` on that row. A new version has no approval, so drafting again or editing after an approval undoes it (requirement F5, test 2). The LLM's text stays as an earlier version next to the reviewer's (F5, test 4).
+
+| Column | Type | Can be empty | Meaning |
+|---|---|---|---|
+| `id` | uuid | no | primary key |
+| `report_id` | uuid | no | references `reports` |
+| `version` | integer | no | 1, 2, 3 and so on. `(report_id, version)` is unique, and the highest version is the current text. |
+| `source` | text | no | `llm_draft` or `reviewer_edit` |
+| `llm_call_id` | uuid | yes | the call that drafted it, references `llm_calls`. Set exactly when `source` is `llm_draft`. |
+| `author` | text | yes | the reviewer who edited it. Set exactly when `source` is `reviewer_edit`. |
+| `title` | text | no | the vulnerability type and where it is |
+| `summary` | text | no | two or three sentences on what is wrong and where |
+| `impact` | text | no | what an attacker can do |
+| `steps_to_reproduce` | text[] | no | numbered steps, at least one |
+| `fix` | text | no | the change that removes the issue |
+| `references` | text[] | no | URLs, at least the CWE entry (requirement F6) |
+| `cvss_v4_vector` | text | no | the severity in the report: the verdict's, or the reviewer's edit |
+| `cvss_v4_score` | numeric(3,1) | no | |
+| `cvss_v4_level` | text | no | |
+| `locations` | jsonb | no | the affected code, a list of `{"file", "start_line", "end_line"}`, at least one |
+| `approved_by` | text | yes | who approved this version of the text |
+| `approved_at` | timestamptz | yes | when. Set together with `approved_by`. |
+| `created_at` | timestamptz | no | |
+
+`references` is a reserved word in SQL, so the column is written `"references"` in queries.
+
+### report_findings
+
+The findings a report covers. For a group, these are the members whose latest review approves them. A rejected member is left out (requirement F5).
+
+| Column | Type | Can be empty | Meaning |
+|---|---|---|---|
+| `report_id` | uuid | no | references `reports` |
+| `finding_id` | uuid | no | references `findings` |
+| `review_id` | uuid | yes | the review that approved the finding when the report was exported, references `reviews`. Filled at export, so every exported report links to the reviews behind it (F5, test 4). |
+
+`(report_id, finding_id)` is the primary key.
+
+### Times
+
+`verdicts`, `finding_edits`, `reviews` and `report_texts` default `created_at` to `clock_timestamp()` instead of `now()`. `now()` is the start of the transaction, so two decisions on one finding in one transaction would get the same time, and "the latest" would be undefined.
+
+We tested these tables on PostgreSQL 17.5 together with the scan side: the check constraints and keys reject every invalid row above, and the state rules and the export check in docs/finding-states.md give the expected result for every case there and for the three F5 acceptance tests.
 
 ## Indexes
 
@@ -343,3 +661,14 @@ Besides the primary keys and the unique constraints above:
 | `duplicate_groups` | `(scan_id)` | a scan's groups |
 | `scans` | `(repo_url, created_at)` | the earlier scans of a repository |
 | `jobs` | `(created_at)` where `status = 'queued'` | the worker taking the oldest waiting job |
+| `triage_runs` | `(scan_id, created_at)` | the runs of a scan, and whether its group step has finished |
+| `llm_calls` | `(job_id)` | the calls of a job, and its total cost |
+| `llm_calls` | `(triage_run_id)` | the calls and the cost of a run (requirement N1) |
+| `verdicts` | `(finding_id, created_at DESC)` | the latest verdict of a finding |
+| `verdicts` | `(group_id, created_at DESC)` | the latest verdict of a group |
+| `verdict_llm_calls` | `(llm_call_id)` | the verdict a call belongs to, when reading the call log |
+| `finding_edits` | `(finding_id, created_at DESC)` | the latest edit of a finding |
+| `reviews` | `(finding_id, created_at DESC)` | the latest review of a finding, and its review history |
+| `reports` | `(finding_id)` | the report of a finding |
+| `reports` | `(group_id)` | the report of a group |
+| `report_findings` | `(finding_id)` | whether a finding has been reported |
