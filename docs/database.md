@@ -23,7 +23,7 @@ erDiagram
   findings ||--o{ reviews : "reviewed in"
   scans ||--o{ triage_runs : "triaged in"
   jobs ||--o{ llm_calls : "made"
-  triage_runs ||--o{ llm_calls : "charged to"
+  triage_runs |o--o{ llm_calls : "charged to"
   triage_runs ||--o{ verdicts : "produced"
   verdicts ||--|{ verdict_llm_calls : "decided by"
   llm_calls ||--o{ verdict_llm_calls : "decided"
@@ -146,23 +146,29 @@ erDiagram
     uuid id PK
     uuid job_id FK
     uuid triage_run_id FK
-    text template
-    text template_version
     text provider
     text model
     text model_version
+    text template_name
+    text template_version
     jsonb messages
-    numeric temperature
-    int max_tokens
-    text response
-    text status
-    text error
-    bool cached
-    text cache_key
+    text response_text
+    text stop_reason
+    text raw_stop_reason
+    jsonb attempts
     int input_tokens
     int output_tokens
+    int cache_read_tokens
+    int cache_write_tokens
     numeric cost_usd
     int duration_ms
+    bool cached
+    text cache_key
+    numeric temperature
+    text effort
+    int max_tokens
+    text request_id
+    text error
     timestamptz created_at
   }
   verdicts {
@@ -472,35 +478,37 @@ Report drafts are charged to the latest triage run of the finding's scan, so the
 
 ### llm_calls
 
-Every call that goes through `LLMClient` (docs/class-diagrams.md): triage, severity, deduplication and report drafts. `CallLog.record()` writes one row per call, and returns its `id`, the call ID that verdicts and groups link to (requirement N3).
+Every call that goes through `LLMClient`: triage, severity, deduplication and report drafts. The LLM client (#34) already creates this table from `backend/app/llm/llm_calls.sql`, and `CallLog.record()` writes one row per call and returns its `id`, the call ID that verdicts and groups link to (requirement N3). The columns below are that file's, plus `triage_run_id`, the only one the review side adds.
 
 | Column | Type | Can be empty | Meaning |
 |---|---|---|---|
 | `id` | uuid | no | primary key, the call ID |
-| `job_id` | uuid | no | the job that made the call, references `jobs`. Every call happens in a triage job or a report draft job. |
-| `triage_run_id` | uuid | no | the run whose budget the call is charged to, references `triage_runs`: the triage run itself, or for a report draft the latest triage run of the finding's scan. Not called `run_id`, because `findings.run_id` is the analyzer run. |
-| `template` | text | no | `false_positive`, `severity`, `dedup` or `report`: which prompt template was used |
-| `template_version` | text | no | the template's version, part of the cache key |
-| `provider` | text | no | the `name` of the provider class that made the call (docs/class-diagrams.md) |
+| `job_id` | uuid | yes | the job that made the call. It will reference `jobs` once the findings store creates that table, as `llm_calls.sql` says. |
+| `triage_run_id` | uuid | yes | the run whose budget the call is charged to, references `triage_runs`: the triage run itself, or for a report draft the latest triage run of the finding's scan. Empty for calls outside a run, such as the smoke test. Not called `run_id`, because `findings.run_id` is the plug-in run. Added to `llm_calls.sql` with the findings store's migrations. |
+| `provider` | text | no | the provider's `name`, such as `anthropic` or `openai` |
 | `model` | text | no | the model that was asked for |
-| `model_version` | text | yes | the exact model version the API answered with. Empty only when the call failed. |
-| `messages` | jsonb | no | the rendered messages of the `LLMRequest`, as sent. Code is only inside the marked data block (requirement N4). |
-| `temperature` | numeric(3,2) | no | from the `LLMRequest`, 0 wherever the API allows it |
-| `max_tokens` | integer | no | from the `LLMRequest`, also used for the worst-case cost that `Budget.reserve()` checks |
-| `response` | text | yes | the text of the answer. Empty only when the call failed. |
-| `status` | text | no | `succeeded` or `failed` |
-| `error` | text | yes | why the call failed, required when `status` is `failed` |
-| `cached` | boolean | no | true when the answer came from the response cache. A cached call is still logged, so a run replayed from the cache links its verdicts to calls too (requirement N6, test 3). It costs nothing: a check constraint keeps its `cost_usd` at 0. |
+| `model_version` | text | yes | the exact model version the API answered with |
+| `template_name` | text | yes | the prompt template, such as the false-positive or the severity template |
+| `template_version` | text | yes | the template's version, part of the cache key |
+| `messages` | jsonb | no | the rendered messages, as sent. Code is only inside the marked data block (requirement N4). |
+| `response_text` | text | yes | the text of the answer |
+| `stop_reason` | text | yes | `complete`, `max_tokens`, `refusal` or `other` |
+| `raw_stop_reason` | text | yes | the provider's own value for it |
+| `attempts` | jsonb | no | the retries of the call. Default empty list. |
+| `input_tokens`, `output_tokens` | integer | no | default 0 |
+| `cache_read_tokens`, `cache_write_tokens` | integer | no | prompt caching at the provider, default 0 |
+| `cost_usd` | numeric(14,8) | no | the actual cost charged to the budget. Default 0. A call answered from Sieve's own cache costs nothing. |
+| `duration_ms` | integer | no | default 0 |
+| `cached` | boolean | no | true when the answer came from Sieve's response cache. A cached call is still logged, so a run replayed from the cache links its verdicts to calls too (requirement N6, test 3). |
 | `cache_key` | text | no | the hash `LLMClient` looks up in the cache |
-| `input_tokens` | integer | yes | |
-| `output_tokens` | integer | yes | |
-| `cost_usd` | numeric(12,6) | no | the actual cost charged to the budget. Default 0. |
-| `duration_ms` | integer | yes | |
+| `temperature` | numeric(3,2) | yes | from the request |
+| `effort` | text | yes | the reasoning effort, for models that take one |
+| `max_tokens` | integer | no | from the request, also used for the worst-case cost that `Budget.reserve()` checks |
+| `request_id` | text | yes | the provider's ID of the request |
+| `error` | text | yes | why the call failed. Empty when it succeeded. |
 | `created_at` | timestamptz | no | |
 
-A check constraint requires `response` and `model_version` when `status` is `succeeded`. API keys are never stored here (docs/data-flow.md).
-
-`duplicate_group_llm_calls` on the scan side now references this table.
+API keys are never stored here (docs/data-flow.md). `duplicate_group_llm_calls` on the scan side references this table.
 
 ### verdicts
 
@@ -662,7 +670,6 @@ Besides the primary keys and the unique constraints above:
 | `scans` | `(repo_url, created_at)` | the earlier scans of a repository |
 | `jobs` | `(created_at)` where `status = 'queued'` | the worker taking the oldest waiting job |
 | `triage_runs` | `(scan_id, created_at)` | the runs of a scan, and whether its group step has finished |
-| `llm_calls` | `(job_id)` | the calls of a job, and its total cost |
 | `llm_calls` | `(triage_run_id)` | the calls and the cost of a run (requirement N1) |
 | `verdicts` | `(finding_id, created_at DESC)` | the latest verdict of a finding |
 | `verdicts` | `(group_id, created_at DESC)` | the latest verdict of a group |
