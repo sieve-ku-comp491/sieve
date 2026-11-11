@@ -6,6 +6,13 @@ Every LLM call in Sieve goes through `LLMClient` in `backend/app/llm/`. For each
       client.py              LLMClient, the one way to call a model
       provider.py            LLMProvider, the interface each provider implements
       anthropic_provider.py  Claude through the Anthropic Messages API
+      openai_provider.py     GPT through the OpenAI Responses API
+      chat_completions_provider.py
+                             the base for APIs in OpenAI's Chat Completions format
+      deepseek_provider.py   DeepSeek
+      qwen_provider.py       Qwen through Alibaba Cloud Model Studio
+      glm_provider.py        GLM through Z.ai
+      kimi_provider.py       Kimi through Moonshot
       models.json            providers, models and prices
       catalog.py             reads models.json and works out costs
       budget.py              a run's spending limit
@@ -136,10 +143,11 @@ Every call is a row in `llm_calls`, including cache hits and failed calls (N3). 
 - `providers` maps each provider's name to its class as `"module:Class"`. `providers_from_env` sets up each provider whose API key variable is set.
 - Each model has its provider and its prices in US dollars per million tokens: `input`, `output`, `cache_read` and `cache_write`. All four are required. Where a provider has no separate cache price, repeat the input price.
 - `long_context` gives a higher price for the whole request once the prompt is longer than `above_prompt_tokens`.
-- `temperature` is true for a model that accepts a temperature, and LLMClient then sends 0. No model in the file accepts one today: the Anthropic SDK has no temperature parameter, and current Claude models reject one.
+- `temperature` is true for a model that accepts a temperature of 0, and LLMClient then sends 0. It is false for Claude, because the Anthropic SDK has no temperature parameter and current Claude models reject one, and for the GPT-5 models, which reject one too. The other providers are in Providers with a Chat Completions API below.
 - `server_fallbacks` is described in the next section.
+- `note` is a remark for whoever updates the file. The code doesn't read it.
 
-When a provider changes its prices, update the file from the pages listed under `sources` and set `checked_on` to the day you checked. A response from a model that isn't in the file, such as an unexpected fallback model, is charged at the provider's highest prices and logged as a warning, so a cost is never understated.
+When a provider changes its prices, update the file from the pages listed under `sources` and set `checked_on` to the day you checked. A dated snapshot of a model in the file, such as `gpt-5.4-mini-2026-03-17`, has its model's price. A response from any other model that isn't in the file, such as an unexpected fallback model, is charged at the provider's highest prices and logged as a warning, so a cost is never understated.
 
 ## Claude refusal fallbacks
 
@@ -149,9 +157,28 @@ The answer's `model_version` then names the model that answered, and `attempts` 
 
 Claude Haiku 5.5 has no server-side fallback, so its refusals come back with stop reason `refusal`. To turn fallbacks off for a model, set `server_fallbacks` to false.
 
+## Providers with a Chat Completions API
+
+DeepSeek, Qwen, GLM and Kimi all serve the format of OpenAI's Chat Completions API at their own address, so their providers extend `ChatCompletionsProvider` and call it through the openai SDK. Each subclass sets its base URL and key variable, and says how its API takes effort and temperature:
+
+| Provider | Models | Key variable | Effort | Temperature 0 |
+|---|---|---|---|---|
+| DeepSeek | `deepseek-v4-pro`, `deepseek-flash` | `DEEPSEEK_API_KEY` | `reasoning_effort`: none, low, high, max | sent, but has no effect while the model thinks |
+| Qwen | `qwen3.8-max`, `qwen3.8-flash` | `DASHSCOPE_API_KEY` | none turns thinking off, any other level keeps it on | not sent, Alibaba advises against 0 |
+| GLM | `glm-5.3`, `glm-5.3-flash` | `ZAI_API_KEY` | none turns thinking off, any other level keeps it on | sent as `do_sample: false`, which is greedy decoding |
+| Kimi | `kimi-k3.1-pro` | `MOONSHOT_API_KEY` | low, high or max, medium goes to high and xhigh to max | not sent, the docs don't say whether K3 takes one |
+
+Some things differ from Claude and GPT:
+
+- DeepSeek charges half price outside its peak hours (01:00 to 04:00 and 06:00 to 10:00 UTC on weekdays). models.json has the peak prices, so the logged cost of an off-peak call is twice what it cost. `created_at` shows which calls were off-peak.
+- Kimi's K3 models always think, and without an effort they think at max, the most expensive level. Give an effort.
+- Qwen goes through the shared international endpoint by default. Alibaba now recommends a workspace endpoint: set `DASHSCOPE_BASE_URL` to `https://<WorkspaceId>.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` and use a key from that workspace.
+- These APIs report the name of the model that was asked, not a dated version, so `model_version` is that name. The pricing page of the day the call was made (`created_at`) says which version it was.
+- Only public code goes to these APIs, as to every provider (N4).
+
 ## API keys
 
-API keys are read only from environment variables, such as `ANTHROPIC_API_KEY`, and never from a file in the repository (N4 test 5). Docker Compose passes them in from `.env`. A provider whose key isn't set is not set up, and a call to one of its models fails with "no anthropic provider is set up, check its API key in .env".
+API keys are read only from environment variables, such as `ANTHROPIC_API_KEY`, and never from a file in the repository (N4 test 5). `.env.example` lists every key variable. Docker Compose passes them in from `.env`. A provider whose key isn't set is not set up, and a call to one of its models fails with "no anthropic provider is set up, check its API key in .env".
 
 The SDKs also read other settings from the environment, which another tool may have set in the same shell. Each provider passes its API's address to the SDK, so `ANTHROPIC_BASE_URL` or `OPENAI_BASE_URL` can't send the key and the prompts to another host. A provider refuses to start while a variable is set that its SDK would still add to every request: `ANTHROPIC_CUSTOM_HEADERS` for Claude, and `OPENAI_CUSTOM_HEADERS`, `OPENAI_ORG_ID` and `OPENAI_PROJECT_ID` for GPT. A custom header could be another API key, and the ids would send requests to whatever OpenAI organization and project another tool set them for.
 
@@ -165,6 +192,8 @@ A provider is one module, its tests, its entries in models.json and its SDK in r
    - Return the answer's text, the exact model version the API reports, the stop reason mapped to `StopReason` with the API's own value kept, the request id, and one `Attempt` with its `Usage` for each model run. `Usage.input_tokens` counts only tokens at the normal input price, so take cache reads and writes out of the API's input count if it includes them.
    - Turn the SDK's errors into `ProviderError`, with `retryable=True` for rate limits, server errors and network errors.
    - Don't cache, price, budget or log anything. LLMClient does that.
+
+   If the API follows OpenAI's Chat Completions format, extend `ChatCompletionsProvider` instead, as `deepseek_provider.py` does. Set `name`, `label`, `api_key_variable` and `base_url`, and override `effort_fields` or `sampling_fields` if the API takes effort or temperature in its own way.
 2. Add the provider under `providers` in models.json, and its models with their prices and sources.
 3. Pin the SDK and any new dependency to exact versions in `backend/requirements.txt`, and add the key variable to `.env.example` if it isn't there.
 4. Write `tests/test_llm_<name>.py`. Run the real SDK against `httpx2.MockTransport`, as `tests/test_llm_anthropic.py` does, so the tests check the JSON that is sent and how the answer is read, with no network and no key. Cover the request, the usage, every stop reason, the errors and a missing key.
@@ -192,4 +221,15 @@ Run this once for each provider, with that provider's cheapest model, before its
     set -a; source ../.env; set +a
     python -m app.llm.smoke claude-haiku-5-5
 
-It prints the reply, which should be `'OK'`, the exact model version, the stop reason, the tokens and the cost. A model whose worst case is more than US$0.01, such as `claude-opus-5-5`, is stopped by the budget before anything is sent.
+It prints the reply, which should be `'OK'`, the exact model version, the stop reason, the tokens and the cost. A model whose worst case is more than US$0.01, such as `claude-opus-5-5`, is stopped by the budget before anything is sent. The cheapest model of each provider:
+
+| Provider | Command |
+|---|---|
+| Claude | `python -m app.llm.smoke claude-haiku-5-5` |
+| GPT | `python -m app.llm.smoke gpt-5.4-mini` |
+| DeepSeek | `python -m app.llm.smoke deepseek-flash --effort none` |
+| Qwen | `python -m app.llm.smoke qwen3.8-flash --effort none` |
+| GLM | `python -m app.llm.smoke glm-5.3-flash --effort none` |
+| Kimi | `python -m app.llm.smoke kimi-k3.1-pro` |
+
+`--effort none` turns thinking off, so the short answer fits in the check's 512 output tokens. If a model doesn't let thinking be turned off, run its check without it. Kimi's K3 models always think, so their check runs at the check's default effort, low.
