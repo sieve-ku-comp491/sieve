@@ -39,7 +39,7 @@ rectangle "Sieve" {
   usecase "Submit to the\nmock server" as S4 #EEEEEE;line:777777;line.dashed
 }
 
-actor "Hosted LLM APIs\n(Claude, GPT)" as LLM
+actor "Hosted LLM APIs\n(DeepSeek, Claude, GPT\nand others)" as LLM
 actor "HackerOne API" as H1
 actor "Mock platform server" as MOCK
 
