@@ -73,3 +73,15 @@ def data_block(values: Mapping[str, object], code: Sequence[CodeBlock] = ()) -> 
     if closing in body:
         raise ValueError("the data block contains its own closing marker")
     return f'<data id="{block_id}">\n{body}\n{closing}'
+
+
+def is_data_block(text: str) -> bool:
+    """Whether the text is one whole block as data_block makes it, ending at its own id."""
+    opening, _, rest = text.partition("\n")
+    body, _, closing = rest.rpartition("\n")
+    block_id = opening.removeprefix('<data id="').removesuffix('">')
+    return (
+        opening == f'<data id="{block_id}">'
+        and closing == f'</data id="{block_id}">'
+        and hashlib.sha256(body.encode("utf-8")).hexdigest()[:16] == block_id
+    )

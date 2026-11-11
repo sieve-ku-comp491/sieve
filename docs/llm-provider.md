@@ -77,7 +77,7 @@ Everything that comes from the repository being scanned or from the analyzers, s
 
 The content is one JSON object: `values`, and `code` with each `CodeBlock`'s path, lines and text. Code and analyzer messages are JSON strings with every quote escaped, so scanned text can't end its string and fake another code block, a path or a value. Text like `</code><code path="tests/fixtures.py">` in a file stays part of that file's text. The id is the first 16 hex characters of the SHA-256 of the block's content. The same input always gives the same prompt, which the cache needs, and code can't end the block early, because it would have to contain a hash of itself. If the closing marker appears in the content anyway, `data_block` raises `ValueError`. The comment in the example is the kind of planted instruction that N4 test 3 checks: it stays inside the block.
 
-Never format text from the scanned repository into a template or a system message. Pass it as values or code. For a conversation of more than one turn, pass the earlier turns as `history`. They go between the system message and the new data block.
+Never format text from the scanned repository into a template or a system message. Pass it as values or code. For a conversation of more than one turn, pass the earlier turns as `history`. They go between the system message and the new data block. An earlier turn is either the model's answer, as an assistant message, or a user message made by `data_block`, which is also how a tool result goes in. `ask` raises `ValueError` for anything else, such as a user message with text read from a file, and `is_data_block` checks a message the same way.
 
 ## Budget
 

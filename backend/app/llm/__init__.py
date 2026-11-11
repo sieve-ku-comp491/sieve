@@ -6,7 +6,7 @@ from app.llm.call_log import CallLog, CallRecord, InMemoryCallLog
 from app.llm.catalog import Catalog, ModelInfo, UnknownModel, load_catalog
 from app.llm.client import LLMClient, providers_from_env
 from app.llm.provider import LLMProvider, MissingAPIKey, ProviderError
-from app.llm.templates import PromptTemplate, data_block, load_template
+from app.llm.templates import PromptTemplate, data_block, is_data_block, load_template
 from app.llm.types import (
     Attempt,
     CodeBlock,
@@ -41,6 +41,7 @@ __all__ = [
     "UnknownModel",
     "Usage",
     "data_block",
+    "is_data_block",
     "load_catalog",
     "load_template",
     "providers_from_env",

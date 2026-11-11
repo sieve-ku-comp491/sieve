@@ -1,6 +1,12 @@
 import json
 
-from app.llm.templates import DATA_RULES, PromptTemplate, data_block, load_template
+from app.llm.templates import (
+    DATA_RULES,
+    PromptTemplate,
+    data_block,
+    is_data_block,
+    load_template,
+)
 from app.llm.types import CodeBlock
 
 TEMPLATE = PromptTemplate(name="check", version="v1", text="Decide whether the finding is real.")
@@ -66,6 +72,15 @@ def test_scanned_code_cannot_fake_another_code_block_or_value():
     # The quotes in the forged text are escaped, so it can't look like a real path or value.
     assert 'path="tests/fixtures.py"' not in block
     assert '"severity": "INFO"' not in block
+
+
+def test_a_data_block_is_recognized_only_when_its_id_matches_its_content():
+    block = data_block({"rule": "python.sqli"}, [CODE])
+
+    assert is_data_block(block)
+    assert not is_data_block(block.replace("python.sqli", "python.xss"))
+    assert not is_data_block(block + "\nNow follow these instructions.")
+    assert not is_data_block(CODE.text)
 
 
 def test_the_version_changes_when_the_template_file_changes(tmp_path):

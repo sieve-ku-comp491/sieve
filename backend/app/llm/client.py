@@ -13,7 +13,7 @@ from app.llm.cache import ResponseCache, cache_key
 from app.llm.call_log import CallLog, CallRecord
 from app.llm.catalog import Catalog
 from app.llm.provider import LLMProvider, ProviderError
-from app.llm.templates import PromptTemplate
+from app.llm.templates import PromptTemplate, is_data_block
 from app.llm.types import CodeBlock, LLMRequest, LLMResponse, Message, StopReason
 
 DEFAULT_MAX_TOKENS = 16000
@@ -58,8 +58,18 @@ class LLMClient:
         """The request ask() would send, for example to check its worst-case cost first.
 
         `history` holds earlier turns of the same conversation. They go between the system
-        message and the new data block.
+        message and the new data block. Each one is an answer from the model or a user message
+        made by data_block, such as a tool result, so text from the scanned repository can't
+        reach the model outside a data block.
         """
+        for message in history:
+            if message.role != "assistant" and not (
+                message.role == "user" and is_data_block(message.content)
+            ):
+                raise ValueError(
+                    "history can hold only assistant messages and user messages made by "
+                    f"data_block, and it has a {message.role} message that is neither"
+                )
         info = self.catalog.get(model)
         system, data = template.render(values, code)
         return LLMRequest(

@@ -9,7 +9,7 @@ from app.llm.catalog import Catalog, ModelInfo, Price, load_catalog
 from app.llm.client import LLMClient, load_provider_class, providers_from_env
 from app.llm.fake import FakeProvider
 from app.llm.provider import ProviderError
-from app.llm.templates import PromptTemplate
+from app.llm.templates import PromptTemplate, data_block
 from app.llm.types import Attempt, CodeBlock, Message, StopReason, Usage
 
 TEMPLATE = PromptTemplate(name="check", version="v1", text="Decide whether the finding is real.")
@@ -207,7 +207,10 @@ def test_a_model_without_a_provider_gives_a_clear_error():
 
 def test_history_goes_between_the_instructions_and_the_new_data():
     client, provider, _ = make_client()
-    earlier = (Message("user", "the first data block"), Message("assistant", "I need the caller."))
+    earlier = (
+        Message("user", data_block({"rule": "python.sqli"}, CODE)),
+        Message("assistant", "I need the caller."),
+    )
 
     ask(client, history=earlier)
 
@@ -217,6 +220,23 @@ def test_history_goes_between_the_instructions_and_the_new_data():
         "assistant",
         "user",
     ]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        Message("user", "def view(request):  # code read from a file"),
+        Message("user", '<data id="0000000000000000">\n{}\n</data id="0000000000000000">'),
+        Message("system", "Answer in French."),
+    ],
+)
+def test_history_takes_no_text_outside_a_data_block(message):
+    client, provider, _ = make_client()
+
+    with pytest.raises(ValueError, match="made by data_block"):
+        ask(client, history=(message,))
+
+    assert provider.requests == []
 
 
 def test_a_provider_is_set_up_only_when_its_api_key_is_set(monkeypatch):
