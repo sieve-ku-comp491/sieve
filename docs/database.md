@@ -22,7 +22,7 @@ erDiagram
   duplicate_groups |o--o{ verdicts : "judged in"
   findings ||--o{ reviews : "reviewed in"
   scans ||--o{ triage_runs : "triaged in"
-  jobs ||--o{ llm_calls : "made"
+  jobs |o--o{ llm_calls : "made"
   triage_runs |o--o{ llm_calls : "charged to"
   triage_runs ||--o{ verdicts : "produced"
   verdicts ||--|{ verdict_llm_calls : "decided by"
@@ -457,7 +457,7 @@ Like `analyzer_runs` and `jobs`, five of these tables are not among the eight in
 
 ### triage_runs
 
-One row per triage run of a scan: the `TriageRun` of docs/interfaces.md. It holds the run's budget, so a run can't spend more than its limit (requirement N1). Its triage job points to it with `triage_run_id` in the job's `payload` (`jobs`, above).
+One row per triage run of a scan: the `TriageRun` of docs/interfaces.md. It holds the run's budget, so a run stops when its limit is reached (requirement N1). Its triage job points to it with `triage_run_id` in the job's `payload` (`jobs`, above).
 
 | Column | Type | Can be empty | Meaning |
 |---|---|---|---|
@@ -466,7 +466,7 @@ One row per triage run of a scan: the `TriageRun` of docs/interfaces.md. It hold
 | `cheap_model` | text | no | the model asked first |
 | `strong_model` | text | no | the model asked when the cheaper one is unsure |
 | `budget_usd` | numeric(10,4) | no | the most the run may spend. Greater than 0. |
-| `cost_usd` | numeric(10,4) | no | the cost so far, the sum of its calls' `cost_usd`. Default 0. A check constraint keeps it between 0 and `budget_usd`. When the run ends, this is its total cost (requirement N1, test 1). |
+| `cost_usd` | numeric(10,4) | no | the cost so far, the sum of its calls' `cost_usd`. Default 0. A check constraint keeps it at 0 or more, with no upper check: a call can cost more than the worst case the budget reserved for it, so the run can end up over its limit by the difference, and the budget then refuses every further call. When the run ends, this is its total cost (requirement N1, test 1). |
 | `status` | text | no | `running`, `finished` or `stopped_at_budget` |
 | `grouped_at` | timestamptz | yes | when the group step finished. From then on, the scan's findings are past `new`. |
 | `created_at` | timestamptz | no | |
@@ -489,12 +489,12 @@ Every call that goes through `LLMClient`: triage, severity, deduplication and re
 | `model` | text | no | the model that was asked for |
 | `model_version` | text | yes | the exact model version the API answered with |
 | `template_name` | text | yes | the prompt template, such as the false-positive or the severity template |
-| `template_version` | text | yes | the template's version, part of the cache key |
+| `template_version` | text | yes | the first 12 hex characters of the SHA-256 of the template file. A new version also changes the cache key, because the template text is in the system message. |
 | `messages` | jsonb | no | the rendered messages, as sent. Code is only inside the marked data block (requirement N4). |
 | `response_text` | text | yes | the text of the answer |
 | `stop_reason` | text | yes | `complete`, `max_tokens`, `refusal` or `other` |
 | `raw_stop_reason` | text | yes | the provider's own value for it |
-| `attempts` | jsonb | no | the retries of the call. Default empty list. |
+| `attempts` | jsonb | no | each model run behind the answer, with its model and tokens: one normally, and two when a Claude refusal fallback answered (docs/llm-provider.md, "Claude refusal fallbacks"). Empty for a cache hit. Retries are not logged. Default empty list. |
 | `input_tokens`, `output_tokens` | integer | no | default 0 |
 | `cache_read_tokens`, `cache_write_tokens` | integer | no | prompt caching at the provider, default 0 |
 | `cost_usd` | numeric(14,8) | no | the actual cost charged to the budget. Default 0. A call answered from Sieve's own cache costs nothing. |
@@ -671,6 +671,8 @@ Besides the primary keys and the unique constraints above:
 | `jobs` | `(created_at)` where `status = 'queued'` | the worker taking the oldest waiting job |
 | `triage_runs` | `(scan_id, created_at)` | the runs of a scan, and whether its group step has finished |
 | `llm_calls` | `(triage_run_id)` | the calls and the cost of a run (requirement N1) |
+| `llm_calls` | `(cache_key, created_at DESC)` where `NOT cached AND error IS NULL AND stop_reason = 'complete'` | the cache lookup, created by `llm_calls.sql` |
+| `llm_calls` | `(job_id)` | the calls of a job, created by `llm_calls.sql` |
 | `verdicts` | `(finding_id, created_at DESC)` | the latest verdict of a finding |
 | `verdicts` | `(group_id, created_at DESC)` | the latest verdict of a group |
 | `verdict_llm_calls` | `(llm_call_id)` | the verdict a call belongs to, when reading the call log |
