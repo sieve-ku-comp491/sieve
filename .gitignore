@@ -6,3 +6,10 @@ UPDATED_COMP491_Proposal_Sieve.pdf
 
 # macOS
 .DS_Store
+
+# Python and local environment
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
