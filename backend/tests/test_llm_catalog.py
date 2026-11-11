@@ -165,3 +165,18 @@ def test_a_default_model_that_is_not_in_the_file_is_refused(tmp_path):
 
     with pytest.raises(ValueError, match="default_model other"):
         load_catalog(path)
+
+
+@pytest.mark.parametrize(
+    ("off_peak", "message"),
+    [
+        ({"peak_hours_utc": ["10:00-06:00"], "peak_days": ["Mon"]}, "end before they start"),
+        ({"peak_hours_utc": ["01:00-04:00"], "peak_days": ["Monday"]}, "peak days"),
+    ],
+)
+def test_off_peak_hours_that_cannot_be_read_are_refused(tmp_path, off_peak, message):
+    entry = {"provider": "fake", "price": PRICE, "off_peak": {"price_factor": "0.5"} | off_peak}
+    path = write_models(tmp_path, {"m": entry})
+
+    with pytest.raises(ValueError, match=message):
+        load_catalog(path)

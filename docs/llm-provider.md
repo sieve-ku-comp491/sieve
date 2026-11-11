@@ -145,6 +145,7 @@ Every call is a row in `llm_calls`, including cache hits and failed calls (N3). 
 - `providers` maps each provider's name to its class as `"module:Class"`. `providers_from_env` sets up each provider whose API key variable is set.
 - Each model has its provider and its prices in US dollars per million tokens: `input`, `output`, `cache_read` and `cache_write`. All four are required. Where a provider has no separate cache price, repeat the input price.
 - `long_context` gives a higher price for the whole request once the prompt is longer than `above_prompt_tokens`.
+- `off_peak` gives a lower price outside the provider's peak hours: the cost is multiplied by `price_factor` when a call starts and ends outside `peak_hours_utc` ("HH:MM-HH:MM" in UTC) on `peak_days` (Mon to Sun). The providers don't say whether the start or the end of a call counts, so a call that crosses into or out of peak hours is charged the peak price. The worst case always uses the peak price.
 - `temperature` is true for a model that accepts a temperature of 0, and LLMClient then sends 0. It is false for Claude, because the Anthropic SDK has no temperature parameter and current Claude models reject one, and for the GPT-5 models, which reject one too. The other providers are in Providers with a Chat Completions API below.
 - `server_fallbacks` is described in the next section.
 - `note` is a remark for whoever updates the file. The code doesn't read it.
@@ -172,7 +173,7 @@ DeepSeek, Qwen, GLM and Kimi all serve the format of OpenAI's Chat Completions A
 
 Some things differ from Claude and GPT:
 
-- DeepSeek charges half price outside its peak hours (01:00 to 04:00 and 06:00 to 10:00 UTC on weekdays). models.json has the peak prices, so the logged cost of an off-peak call is twice what it cost. `created_at` shows which calls were off-peak.
+- DeepSeek charges half price outside its peak hours, which are 01:00 to 04:00 and 06:00 to 10:00 UTC on weekdays, or 04:00 to 07:00 and 09:00 to 13:00 in Istanbul. A call that starts and ends off-peak is charged half, see `off_peak` under Models and prices. Chinese public holidays are off-peak too, but they aren't in models.json, so a call on one is charged the peak price. The budget always reserves the peak price.
 - Qwen's `max_tokens` limits only the answer, and its thinking has a separate `thinking_budget`. While Qwen may think, the provider sends half of the request's max_tokens as `thinking_budget` and the other half as `max_tokens`, so all output stays within max_tokens as the worst case expects.
 - Kimi's K3 models and the GLM-5.3 models always think, and without an effort they think at max, the most expensive level. Give an effort.
 - Qwen goes through the shared international endpoint by default. Alibaba now recommends a workspace endpoint: set `DASHSCOPE_BASE_URL` to `https://<WorkspaceId>.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` and use a key from that workspace. Since the Qwen key goes wherever that URL points, the provider accepts only an https URL on an `aliyuncs.com` host.

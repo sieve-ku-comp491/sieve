@@ -6,6 +6,7 @@ import os
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from app.llm.budget import Budget
@@ -120,6 +121,7 @@ class LLMClient:
             return self._log(provider, request, key, template, hit)
 
         reservation = self.budget.reserve(self.catalog.worst_case_cost(info, request))
+        started_at = _utc_now()
         started = time.monotonic()
         try:
             response = provider.complete(request)
@@ -127,7 +129,7 @@ class LLMClient:
             reservation.release()
             self._log_failure(provider, request, key, template, error, _elapsed_ms(started))
             raise
-        cost = self.catalog.cost(provider.name, response.attempts)
+        cost = self.catalog.cost(provider.name, response.attempts, (started_at, _utc_now()))
         reservation.charge(cost)
 
         response = replace(response, cost_usd=cost, duration_ms=_elapsed_ms(started), cached=False)
@@ -242,6 +244,10 @@ def load_provider_class(target: str) -> type[LLMProvider]:
     """Imports a provider class from its "module:Class" entry in models.json."""
     module_name, _, class_name = target.partition(":")
     return getattr(importlib.import_module(module_name), class_name)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 def _elapsed_ms(started: float) -> int:

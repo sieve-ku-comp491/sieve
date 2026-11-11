@@ -82,14 +82,24 @@
     "deepseek-v4-pro": {
       "provider": "deepseek",
       "price": {"input": "1.32", "output": "3.96", "cache_read": "0.044", "cache_write": "1.32"},
+      "off_peak": {
+        "price_factor": "0.5",
+        "peak_hours_utc": ["01:00-04:00", "06:00-10:00"],
+        "peak_days": ["Mon", "Tue", "Wed", "Thu", "Fri"]
+      },
       "temperature": true,
-      "note": "Peak-hour prices. Off-peak prices are half."
+      "note": "DeepSeek V4 Pro (DeepSeek-V4-Pro-0813). Peak-hour prices, half of them off-peak."
     },
     "deepseek-flash": {
       "provider": "deepseek",
       "price": {"input": "0.30", "output": "1.20", "cache_read": "0.006", "cache_write": "0.30"},
+      "off_peak": {
+        "price_factor": "0.5",
+        "peak_hours_utc": ["01:00-04:00", "06:00-10:00"],
+        "peak_days": ["Mon", "Tue", "Wed", "Thu", "Fri"]
+      },
       "temperature": true,
-      "note": "DeepSeek V4.1 Flash (DeepSeek-V4.1-Flash-1017). Peak-hour prices. Off-peak prices are half."
+      "note": "DeepSeek V4.1 Flash (DeepSeek-V4.1-Flash-1017). Peak-hour prices, half of them off-peak."
     },
     "qwen3.8-max": {
       "provider": "qwen",

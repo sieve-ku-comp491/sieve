@@ -1,5 +1,6 @@
 import json
 from dataclasses import replace
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import httpx2
@@ -408,10 +409,40 @@ def test_the_new_models_are_in_models_json():
     assert {"deepseek-flash", "qwen3.8-flash", "glm-5.3-flash"} <= set(catalog.names())
 
 
-def test_deepseek_is_charged_at_the_peak_price():
+def test_deepseek_is_charged_at_the_peak_price_when_the_call_time_is_not_given():
     flash = load_catalog().get("deepseek-flash")
 
     assert flash.cost(Usage(output_tokens=1_000_000)) == Decimal("1.20")
+
+
+def utc(day: int, hour: int, minute: int = 0) -> datetime:
+    # 11 November 2026 is a Wednesday and 14 November a Saturday.
+    return datetime(2026, 11, day, hour, minute, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "price"),
+    [
+        (utc(11, 2), utc(11, 2, 1), "1.20"),
+        (utc(11, 12), utc(11, 12, 1), "0.60"),
+        (utc(14, 2), utc(14, 2, 1), "0.60"),
+        (utc(11, 0, 59), utc(11, 1, 1), "1.20"),
+        (utc(11, 3, 59), utc(11, 4, 1), "1.20"),
+        (utc(11, 4), utc(11, 4, 1), "0.60"),
+        (utc(11, 9, 59), utc(11, 10), "1.20"),
+    ],
+)
+def test_deepseek_is_charged_half_when_the_whole_call_is_off_peak(start, end, price):
+    flash = load_catalog().get("deepseek-flash")
+
+    assert flash.cost(Usage(output_tokens=1_000_000), (start, end)) == Decimal(price)
+
+
+def test_istanbul_evening_is_off_peak_for_deepseek():
+    istanbul_20_00 = datetime.fromisoformat("2026-11-11T20:00:00+03:00")
+    flash = load_catalog().get("deepseek-flash")
+
+    assert not flash.off_peak.is_peak(istanbul_20_00)
 
 
 def test_deepseek_v4_1_flash_is_the_default_model():
