@@ -85,7 +85,7 @@ A run, such as one triage run, has a `Budget` with a limit in US dollars. Before
 
     the next LLM call can cost up to $0.035386 and $0.010000 of the $0.01 budget is left, so the run stops here
 
-When the call returns, its reservation is replaced by its real cost, and a failed call releases it. A run's total cost therefore never goes over its limit, also when calls run in parallel threads (N1 test 2). `budget.spent_usd` is the run's total cost when it ends (N1 test 1).
+When the call returns, its reservation is replaced by its real cost, and a failed call releases it. A run's total cost therefore stays within its limit, also when calls run in parallel threads (N1 test 2), as long as no call costs more than its worst case. The worst case below is built to be an upper bound. If a call costs more anyway, the budget logs a warning and the run can go over its limit by the difference. Once it is over, every later call is refused. `budget.spent_usd` is the run's total cost when it ends (N1 test 1).
 
 The worst case is an upper bound on the bill:
 
