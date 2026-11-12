@@ -34,15 +34,15 @@ class Fingerprinter:
 
     def assign(self, findings: list[Finding], file_lines: dict[str, list[str] | None]) -> None:
         """file_lines maps each file to its lines after masking, or None when the file couldn't
-        be read, in which case the finding's snippet stands in for the file."""
+        be read. Then the finding's snippet stands in for the flagged lines, and the context
+        hash stays empty, so no earlier review can hide the finding."""
         groups: dict[tuple[str, str, str, str], list[tuple[Finding, list[str]]]] = defaultdict(list)
         for finding in findings:
             location = finding.location
             lines = file_lines.get(location.file)
             if lines is None:
-                lines = (location.snippet or "").split("\n")
-                flagged = lines
-                finding.context_hash = context_hash(lines, 1, len(lines))
+                flagged = (location.snippet or "").split("\n")
+                finding.context_hash = ""
             else:
                 flagged = lines[location.start_line - 1 : location.end_line]
                 finding.context_hash = context_hash(lines, location.start_line, location.end_line)

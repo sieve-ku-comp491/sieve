@@ -99,22 +99,35 @@ def test_the_same_bug_six_times(result):
     ]
 
 
-def test_confidence_comes_from_the_rule_tags(result):
-    rules = json.loads((FIXTURE / "semgrep-pygoat.sarif").read_text(encoding="utf-8"))
-    tags = {
-        rule["id"]: rule["properties"]["tags"]
-        for rule in rules["runs"][0]["tool"]["driver"]["rules"]
-    }
+def test_confidence_and_severity_come_from_the_rule(result):
+    sarif = json.loads((FIXTURE / "semgrep-pygoat.sarif").read_text(encoding="utf-8"))
+    rules = {rule["id"]: rule for rule in sarif["runs"][0]["tool"]["driver"]["rules"]}
+    expected = {"HIGH CONFIDENCE": "high", "MEDIUM CONFIDENCE": "medium", "LOW CONFIDENCE": "low"}
+    levels = set()
     for finding in result.findings:
-        expected = {
-            "HIGH CONFIDENCE": "high",
-            "MEDIUM CONFIDENCE": "medium",
-            "LOW CONFIDENCE": "low",
-        }
-        (confidence,) = [expected[t] for t in tags[finding.rule_id] if t in expected]
+        rule = rules[finding.rule_id]
+        (confidence,) = [expected[t] for t in rule["properties"]["tags"] if t in expected]
         assert finding.tool_confidence == confidence
-        # Semgrep's precision property is the same on every rule and is not used.
-        assert finding.tool_score is None
+        assert finding.tool_severity == rule["defaultConfiguration"]["level"]
+        levels.add(finding.tool_severity)
+    assert levels == {"error", "warning"}
+
+
+def test_confidence_tags_in_any_case():
+    adapter = SemgrepAdapter()
+    rule = {"properties": {"precision": "very-high", "tags": ["Medium Confidence"]}}
+    assert adapter.confidence(rule, {}) == "medium"
+    assert adapter.confidence({"properties": {"precision": "very-high"}}, {}) is None
+
+
+def test_raw_is_the_sarif_result_copied(result):
+    sarif = json.loads((FIXTURE / "semgrep-pygoat.sarif").read_text(encoding="utf-8"))
+    converted = (
+        SemgrepAdapter().to_findings(sarif, RUN, CheckoutReader(FIXTURE / "pygoat")).findings
+    )
+    originals = sarif["runs"][0]["results"]
+    assert [f.raw for f in converted] == originals
+    assert all(f.raw is not o for f, o in zip(converted, originals, strict=True))
 
 
 def test_fingerprint_stays_when_code_is_added_above(tmp_path):

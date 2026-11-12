@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 SEVERITIES = ("error", "warning", "note", "none")
+MAX_WARNINGS = 100
 CONFIDENCES = ("high", "medium", "low")
 
 
@@ -59,10 +60,19 @@ class AdapterResult:
     dropped: dict[str, int] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
+    more_warnings: int = 0
+
     def drop(self, reason: str, warning: str | None = None) -> None:
         self.dropped[reason] = self.dropped.get(reason, 0) + 1
         if warning:
+            self.warn(warning)
+
+    def warn(self, warning: str) -> None:
+        """Keeps the first MAX_WARNINGS warnings for the run's log and counts the rest."""
+        if len(self.warnings) < MAX_WARNINGS:
             self.warnings.append(warning)
+        else:
+            self.more_warnings += 1
 
     @property
     def dropped_count(self) -> int:

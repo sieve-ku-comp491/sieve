@@ -1,3 +1,5 @@
 # Shell scripts run inside Linux containers, so they keep LF line endings on
 # every machine, including Windows checkouts.
 *.sh text eol=lf
+# Test data copied from PyGoat and Semgrep, kept byte for byte.
+backend/tests/adapter_fixture/** -text
