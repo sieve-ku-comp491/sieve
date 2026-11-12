@@ -77,7 +77,7 @@ class DockerEngine(ContainerEngine):
             try:
                 exit_code = container.wait(timeout=max(timeout_seconds, 1))["StatusCode"]
                 timed_out = False
-            except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError):
+            except requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError:
                 # The SDK raises one of these when the wait itself times out. A connection error
                 # long before the limit means the engine went away, which is not a timeout.
                 if time.monotonic() - started < timeout_seconds - 1:

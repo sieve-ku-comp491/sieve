@@ -63,7 +63,7 @@ class PluginManifest:
             or not languages
             or not all(isinstance(language, str) and language for language in languages)
         ):
-            raise ManifestError("languages must be a list of names, or [\"*\"]")
+            raise ManifestError('languages must be a list of names, or ["*"]')
         if "*" in languages and len(languages) > 1:
             raise ManifestError('languages is either ["*"] or a list of languages, not both')
         unknown_languages = set(languages) - set(EXTENSIONS) - {"*"}

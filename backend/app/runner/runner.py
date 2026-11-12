@@ -427,7 +427,7 @@ def read_scan_info(path: Path) -> int:
     data = read_plugin_file(path, MAX_SCAN_INFO_BYTES)
     try:
         files_scanned = json.loads(data)["files_scanned"]
-    except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError):
+    except UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError:
         raise InvalidSarif("missing_sarif", "scan-info.json has no files_scanned") from None
     if not isinstance(files_scanned, int) or isinstance(files_scanned, bool) or files_scanned < 0:
         raise InvalidSarif("missing_sarif", "files_scanned in scan-info.json is not a count")
@@ -474,4 +474,3 @@ def _give_to_plugin_user(folder: Path) -> None:
         os.chown(folder, PLUGIN_UID, PLUGIN_UID)
     else:
         folder.chmod(0o777)
-
