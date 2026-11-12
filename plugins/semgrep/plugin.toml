@@ -1,0 +1,9 @@
+name = "semgrep"
+image = "sieve-plugin-semgrep:1.183.0-16b9e6d"
+languages = ["python", "java", "javascript", "typescript"]
+adapter = "semgrep"
+timeout_seconds = 600
+
+[versions]
+tool = "1.183.0"
+rules = "semgrep-rules@16b9e6d45f10649f6a531ec4838ed9924372c3bc"
