@@ -421,6 +421,7 @@ def test_build_step_runs_first_with_its_own_flags(data_dir):
         RunStatus.SUCCEEDED,
     ]
     log = log_text(data_dir, run)
+    assert "build image digest sha256:sieve-plugin-javaish-build:1.0" in log
     assert log.index("--- build step") < log.index("build done") < log.index("--- scan step")
 
 

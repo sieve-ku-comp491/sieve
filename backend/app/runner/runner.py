@@ -239,10 +239,11 @@ class PluginRunner:
         if not checkout.is_dir():
             self.log.append(run.run_id, f"runner error: no checkout at {checkout}")
             return self._finish(run, RunStatus.FAILED, Reason.RUNNER_ERROR)
+        build_digest = None
         try:
             run.image_digest = self.engine.image_digest(plugin.image)
             if plugin.build:
-                self.engine.image_digest(plugin.build.image)
+                build_digest = self.engine.image_digest(plugin.build.image)
                 # The build runs code from the scanned project, so its network must have no
                 # route out except through maven-proxy (docs/interfaces.md, Build step).
                 if not self.engine.network_is_internal(self.settings.build_network):
@@ -254,6 +255,8 @@ class PluginRunner:
             self.log.append(run.run_id, f"runner error: {error}")
             return self._finish(run, RunStatus.FAILED, Reason.RUNNER_ERROR)
         self.log.append(run.run_id, f"image digest {run.image_digest}")
+        if build_digest:
+            self.log.append(run.run_id, f"build image digest {build_digest}")
         out_dir, build_dir = self._prepare_dirs(run, plugin)
 
         if plugin.build:
