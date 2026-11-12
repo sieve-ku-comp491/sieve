@@ -27,10 +27,10 @@ One SARIF result becomes one finding. Grouping duplicates happens later, in dedu
 | `fingerprint` | string | yes | computed by the adapter (see below) | stays the same for the same finding across scans of different commits |
 | `fingerprint_ambiguous` | boolean | yes | computed by the adapter (see below) | true when another finding in the same run has the same rule, file and flagged code, so a match with an earlier scan is less certain |
 | `context_hash` | string | yes | computed by the adapter (see below) | a hash of the code around the finding, used to decide whether an earlier review still applies |
-| `suppressed` | boolean | yes | true when the result has `suppressions` | the scanned code asked the tool to ignore this result, for example with a `# nosemgrep` comment. The finding is kept and the review screen shows the mark. |
+| `suppressed` | boolean | yes | true when the tool accepted one of the result's `suppressions`: one without a `status`, or with `accepted` | the scanned code asked the tool to ignore this result, for example with a `# nosemgrep` comment. The finding is kept and the review screen shows the mark. |
 | `tool_fingerprint` | string | no | `result.partialFingerprints` or `result.fingerprints` | the tool's own fingerprint, kept only when the adapter knows it is stable |
 | `language` | string | no | the file extension | `python`, `java`, `javascript`, `typescript`, `html` for templates, or `other` for configuration and other files. A third of the Semgrep findings on PyGoat are in HTML templates. |
-| `raw` | object | yes | the whole SARIF result | kept so we can check or redo the mapping later |
+| `raw` | object | yes | the whole SARIF result, without NUL characters, and without its snippets when the adapter masks lines | kept so we can check or redo the mapping later |
 
 A location has these fields:
 
@@ -55,10 +55,10 @@ The adapter finds the result's rule in `tool.driver.rules`, by `ruleIndex` or el
 ### File paths
 
 1. Parse the URI with a URI parser, not by cutting strings. If it has a `uriBaseId` that `originalUriBaseIds` defines, resolve it against that base, and resolve the base's own `uriBaseId` the same way.
-2. For a `file:` URI, take its path and decode percent-encoded characters. Both forms occur: `file:///src/...` and `file:/src/...`, which SpotBugs writes.
+2. For a `file:` URI, take its path and decode percent-encoded characters. Both forms occur: `file:///src/...` and `file:/src/...`, which SpotBugs writes. A URI without a scheme and without a known `uriBaseId` is taken as a literal path, because Semgrep writes raw file names there: in `/src/lib#1/app.py`, the `#` is part of the name. Only if that path doesn't exist is it decoded.
 3. Remove the `/src/` prefix, where the plug-in container mounts the checkout. Semgrep writes absolute paths such as `/src/app/views.py` even though it also sets `uriBaseId` to `%SRCROOT%`, and it leaves `originalUriBaseIds` out. SpotBugs gets its source roots under /src (docs/interfaces.md), so its paths end up there too.
 4. If the path doesn't exist but a source root plus the path does, use that. SpotBugs writes paths relative to a Java source root, such as `com/example/Dao.java`, when it doesn't know the root. The adapter tries each source root that the Java build step listed, and uses the path only if exactly one matches.
-5. The result must now be a relative path inside the repository, with no `..`, to a regular file in the checkout. Otherwise the adapter drops the result and adds a warning to the run's log.
+5. The result must now be a relative path inside the repository, with no `..`, to a regular file in the checkout, and its start line must be inside the file. Otherwise the adapter drops the result and adds a warning to the run's log. One result that can't be mapped never stops the rest of the run.
 
 ### CWE
 
@@ -98,7 +98,7 @@ The adapter keeps the CWEs the tool gives, even when they look wrong. Semgrep ta
 
 Results whose `kind` is missing or `fail` become findings. Results with another `kind`, such as `pass` or `notApplicable`, don't, and the run's log counts them.
 
-Suppressed results are kept. The scanned repository is not ours, so a `# nosemgrep` or `# nosec` comment in it must not be able to hide a finding from Sieve (requirement N4). The plug-ins turn in-source suppression off where the tool allows it (docs/interfaces.md). When a result still has `suppressions`, the adapter keeps it and sets `suppressed` to true.
+Suppressed results are kept. The scanned repository is not ours, so a `# nosemgrep` or `# nosec` comment in it must not be able to hide a finding from Sieve (requirement N4). The plug-ins turn in-source suppression off where the tool allows it (docs/interfaces.md). When the tool still reports a result as suppressed, the adapter keeps it and sets `suppressed` to true.
 
 ### Confidence
 
@@ -143,9 +143,9 @@ def context_hash(file_lines: list[str], start_line: int, end_line: int, window: 
 
 Removing whitespace and unifying quotes means that running a code formatter, such as Black, doesn't make a finding look new. A formatter changes `render(request,'login')` into `render(request, "login")`, and both give the same text here.
 
-The adapter reads the checkout through the shared checkout reader (docs/class-diagrams.md), which refuses any path that leaves the checkout. It reads lines as UTF-8 and replaces bytes that aren't valid UTF-8, so a file in another encoding doesn't stop the run. If the file can't be read at all, it uses the SARIF snippet instead.
+The adapter reads the checkout through the shared checkout reader (docs/class-diagrams.md), which refuses any path that leaves the checkout. It reads lines as UTF-8 and replaces bytes that aren't valid UTF-8, so a file in another encoding doesn't stop the run. If the file can't be read at all, it uses the SARIF snippet instead, and leaves the context hash empty, so no earlier review can hide the finding.
 
-For Gitleaks findings, the adapter replaces every flagged line, from `start_line` to `end_line`, with `REDACTED` before it hashes the lines or stores them as the snippet. It masks whole lines, not the reported columns, because Gitleaks 8.30.1 reports columns that are off by one and private keys that span several lines. The Gitleaks finding itself then never stores the secret. Other tools can still flag the same line, such as Semgrep's rules for hard-coded keys, and their snippets keep the code as it is: it is public code, as docs/data-flow.md explains.
+For Gitleaks findings, the adapter replaces every flagged line, from `start_line` to `end_line`, with `REDACTED` before it hashes the lines or stores them as the snippet. It masks whole lines, not the reported columns, because Gitleaks 8.30.1 reports columns that are off by one and private keys that span several lines. Every snippet the adapter stores is taken from the masked lines, and the tool's own snippets are removed from `raw`, so the Gitleaks finding itself never stores the secret. Other tools can still flag the same line, such as Semgrep's rules for hard-coded keys, and their snippets keep the code as it is: it is public code, as docs/data-flow.md explains.
 
 The hash leaves out line numbers on purpose. When code above a finding is added or removed, the finding keeps its fingerprint. We checked this on the example below: after adding three lines at the top of the file, the finding moved from line 57 to line 60 and its fingerprint and context hash stayed the same.
 
@@ -176,7 +176,7 @@ This doesn't catch a change that is more than 10 lines away, such as a change in
 Deduplication links each new finding to the earlier findings of the same repository with the same fingerprint. The new finding is hidden from the review queue, with the earlier decision applied, only when all of these hold:
 
 - An earlier finding with that fingerprint has a review. The latest such review counts, from any earlier scan, not only the previous one, so a finding that was hidden in the second scan stays hidden in the third.
-- That earlier finding has the same context hash.
+- That earlier finding has the same context hash, and it isn't empty.
 - Neither finding is ambiguous, except in two scans of the same commit.
 - The tool is not Gitleaks. Its fingerprint hides the secret, so a test key and a real key on the same line look the same.
 
