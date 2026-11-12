@@ -13,3 +13,6 @@ UPDATED_COMP491_Proposal_Sieve.pdf
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+
+# Downloads, generated CSV files and neutral copies of the evaluation
+eval-data/
