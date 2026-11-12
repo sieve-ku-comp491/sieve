@@ -14,6 +14,9 @@ from pathlib import Path, PurePosixPath
 # SARIF counts lines at \r\n and \n only, unless a tool sets run.newlineSequences (SARIF 2.1.0,
 # 3.14.26), and Semgrep counts them the same way.
 LINE_BREAK = re.compile(r"\r?\n")
+# On Linux, where the worker runs, a backslash is an ordinary character in a file name. On
+# Windows it is a separator, so a path with one could name a different file there.
+REFUSED_CHARACTERS = ("\x00", "\\") if os.name == "nt" else ("\x00",)
 MAX_FILE_BYTES = 5 * 1024 * 1024
 OPEN_FLAGS = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
 
@@ -29,7 +32,7 @@ class CheckoutReader:
 
     def resolve(self, relative: str) -> Path:
         """The checkout file at a relative path with / separators, or CheckoutError."""
-        if not relative or "\\" in relative or "\x00" in relative:
+        if not relative or any(c in relative for c in REFUSED_CHARACTERS):
             raise CheckoutError(f"not a relative path inside the checkout: {relative!r}")
         pure = PurePosixPath(relative)
         if pure.is_absolute() or ".." in pure.parts:

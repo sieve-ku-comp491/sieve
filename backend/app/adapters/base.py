@@ -120,19 +120,21 @@ class BaseSarifAdapter:
     def cwes(self, rule: dict, result: dict) -> list[str]:
         """CWE IDs from the rule's tags (Semgrep's and CodeQL's forms) and from relationships
         and taxa that point to the CWE taxonomy, as CWE-<number>, sorted, without duplicates."""
-        numbers: set[int] = set()
-        for tag in _dict(rule.get("properties")).get("tags") or []:
-            if isinstance(tag, str):
-                match = CWE_TAG.match(tag) or CODEQL_CWE_TAG.match(tag)
-                if match:
-                    numbers.add(int(match.group(1)))
-        targets = [_dict(_dict(r).get("target")) for r in rule.get("relationships") or []]
-        targets += [_dict(t) for t in result.get("taxa") or []]
-        for target in targets:
-            component = _dict(target.get("toolComponent")).get("name")
-            match = CWE_ID.match(str(target.get("id", "")))
-            if isinstance(component, str) and component.upper() == "CWE" and match:
-                numbers.add(int(match.group(1)))
+        # The cache keeps the rule itself next to its CWEs, so its id can't be reused.
+        cache = self._context.rule_cwes if self._context is not None else {}
+        cached = cache.get(id(rule))
+        from_rule = cached[1] if cached is not None and cached[0] is rule else None
+        if from_rule is None:
+            from_rule = set()
+            for tag in _dict(rule.get("properties")).get("tags") or []:
+                if isinstance(tag, str):
+                    match = CWE_TAG.match(tag) or CODEQL_CWE_TAG.match(tag)
+                    if match:
+                        from_rule.add(int(match.group(1)))
+            targets = [_dict(_dict(r).get("target")) for r in rule.get("relationships") or []]
+            from_rule |= _taxonomy_cwes(targets)
+            cache[id(rule)] = (rule, from_rule)
+        numbers = from_rule | _taxonomy_cwes([_dict(t) for t in result.get("taxa") or []])
         return [f"CWE-{number}" for number in sorted(numbers)]
 
     def tool_severity(self, rule: dict, result: dict) -> str:
@@ -331,11 +333,18 @@ class _RunContext:
         self.driver = _dict(tool.get("driver"))
         self.extensions = [_dict(e) for e in tool.get("extensions") or []]
         self.extensions_by_name: dict[str, dict] = {}
+        self.components_by_guid: dict[str, dict] = {}
+        for component in [self.driver, *self.extensions]:
+            guid = component.get("guid")
+            if isinstance(guid, str):
+                self.components_by_guid.setdefault(guid.lower(), component)
         for extension in self.extensions:
             name = extension.get("name")
             if isinstance(name, str):
                 self.extensions_by_name.setdefault(name, extension)
         self.rules_by_id: dict[int, dict[str, dict]] = {}
+        self.rule_lists: dict[int, list[dict]] = {}
+        self.rule_cwes: dict[int, tuple[dict, set[int]]] = {}
         self.base_ids = _dict(sarif_run.get("originalUriBaseIds"))
         self.global_messages = _dict(self.driver.get("globalMessageStrings"))
 
@@ -349,15 +358,22 @@ class _RunContext:
         name = target.get("name")
         if isinstance(name, str) and name in self.extensions_by_name:
             return self.extensions_by_name[name]
-        if name == self.driver.get("name"):
+        if isinstance(name, str) and name == self.driver.get("name"):
             return self.driver
+        guid = target.get("guid")
+        if isinstance(guid, str) and guid.lower() in self.components_by_guid:
+            return self.components_by_guid[guid.lower()]
         return None
 
     def find_rule(self, result: dict) -> dict:
         component = self._component(result)
         if component is None:
             return {}
-        rules = [_dict(r) for r in component.get("rules") or []]
+        rules = self.rule_lists.get(id(component))
+        if rules is None:
+            rules = self.rule_lists[id(component)] = [
+                _dict(r) for r in component.get("rules") or []
+            ]
         reference = _dict(result.get("rule"))
         rule_id = result.get("ruleId") or reference.get("id")
         index = result.get("ruleIndex", reference.get("index"))
@@ -391,8 +407,13 @@ def _resolve_base(uri: str, base_id: str | None, base_ids: dict, depth: int) -> 
 
 
 def _clean_path(path: str) -> str | None:
-    """A checkout-relative path, with the plug-ins' /src/ mount removed, or None."""
+    """A checkout-relative path, with the plug-ins' /src/ mount removed, or None. A path that
+    isn't valid Unicode, such as a lone surrogate from the JSON, can't be stored or hashed."""
     if "\x00" in path:
+        return None
+    try:
+        path.encode("utf-8")
+    except UnicodeEncodeError:
         return None
     if path.startswith(CHECKOUT_MOUNT):
         path = path[len(CHECKOUT_MOUNT) :]
@@ -424,6 +445,17 @@ def _remove_snippets(value: Any) -> None:
             _remove_snippets(item)
 
 
+def _taxonomy_cwes(targets: list[dict]) -> set[int]:
+    """CWE numbers from relationship targets or taxa that point to the CWE taxonomy."""
+    numbers = set()
+    for target in targets:
+        component = _dict(target.get("toolComponent")).get("name")
+        match = CWE_ID.match(str(target.get("id", "")))
+        if isinstance(component, str) and component.upper() == "CWE" and match:
+            numbers.add(int(match.group(1)))
+    return numbers
+
+
 def _suppressed(suppressions: Any) -> bool:
     """Suppressed when the tool accepted at least one suppression (SARIF 3.27.23, 3.35.3): a
     suppression without a status counts as accepted, one under review or rejected doesn't."""
@@ -434,14 +466,20 @@ def _suppressed(suppressions: Any) -> bool:
 
 
 def _message(result: dict, rule: dict, global_messages: dict) -> str:
+    """The message text, with arguments filled into its placeholders (SARIF 3.11.5). Plain
+    text without arguments is kept as it is: Semgrep writes "{{ }}" there as template syntax,
+    not as escaped braces."""
     message = _dict(result.get("message"))
+    arguments = message.get("arguments") or []
     template = message.get("text")
-    if not isinstance(template, str):
+    if isinstance(template, str):
+        if not arguments:
+            return template
+    else:
         message_id = message.get("id")
         strings = _dict(rule.get("messageStrings"))
         source = strings.get(message_id) or global_messages.get(message_id)
         template = _text(source) or ""
-    arguments = message.get("arguments") or []
     parts: list[str] = []
     size = 0
     position = 0

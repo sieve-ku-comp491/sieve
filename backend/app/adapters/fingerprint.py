@@ -18,14 +18,16 @@ def normalize(lines: list[str]) -> str:
 
 def fingerprint(tool: str, rule_id: str, file: str, lines: list[str], occurrence: int) -> str:
     key = "\x1f".join([tool, rule_id, file, normalize(lines), str(occurrence)])
-    return "v1:" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+    return "v1:" + hashlib.sha256(key.encode("utf-8", "surrogatepass")).hexdigest()[:32]
 
 
 def context_hash(
     file_lines: list[str], start_line: int, end_line: int, window: int = CONTEXT_WINDOW
 ) -> str:
     lines = file_lines[max(0, start_line - 1 - window) : end_line + window]
-    return "c1:" + hashlib.sha256(normalize(lines).encode("utf-8")).hexdigest()[:32]
+    return (
+        "c1:" + hashlib.sha256(normalize(lines).encode("utf-8", "surrogatepass")).hexdigest()[:32]
+    )
 
 
 class Fingerprinter:

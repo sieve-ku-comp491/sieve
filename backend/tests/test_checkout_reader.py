@@ -39,7 +39,6 @@ def test_a_file_over_the_size_limit_is_not_read(reader):
         "pkg/../../outside.txt",
         "/etc/passwd",
         "",
-        "pkg\\a.py",
         "pkg/a.py\x00",
         "pkg/\ud800.py",
     ],
@@ -49,6 +48,18 @@ def test_refuses_paths_outside(reader, path):
         reader.resolve(path)
     assert reader.read_lines(path) is None
     assert reader.is_file(path) is False
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a backslash is a separator on Windows")
+def test_a_backslash_is_part_of_a_file_name_on_linux(reader):
+    (reader.root / "pkg/back\\slash.py").write_text("x = 1\n", encoding="utf-8")
+    assert reader.read_lines("pkg/back\\slash.py") == ["x = 1"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="only Windows treats a backslash as a separator")
+def test_a_backslash_is_refused_on_windows(reader):
+    with pytest.raises(CheckoutError):
+        reader.resolve("pkg\\a.py")
 
 
 def test_missing_files_and_folders(reader):

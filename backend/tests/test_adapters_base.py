@@ -1,5 +1,6 @@
 """The SARIF mapping shared by all adapters (docs/finding-format.md), on small SARIF files."""
 
+import os
 import time
 
 import pytest
@@ -30,11 +31,15 @@ def checkout(tmp_path):
         "odd/q?x.py": "eval(x)\n",
         "odd/p%41.py": "eval(x)\n",
         "odd/%00/app.py": "eval(x)\n",
+        "odd/back\\slash.py": "eval(x)\n",
     }
     for name, content in files.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        try:
+            path.write_text(content, encoding="utf-8")
+        except OSError:
+            pass  # a name this system doesn't allow, such as "q?x.py" on Windows
     return root
 
 
@@ -207,6 +212,8 @@ def test_messages(checkout):
         result(message={"text": "'{0}' is tainted", "arguments": ["x"]}),
         result(message={"id": "global", "arguments": ["y"]}),
         result(message={"id": "missing"}),
+        # Semgrep's own text: the braces are Jinja syntax, not escapes.
+        result(message={"text": 'Quote it: "{{ a + b }}" and {0}'}),
     ]
     document = sarif(*items, rules=[rule])
     document["runs"][0]["tool"]["driver"]["globalMessageStrings"] = driver_strings
@@ -216,6 +223,7 @@ def test_messages(checkout):
         "'x' is tainted",
         "from the driver: y",
         "",
+        'Quote it: "{{ a + b }}" and {0}',
     ]
 
 
@@ -245,6 +253,7 @@ def test_rule_lookup(checkout):
     extension_by_index = result(ruleId="x", rule={"id": "x", "toolComponent": {"index": 0}})
     extension_by_name = result(ruleId="x", rule={"id": "x", "toolComponent": {"name": "pack"}})
     unknown_component = result(ruleId="a", rule={"id": "a", "toolComponent": {"name": "nope"}})
+    extension_by_guid = result(ruleId="x", rule={"id": "x", "toolComponent": {"guid": "0000-AAAA"}})
     document = sarif(
         by_index,
         by_reference_index,
@@ -254,9 +263,10 @@ def test_rule_lookup(checkout):
         extension_by_index,
         extension_by_name,
         unknown_component,
+        extension_by_guid,
         rules=rules,
     )
-    document["runs"][0]["tool"]["extensions"] = [extension]
+    document["runs"][0]["tool"]["extensions"] = [extension | {"guid": "0000-aaaa"}]
     findings = convert(checkout, document).findings
     assert [(f.rule_id, f.rule_description) for f in findings] == [
         ("b", "rule b"),
@@ -267,6 +277,7 @@ def test_rule_lookup(checkout):
         ("x", "rule x"),
         ("x", "rule x"),
         ("a", None),
+        ("x", "rule x"),
     ]
     assert findings[0].rule_help_uri == "https://b"
 
@@ -313,12 +324,15 @@ def test_every_run_is_read(checkout):
         ("/src/odd/q?x.py", None, "odd/q?x.py"),
         ("/src/odd/p%41.py", None, "odd/p%41.py"),
         ("/src/odd/%00/app.py", None, "odd/%00/app.py"),
+        ("/src/odd/back\\slash.py", None, "odd/back\\slash.py"),
         # file: URIs are decoded, and so is a relative reference that only exists decoded.
         ("file:///src/docs%20dir/conf.yml", None, "docs dir/conf.yml"),
         ("docs%20dir/conf.yml", None, "docs dir/conf.yml"),
     ],
 )
 def test_paths(checkout, uri, base, expected):
+    if not (checkout / expected).is_file():
+        pytest.skip("this system doesn't allow the file name")
     item = result(uri, line=1)
     if base:
         item["locations"][0]["physicalLocation"]["artifactLocation"]["uriBaseId"] = base
@@ -368,6 +382,25 @@ def test_bad_bases_are_dropped(checkout, bases):
     item["locations"][0]["physicalLocation"]["artifactLocation"]["uriBaseId"] = "A"
     out = convert(checkout, sarif(item, originalUriBaseIds=bases))
     assert out.findings == [] and out.dropped == {"path_outside_checkout": 1}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows file names are always Unicode")
+def test_a_file_name_that_isnt_utf8_is_dropped_alone(checkout):
+    """JSON can carry a lone surrogate, which Linux maps to a byte that isn't UTF-8."""
+    with open(os.fsencode(checkout / "odd") + b"/\xff.py", "w") as handle:
+        handle.write("eval(x)\n")
+    out = convert(checkout, sarif(result("/src/odd/\udcff.py", line=1), result()))
+    assert [f.location.file for f in out.findings] == ["app/views.py"]
+    assert out.dropped == {"path_outside_checkout": 1}
+
+
+def test_many_rules_and_results_stay_fast(checkout):
+    rules = [{"id": f"r{i}", "properties": {"tags": ["CWE-79: XSS"]}} for i in range(5000)]
+    items = [result(ruleId=f"missing{i}", line=1) for i in range(5000)]
+    started = time.monotonic()
+    out = convert(checkout, sarif(*items, rules=rules))
+    assert len(out.findings) == 5000
+    assert time.monotonic() - started < 10
 
 
 def test_a_link_out_of_the_checkout_is_dropped(checkout, tmp_path):
