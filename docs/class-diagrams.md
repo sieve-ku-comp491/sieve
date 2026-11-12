@@ -23,7 +23,8 @@ classDiagram
     +export(entry: ScopeEntry, commit: str, dest: Path) str
   }
   class CheckoutReader {
-    +read_lines(scan_id: str, file: str) list~str~
+    +is_file(file: str) bool
+    +read_lines(file: str) list~str~
   }
   class PluginRegistry {
     +load(plugins_dir: Path)$ PluginRegistry
@@ -184,7 +185,7 @@ classDiagram
     <<abstract>>
     +to_findings(sarif: dict, run: PluginRun, reader: CheckoutReader) AdapterResult
     #find_rule(run: dict, result: dict) dict
-    #normalize_path(uri: str, base_ids: dict) str
+    #normalize_path(uri: str, base_id: str, base_ids: dict) str
     #cwes(rule: dict, result: dict) list~str~
     #tool_severity(rule: dict, result: dict) str
     #tool_score(rule: dict) float
@@ -200,7 +201,7 @@ classDiagram
   }
   class SpotBugsAdapter {
     +tool: str
-    #normalize_path(uri: str, base_ids: dict) str
+    #normalize_path(uri: str, base_id: str, base_ids: dict) str
   }
   class EslintAdapter {
     +tool: str

@@ -10,6 +10,8 @@ pythonpath = ["."]
 [tool.ruff]
 target-version = "py314"
 line-length = 100
+# PyGoat's own code, kept as it is in its repository as test data for the adapters.
+extend-exclude = ["tests/adapter_fixture"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]

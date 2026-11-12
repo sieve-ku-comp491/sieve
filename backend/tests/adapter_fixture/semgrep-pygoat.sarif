@@ -1,0 +1,504 @@
+{
+ "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/schemas/sarif-schema-2.1.0.json",
+ "version": "2.1.0",
+ "runs": [
+  {
+   "invocations": [
+    {
+     "executionSuccessful": true,
+     "toolExecutionNotifications": []
+    }
+   ],
+   "results": [
+    {
+     "fingerprints": {
+      "matchBasedId/v1": "requires login"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "/src/dockerized_labs/sql_injection_lab/app.py",
+         "uriBaseId": "%SRCROOT%"
+        },
+        "region": {
+         "endColumn": 50,
+         "endLine": 7,
+         "snippet": {
+          "text": "app.config[\"SECRET_KEY\"] = \"your-secret-key-here\""
+         },
+         "startColumn": 1,
+         "startLine": 7
+        }
+       }
+      }
+     ],
+     "message": {
+      "text": "Hardcoded variable `SECRET_KEY` detected. Use environment variables or config files instead"
+     },
+     "properties": {},
+     "ruleId": "python.flask.security.audit.avoid_hardcoded_config_SECRET_KEY"
+    },
+    {
+     "fingerprints": {
+      "matchBasedId/v1": "requires login"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "/src/dockerized_labs/sql_injection_lab/app.py",
+         "uriBaseId": "%SRCROOT%"
+        },
+        "region": {
+         "endColumn": 82,
+         "endLine": 69,
+         "snippet": {
+          "text": "        username = request.form.get(\"username\", \"\")\n        password = request.form.get(\"password\", \"\")\n\n        # Vulnerable SQL query construction (intentional)\n        sql_query = (\n            f\"SELECT * FROM users WHERE username='{username}' AND password='{password}'\"\n        )\n\n        try:\n            conn = sqlite3.connect(\"database.db\")\n            c = conn.cursor()\n            result = c.execute(sql_query).fetchone()\n            conn.close()\n\n            if result:\n                return render_template(\"lab.html\", logged_in_user=result[0])\n            else:\n                return render_template(\n                    \"lab.html\",\n                    error=\"Invalid username or password\",\n                    sql_query=sql_query,\n                )\n        except sqlite3.Error as e:\n            return render_template(\"lab.html\", error=str(e), sql_query=sql_query)"
+         },
+         "startColumn": 9,
+         "startLine": 46
+        }
+       }
+      }
+     ],
+     "message": {
+      "text": "User-controlled data from a request is passed to 'execute()'. This could lead to a SQL injection and therefore protected information could be leaked. Instead, use django's QuerySets, which are built with query parameterization and therefore not vulnerable to sql injection. For example, you could use `Entry.objects.filter(date=2006)`."
+     },
+     "properties": {},
+     "ruleId": "python.django.security.injection.sql.sql-injection-db-cursor-execute"
+    },
+    {
+     "fingerprints": {
+      "matchBasedId/v1": "requires login"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "/src/dockerized_labs/sql_injection_lab/app.py",
+         "uriBaseId": "%SRCROOT%"
+        },
+        "region": {
+         "endColumn": 82,
+         "endLine": 69,
+         "snippet": {
+          "text": "        password = request.form.get(\"password\", \"\")\n\n        # Vulnerable SQL query construction (intentional)\n        sql_query = (\n            f\"SELECT * FROM users WHERE username='{username}' AND password='{password}'\"\n        )\n\n        try:\n            conn = sqlite3.connect(\"database.db\")\n            c = conn.cursor()\n            result = c.execute(sql_query).fetchone()\n            conn.close()\n\n            if result:\n                return render_template(\"lab.html\", logged_in_user=result[0])\n            else:\n                return render_template(\n                    \"lab.html\",\n                    error=\"Invalid username or password\",\n                    sql_query=sql_query,\n                )\n        except sqlite3.Error as e:\n            return render_template(\"lab.html\", error=str(e), sql_query=sql_query)"
+         },
+         "startColumn": 9,
+         "startLine": 47
+        }
+       }
+      }
+     ],
+     "message": {
+      "text": "User-controlled data from a request is passed to 'execute()'. This could lead to a SQL injection and therefore protected information could be leaked. Instead, use django's QuerySets, which are built with query parameterization and therefore not vulnerable to sql injection. For example, you could use `Entry.objects.filter(date=2006)`."
+     },
+     "properties": {},
+     "ruleId": "python.django.security.injection.sql.sql-injection-db-cursor-execute"
+    },
+    {
+     "fingerprints": {
+      "matchBasedId/v1": "requires login"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "/src/dockerized_labs/sql_injection_lab/app.py",
+         "uriBaseId": "%SRCROOT%"
+        },
+        "region": {
+         "endColumn": 10,
+         "endLine": 52,
+         "snippet": {
+          "text": "        sql_query = (\n            f\"SELECT * FROM users WHERE username='{username}' AND password='{password}'\"\n        )"
+         },
+         "startColumn": 21,
+         "startLine": 50
+        }
+       }
+      }
+     ],
+     "message": {
+      "text": "Detected user input used to manually construct a SQL string. This is usually bad practice because manual construction could accidentally result in a SQL injection. An attacker could use a SQL injection to steal or modify contents of the database. Instead, use a parameterized query which is available by default in most database engines. Alternatively, consider using the Django object-relational mappers (ORM) instead of raw SQL queries."
+     },
+     "properties": {},
+     "ruleId": "python.django.security.injection.tainted-sql-string"
+    },
+    {
+     "fingerprints": {
+      "matchBasedId/v1": "requires login"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "/src/dockerized_labs/sql_injection_lab/app.py",
+         "uriBaseId": "%SRCROOT%"
+        },
+        "region": {
+         "endColumn": 10,
+         "endLine": 52,
+         "snippet": {
+          "text": "        sql_query = (\n            f\"SELECT * FROM users WHERE username='{username}' AND password='{password}'\"\n        )"
+         },
+         "startColumn": 21,
+         "startLine": 50
+        }
+       }
+      }
+     ],
+     "message": {
+      "text": "Detected user input used to manually construct a SQL string. This is usually bad practice because manual construction could accidentally result in a SQL injection. An attacker could use a SQL injection to steal or modify contents of the database. Instead, use a parameterized query which is available by default in most database engines. Alternatively, consider using an object-relational mapper (ORM) such as SQLAlchemy which will protect your queries."
+     },
+     "properties": {},
+     "ruleId": "python.flask.security.injection.tainted-sql-string"
+    },
+    {
+     "fingerprints": {
+      "matchBasedId/v1": "requires login"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "/src/dockerized_labs/sql_injection_lab/app.py",
+         "uriBaseId": "%SRCROOT%"
+        },
+        "region": {
+         "endColumn": 42,
+         "endLine": 57,
+         "snippet": {
+          "text": "            result = c.execute(sql_query).fetchone()"
+         },
+         "startColumn": 22,
+         "startLine": 57
+        }
+       }
+      }
+     ],
+     "message": {
+      "text": "Detected possible formatted SQL query. Use parameterized queries instead."
+     },
+     "properties": {},
+     "ruleId": "python.lang.security.audit.formatted-sql-query"
+    },
+    {
+     "fingerprints": {
+      "matchBasedId/v1": "requires login"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "/src/dockerized_labs/sql_injection_lab/app.py",
+         "uriBaseId": "%SRCROOT%"
+        },
+        "region": {
+         "endColumn": 42,
+         "endLine": 57,
+         "snippet": {
+          "text": "            result = c.execute(sql_query).fetchone()"
+         },
+         "startColumn": 22,
+         "startLine": 57
+        }
+       }
+      }
+     ],
+     "message": {
+      "text": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option."
+     },
+     "properties": {},
+     "ruleId": "python.sqlalchemy.security.sqlalchemy-execute-raw-query"
+    },
+    {
+     "fingerprints": {
+      "matchBasedId/v1": "requires login"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "/src/dockerized_labs/sql_injection_lab/app.py",
+         "uriBaseId": "%SRCROOT%"
+        },
+        "region": {
+         "endColumn": 51,
+         "endLine": 78,
+         "snippet": {
+          "text": "    app.run(host=\"0.0.0.0\", port=5012, debug=True)"
+         },
+         "startColumn": 5,
+         "startLine": 78
+        }
+       }
+      }
+     ],
+     "message": {
+      "text": "Running flask app with host 0.0.0.0 could expose the server publicly."
+     },
+     "properties": {},
+     "ruleId": "python.flask.security.audit.avoid_app_run_with_bad_host"
+    },
+    {
+     "fingerprints": {
+      "matchBasedId/v1": "requires login"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "/src/dockerized_labs/sql_injection_lab/app.py",
+         "uriBaseId": "%SRCROOT%"
+        },
+        "region": {
+         "endColumn": 51,
+         "endLine": 78,
+         "snippet": {
+          "text": "    app.run(host=\"0.0.0.0\", port=5012, debug=True)"
+         },
+         "startColumn": 5,
+         "startLine": 78
+        }
+       }
+      }
+     ],
+     "message": {
+      "text": "Detected Flask app with debug=True. Do not deploy to production with this flag enabled as it will leak sensitive information. Instead, consider using Flask configuration variables or setting 'debug' using system environment variables."
+     },
+     "properties": {},
+     "ruleId": "python.flask.security.audit.debug-enabled"
+    }
+   ],
+   "tool": {
+    "driver": {
+     "name": "Semgrep OSS",
+     "semanticVersion": "1.183.0",
+     "rules": [
+      {
+       "defaultConfiguration": {
+        "level": "warning"
+       },
+       "fullDescription": {
+        "text": "User-controlled data from a request is passed to 'execute()'. This could lead to a SQL injection and therefore protected information could be leaked. Instead, use django's QuerySets, which are built with query parameterization and therefore not vulnerable to sql injection. For example, you could use `Entry.objects.filter(date=2006)`."
+       },
+       "help": {
+        "markdown": "User-controlled data from a request is passed to 'execute()'. This could lead to a SQL injection and therefore protected information could be leaked. Instead, use django's QuerySets, which are built with query parameterization and therefore not vulnerable to sql injection. For example, you could use `Entry.objects.filter(date=2006)`.\n\n<b>References:</b>\n - [https://docs.djangoproject.com/en/3.0/topics/security/#sql-injection-protection](https://docs.djangoproject.com/en/3.0/topics/security/#sql-injection-protection)\n",
+        "text": "User-controlled data from a request is passed to 'execute()'. This could lead to a SQL injection and therefore protected information could be leaked. Instead, use django's QuerySets, which are built with query parameterization and therefore not vulnerable to sql injection. For example, you could use `Entry.objects.filter(date=2006)`."
+       },
+       "id": "python.django.security.injection.sql.sql-injection-db-cursor-execute",
+       "name": "python.django.security.injection.sql.sql-injection-db-cursor-execute",
+       "properties": {
+        "precision": "very-high",
+        "tags": [
+         "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+         "MEDIUM CONFIDENCE",
+         "OWASP-A01:2017 - Injection",
+         "OWASP-A03:2021 - Injection",
+         "OWASP-A05:2025 - Injection",
+         "security"
+        ]
+       },
+       "shortDescription": {
+        "text": "Semgrep Finding: python.django.security.injection.sql.sql-injection-db-cursor-execute"
+       }
+      },
+      {
+       "defaultConfiguration": {
+        "level": "error"
+       },
+       "fullDescription": {
+        "text": "Detected user input used to manually construct a SQL string. This is usually bad practice because manual construction could accidentally result in a SQL injection. An attacker could use a SQL injection to steal or modify contents of the database. Instead, use a parameterized query which is available by default in most database engines. Alternatively, consider using the Django object-relational mappers (ORM) instead of raw SQL queries."
+       },
+       "help": {
+        "markdown": "Detected user input used to manually construct a SQL string. This is usually bad practice because manual construction could accidentally result in a SQL injection. An attacker could use a SQL injection to steal or modify contents of the database. Instead, use a parameterized query which is available by default in most database engines. Alternatively, consider using the Django object-relational mappers (ORM) instead of raw SQL queries.\n\n<b>References:</b>\n - [https://docs.djangoproject.com/en/3.0/topics/security/#sql-injection-protection](https://docs.djangoproject.com/en/3.0/topics/security/#sql-injection-protection)\n",
+        "text": "Detected user input used to manually construct a SQL string. This is usually bad practice because manual construction could accidentally result in a SQL injection. An attacker could use a SQL injection to steal or modify contents of the database. Instead, use a parameterized query which is available by default in most database engines. Alternatively, consider using the Django object-relational mappers (ORM) instead of raw SQL queries."
+       },
+       "id": "python.django.security.injection.tainted-sql-string",
+       "name": "python.django.security.injection.tainted-sql-string",
+       "properties": {
+        "precision": "very-high",
+        "tags": [
+         "CWE-915: Improperly Controlled Modification of Dynamically-Determined Object Attributes",
+         "LOW CONFIDENCE",
+         "OWASP-A08:2021 - Software and Data Integrity Failures",
+         "OWASP-A08:2025 - Software or Data Integrity Failures",
+         "security"
+        ]
+       },
+       "shortDescription": {
+        "text": "Semgrep Finding: python.django.security.injection.tainted-sql-string"
+       }
+      },
+      {
+       "defaultConfiguration": {
+        "level": "warning"
+       },
+       "fullDescription": {
+        "text": "Running flask app with host 0.0.0.0 could expose the server publicly."
+       },
+       "help": {
+        "markdown": "Running flask app with host 0.0.0.0 could expose the server publicly.\n\n<b>References:</b>\n - [https://owasp.org/Top10/A01_2021-Broken_Access_Control](https://owasp.org/Top10/A01_2021-Broken_Access_Control)\n",
+        "text": "Running flask app with host 0.0.0.0 could expose the server publicly."
+       },
+       "id": "python.flask.security.audit.avoid_app_run_with_bad_host",
+       "name": "python.flask.security.audit.avoid_app_run_with_bad_host",
+       "properties": {
+        "precision": "very-high",
+        "tags": [
+         "CWE-668: Exposure of Resource to Wrong Sphere",
+         "HIGH CONFIDENCE",
+         "OWASP-A01:2021 - Broken Access Control",
+         "OWASP-A01:2025 - Broken Access Control",
+         "security"
+        ]
+       },
+       "shortDescription": {
+        "text": "Semgrep Finding: python.flask.security.audit.avoid_app_run_with_bad_host"
+       }
+      },
+      {
+       "defaultConfiguration": {
+        "level": "error"
+       },
+       "fullDescription": {
+        "text": "Hardcoded variable `SECRET_KEY` detected. Use environment variables or config files instead"
+       },
+       "help": {
+        "markdown": "Hardcoded variable `SECRET_KEY` detected. Use environment variables or config files instead\n\n<b>References:</b>\n - [https://bento.dev/checks/flask/avoid-hardcoded-config/](https://bento.dev/checks/flask/avoid-hardcoded-config/)\n - [https://flask.palletsprojects.com/en/1.1.x/config/?highlight=configuration#builtin-configuration-values](https://flask.palletsprojects.com/en/1.1.x/config/?highlight=configuration#builtin-configuration-values)\n - [https://flask.palletsprojects.com/en/1.1.x/config/?highlight=configuration#environment-and-debug-features](https://flask.palletsprojects.com/en/1.1.x/config/?highlight=configuration#environment-and-debug-features)\n",
+        "text": "Hardcoded variable `SECRET_KEY` detected. Use environment variables or config files instead"
+       },
+       "id": "python.flask.security.audit.avoid_hardcoded_config_SECRET_KEY",
+       "name": "python.flask.security.audit.avoid_hardcoded_config_SECRET_KEY",
+       "properties": {
+        "precision": "very-high",
+        "tags": [
+         "CWE-489: Active Debug Code",
+         "LOW CONFIDENCE",
+         "OWASP-A02:2025 - Security Misconfiguration",
+         "OWASP-A05:2021 - Security Misconfiguration",
+         "security"
+        ]
+       },
+       "shortDescription": {
+        "text": "Semgrep Finding: python.flask.security.audit.avoid_hardcoded_config_SECRET_KEY"
+       }
+      },
+      {
+       "defaultConfiguration": {
+        "level": "warning"
+       },
+       "fullDescription": {
+        "text": "Detected Flask app with debug=True. Do not deploy to production with this flag enabled as it will leak sensitive information. Instead, consider using Flask configuration variables or setting 'debug' using system environment variables."
+       },
+       "help": {
+        "markdown": "Detected Flask app with debug=True. Do not deploy to production with this flag enabled as it will leak sensitive information. Instead, consider using Flask configuration variables or setting 'debug' using system environment variables.\n\n<b>References:</b>\n - [https://labs.detectify.com/2015/10/02/how-patreon-got-hacked-publicly-exposed-werkzeug-debugger/](https://labs.detectify.com/2015/10/02/how-patreon-got-hacked-publicly-exposed-werkzeug-debugger/)\n",
+        "text": "Detected Flask app with debug=True. Do not deploy to production with this flag enabled as it will leak sensitive information. Instead, consider using Flask configuration variables or setting 'debug' using system environment variables."
+       },
+       "id": "python.flask.security.audit.debug-enabled",
+       "name": "python.flask.security.audit.debug-enabled",
+       "properties": {
+        "precision": "very-high",
+        "tags": [
+         "CWE-489: Active Debug Code",
+         "HIGH CONFIDENCE",
+         "OWASP-A06:2017 - Security Misconfiguration",
+         "security"
+        ]
+       },
+       "shortDescription": {
+        "text": "Semgrep Finding: python.flask.security.audit.debug-enabled"
+       }
+      },
+      {
+       "defaultConfiguration": {
+        "level": "error"
+       },
+       "fullDescription": {
+        "text": "Detected user input used to manually construct a SQL string. This is usually bad practice because manual construction could accidentally result in a SQL injection. An attacker could use a SQL injection to steal or modify contents of the database. Instead, use a parameterized query which is available by default in most database engines. Alternatively, consider using an object-relational mapper (ORM) such as SQLAlchemy which will protect your queries."
+       },
+       "help": {
+        "markdown": "Detected user input used to manually construct a SQL string. This is usually bad practice because manual construction could accidentally result in a SQL injection. An attacker could use a SQL injection to steal or modify contents of the database. Instead, use a parameterized query which is available by default in most database engines. Alternatively, consider using an object-relational mapper (ORM) such as SQLAlchemy which will protect your queries.\n\n<b>References:</b>\n - [https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-textual-sql](https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-textual-sql)\n - [https://www.tutorialspoint.com/sqlalchemy/sqlalchemy_quick_guide.htm](https://www.tutorialspoint.com/sqlalchemy/sqlalchemy_quick_guide.htm)\n - [https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-more-specific-text-with-table-expression-literal-column-and-expression-column](https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-more-specific-text-with-table-expression-literal-column-and-expression-column)\n",
+        "text": "Detected user input used to manually construct a SQL string. This is usually bad practice because manual construction could accidentally result in a SQL injection. An attacker could use a SQL injection to steal or modify contents of the database. Instead, use a parameterized query which is available by default in most database engines. Alternatively, consider using an object-relational mapper (ORM) such as SQLAlchemy which will protect your queries."
+       },
+       "id": "python.flask.security.injection.tainted-sql-string",
+       "name": "python.flask.security.injection.tainted-sql-string",
+       "properties": {
+        "precision": "very-high",
+        "tags": [
+         "CWE-704: Incorrect Type Conversion or Cast",
+         "MEDIUM CONFIDENCE",
+         "OWASP-A01:2017 - Injection",
+         "OWASP-A03:2021 - Injection",
+         "OWASP-A05:2025 - Injection",
+         "security"
+        ]
+       },
+       "shortDescription": {
+        "text": "Semgrep Finding: python.flask.security.injection.tainted-sql-string"
+       }
+      },
+      {
+       "defaultConfiguration": {
+        "level": "warning"
+       },
+       "fullDescription": {
+        "text": "Detected possible formatted SQL query. Use parameterized queries instead."
+       },
+       "help": {
+        "markdown": "Detected possible formatted SQL query. Use parameterized queries instead.\n\n<b>References:</b>\n - [https://stackoverflow.com/questions/775296/mysql-parameterized-queries](https://stackoverflow.com/questions/775296/mysql-parameterized-queries)\n",
+        "text": "Detected possible formatted SQL query. Use parameterized queries instead."
+       },
+       "id": "python.lang.security.audit.formatted-sql-query",
+       "name": "python.lang.security.audit.formatted-sql-query",
+       "properties": {
+        "precision": "very-high",
+        "tags": [
+         "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+         "LOW CONFIDENCE",
+         "OWASP-A01:2017 - Injection",
+         "OWASP-A03:2021 - Injection",
+         "OWASP-A05:2025 - Injection",
+         "security"
+        ]
+       },
+       "shortDescription": {
+        "text": "Semgrep Finding: python.lang.security.audit.formatted-sql-query"
+       }
+      },
+      {
+       "defaultConfiguration": {
+        "level": "error"
+       },
+       "fullDescription": {
+        "text": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option."
+       },
+       "help": {
+        "markdown": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option.\n\n<b>References:</b>\n - [https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-textual-sql](https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-textual-sql)\n - [https://www.tutorialspoint.com/sqlalchemy/sqlalchemy_quick_guide.htm](https://www.tutorialspoint.com/sqlalchemy/sqlalchemy_quick_guide.htm)\n - [https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-more-specific-text-with-table-expression-literal-column-and-expression-column](https://docs.sqlalchemy.org/en/14/core/tutorial.html#using-more-specific-text-with-table-expression-literal-column-and-expression-column)\n",
+        "text": "Avoiding SQL string concatenation: untrusted input concatenated with raw SQL query can result in SQL Injection. In order to execute raw query safely, prepared statement should be used. SQLAlchemy provides TextualSQL to easily used prepared statement with named parameters. For complex SQL composition, use SQL Expression Language or Schema Definition Language. In most cases, SQLAlchemy ORM will be a better option."
+       },
+       "id": "python.sqlalchemy.security.sqlalchemy-execute-raw-query",
+       "name": "python.sqlalchemy.security.sqlalchemy-execute-raw-query",
+       "properties": {
+        "precision": "very-high",
+        "tags": [
+         "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+         "LOW CONFIDENCE",
+         "OWASP-A01:2017 - Injection",
+         "OWASP-A03:2021 - Injection",
+         "OWASP-A05:2025 - Injection",
+         "security"
+        ]
+       },
+       "shortDescription": {
+        "text": "Semgrep Finding: python.sqlalchemy.security.sqlalchemy-execute-raw-query"
+       }
+      }
+     ]
+    }
+   }
+  }
+ ]
+}
