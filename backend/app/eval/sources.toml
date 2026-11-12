@@ -1,0 +1,46 @@
+# The datasets and target applications of the evaluation, pinned to full commit
+# hashes. They follow the versions in docs/requirements.md, "Analyzers, datasets
+# and target applications". A version changes only through a pull request that
+# updates both files and says why.
+
+[[source]]
+name = "benchmark-java"
+kind = "dataset"
+url = "https://github.com/OWASP-Benchmark/BenchmarkJava.git"
+version = "1.2"
+commit = "0119da404a3418bc337beb529b72ae755f018f97"
+
+[[source]]
+name = "benchmark-python"
+kind = "dataset"
+url = "https://github.com/OWASP-Benchmark/BenchmarkPython.git"
+version = "0.1"
+commit = "f1291485808b66e20ddb6b01b10dc71b3df8c8ba"
+
+[[source]]
+name = "cwe-bench-java"
+kind = "dataset"
+url = "https://github.com/iris-sast/cwe-bench-java.git"
+version = "afe0ebd"
+commit = "afe0ebd0adc237abb46255f9cd479b1d71819136"
+
+[[source]]
+name = "pygoat"
+kind = "target"
+url = "https://github.com/adeyosemanputra/pygoat.git"
+version = "2aa4cc1"
+commit = "2aa4cc14f251e4a780e94e200aed6b36a5b15c21"
+
+[[source]]
+name = "webgoat"
+kind = "target"
+url = "https://github.com/WebGoat/WebGoat.git"
+version = "v2026.5"
+commit = "7e198f39189f33e1912f7cbb60e24e42635ca06a"
+
+[[source]]
+name = "juice-shop"
+kind = "target"
+url = "https://github.com/juice-shop/juice-shop.git"
+version = "v20.3.0"
+commit = "f189f521266f42c6bd05884468292000cee852ed"
