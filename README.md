@@ -1,6 +1,6 @@
 # Sieve
 
-Sieve is a pluggable framework for white-box security testing. Static analyzers plug in through SARIF, an AI agent removes duplicate findings, checks for false positives and scores severity, and a person approves each finding before Sieve writes a report. It is our COMP 491 project at Koç University.
+Sieve is a pluggable framework for white-box security testing. Static analyzers plug in through SARIF, an AI agent removes duplicate findings, checks for false positives and scores severity, and a person approves each finding before Sieve writes a report. It is our COMP 491 project at Koç University. The project website is at https://sieve-ku-comp491.github.io.
 
 The design documents are in docs/. How we write commits, issues and pull requests is in CONTRIBUTING.md.
 
