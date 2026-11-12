@@ -17,6 +17,7 @@ These documents turn the design in the proposal (Section 2.1, Tables 1 to 3) int
 | [finding-states.md](finding-states.md) | the states of a finding, the export check of F5, and repeated scans | #10 |
 | [ui-mockups.md](ui-mockups.md) | the review queue, the finding detail and the report preview | #11 |
 | [ci.md](ci.md) | the CI workflow that runs on every pull request | #16 |
+| [evaluation.md](evaluation.md) | the datasets and target applications with their pinned commits, the expected results, the neutral copies of the Benchmarks and the metric scripts | #23 |
 
 The REST API specification is not written by hand: FastAPI generates it from the code in T2.3, and it is served at http://localhost:8000/docs.
 
