@@ -343,7 +343,7 @@ A triage result for a SQL injection finding. The values are illustrative.
 
 ## Report schema
 
-The report service turns an approved finding into a report. It drafts the text through the provider interface, and the reviewer can edit any field before export. Only approved findings get a report (requirements F5 and F6).
+The report service turns an approved finding into a report. It drafts the text through the provider interface, the reviewer can edit any field, and a person approves the text before export. Only approved findings get a report, and only approved text is exported (requirements F5 and F6).
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -357,6 +357,8 @@ The report service turns an approved finding into a report. It drafts the text t
 | `references` | list of URLs | at least the CWE entry, plus any documentation the fix relies on |
 | `severity` | the `cvss_v4` fields from the triage result | copied from the finding, or as edited by the reviewer |
 | `locations` | list of file and line | the affected code |
+| `version` | integer | the version of the text: 1 for the first draft, and one more for each edit or new draft |
+| `approved_by`, `approved_at` | string, timestamp | who approved this version of the text, and when. Empty until a person approves it. An edit or a new draft is a new version, so it needs a new approval. |
 | `status` | `draft` or `exported` | |
 | `created_at`, `exported_at` | timestamps | |
 
