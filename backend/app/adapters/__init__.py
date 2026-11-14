@@ -3,6 +3,7 @@
 from app.adapters.base import BaseSarifAdapter, SarifAdapter
 from app.adapters.finding import AdapterResult, Finding, FlowStep, Location
 from app.adapters.fingerprint import Fingerprinter, context_hash, fingerprint, normalize
+from app.adapters.gitleaks import GitleaksAdapter
 from app.adapters.semgrep import SemgrepAdapter
 
 
@@ -14,7 +15,7 @@ class AdapterRegistry:
     """The adapter for each name a plug-in manifest can give in its adapter field."""
 
     def __init__(self, adapters: list[SarifAdapter] | None = None):
-        adapters = adapters if adapters is not None else [SemgrepAdapter()]
+        adapters = adapters if adapters is not None else [SemgrepAdapter(), GitleaksAdapter()]
         self._adapters = {adapter.tool: adapter for adapter in adapters}
 
     def get(self, name: str) -> SarifAdapter:
@@ -32,6 +33,7 @@ __all__ = [
     "Finding",
     "Fingerprinter",
     "FlowStep",
+    "GitleaksAdapter",
     "Location",
     "SarifAdapter",
     "SemgrepAdapter",
