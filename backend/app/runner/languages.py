@@ -30,3 +30,17 @@ def count_files(checkout: Path, languages: Iterable[str]) -> int:
             if every_file or path.suffix.lower() in suffixes:
                 count += 1
     return count
+
+
+def detect_languages(checkout: Path) -> list[str]:
+    """The languages with at least one regular file in the checkout, sorted. They decide which
+    plug-ins a scan runs."""
+    found = set()
+    for folder, _, names in os.walk(checkout):
+        for name in names:
+            path = Path(folder, name)
+            if path.is_symlink() or not path.is_file():
+                continue
+            suffix = path.suffix.lower()
+            found.update(lang for lang, suffixes in EXTENSIONS.items() if suffix in suffixes)
+    return sorted(found)
