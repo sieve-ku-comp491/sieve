@@ -6,6 +6,7 @@ Each folder here is one analyzer, run by the plug-in runner in `backend/app/runn
 |---|---|---|---|
 | `semgrep` | Semgrep 1.183.0 | semgrep-rules at commit `16b9e6d`, security rules for Python, Java, JavaScript and TypeScript | `sieve-plugin-semgrep:1.183.0-16b9e6d` |
 | `bandit` | Bandit 1.9.4 with the `sarif` extra | built in, all of them | `sieve-plugin-bandit:1.9.4` |
+| `eslint` | ESLint 10.14.0, with typescript-eslint 8.72.1's parser and TypeScript 6.0.3 | eslint-plugin-security 4.2.1, its recommended set, on JavaScript and TypeScript files | `sieve-plugin-eslint:10.14.0-security4.2.1` |
 
 ## Building the images
 
@@ -13,8 +14,9 @@ The runner never builds or pulls images. It runs the image named in each `plugin
 
     docker build -t sieve-plugin-semgrep:1.183.0-16b9e6d plugins/semgrep
     docker build -t sieve-plugin-bandit:1.9.4 plugins/bandit
+    docker build -t sieve-plugin-eslint:10.14.0-security4.2.1 plugins/eslint
 
-Building needs network, to fetch the tool and its rules. Scans don't. The Bandit image installs the exact versions in `plugins/bandit/requirements.txt`, Bandit and every package it needs.
+Building needs network, to fetch the tool and its rules. Scans don't. The Bandit image installs the exact versions in `plugins/bandit/requirements.txt`, Bandit and every package it needs. The ESLint image installs its npm packages from the committed `package-lock.json` with `npm ci`, and lints with its own `eslint.config.mjs`: it never loads a configuration file, parser or plug-in from the scanned repository, because those are code.
 
 ## Runner settings
 
@@ -29,4 +31,4 @@ The worker reads these from its environment. The defaults fit the Compose setup 
 
 ## Tests
 
-`backend/tests/test_runner.py` checks the runner with a fake engine and needs no Docker. `test_runner_docker.py` runs the small test plug-in in `backend/tests/plugin_fixture/` on the real Docker Engine, and is skipped when Docker isn't running. `test_semgrep_plugin.py` scans a small vulnerable file with the Semgrep image, and `test_bandit_plugin.py` does the same with the Bandit image. Both are skipped when the image isn't built, which includes CI.
+`backend/tests/test_runner.py` checks the runner with a fake engine and needs no Docker. `test_runner_docker.py` runs the small test plug-in in `backend/tests/plugin_fixture/` on the real Docker Engine, and is skipped when Docker isn't running. `test_semgrep_plugin.py` scans a small vulnerable file with the Semgrep image, and `test_bandit_plugin.py` and `test_eslint_plugin.py` do the same with the Bandit and ESLint images. All of them are skipped when the image isn't built, which includes CI.
