@@ -121,6 +121,8 @@ def false_positive_check(cases: list[Expected], findings: list[Finding]) -> dict
     because the review screen still shows them. findings_without_case counts the findings whose
     file is no test case's file: a high number usually means the paths don't match, for example
     a path from another folder than the dataset's root, and the rates are then wrong.
+    findings_without_cwe counts the findings with no CWE, which can never flag a case: a high
+    number usually means an adapter didn't read the CWE of some rules.
     """
     if len({case.case_id for case in cases}) != len(cases):
         raise MetricError("each test case must appear once")
@@ -130,6 +132,7 @@ def false_positive_check(cases: list[Expected], findings: list[Finding]) -> dict
     result = {
         "cases": len(cases),
         "findings_without_case": sum(1 for finding in findings if finding.file not in case_files),
+        "findings_without_cwe": sum(1 for finding in findings if not finding.cwes),
         "raw": raw.as_dict(),
         "triaged": triaged.as_dict(),
         "false_positives_removed": _round(_ratio(raw.fp - triaged.fp, raw.fp)),

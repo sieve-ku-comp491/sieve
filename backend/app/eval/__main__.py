@@ -56,11 +56,11 @@ def run_fetch(args: argparse.Namespace) -> int:
 
 
 def run_expected(args: argparse.Namespace) -> int:
-    for source in _sources(list(DATASETS)):
+    chosen = _sources(list(DATASETS))
+    if _not_fetched(chosen):
+        return 1
+    for source in chosen:
         root = sources.checkout_path(source)
-        if not root.exists():
-            print(f"{source.name}: not fetched, run fetch first", file=sys.stderr)
-            return 1
         out = sources.data_dir() / "expected" / f"{source.name}.csv"
         count = expected.write_csv(DATASETS[source.name](root, source), out)
         print(f"{source.name}: {count} rows in {out}")
@@ -69,6 +69,8 @@ def run_expected(args: argparse.Namespace) -> int:
 
 def run_neutral(args: argparse.Namespace) -> int:
     (source,) = _sources([args.dataset])
+    if _not_fetched([source]):
+        return 1
     root = sources.checkout_path(source)
     dest = sources.data_dir() / "neutral" / source.name
     answers = sources.data_dir() / "answers" / source.name
@@ -88,6 +90,8 @@ def run_neutral(args: argparse.Namespace) -> int:
 
 def run_cves(args: argparse.Namespace) -> int:
     (source,) = _sources(["cwe-bench-java"])
+    if _not_fetched([source]):
+        return 1
     root = sources.checkout_path(source)
     case_ids = {row.case_id for row in expected.cwe_bench_java(root)}
     rows = nvd.cwe_bench_java_cves(root, case_ids)
@@ -111,6 +115,19 @@ def run_metrics(args: argparse.Namespace) -> int:
         result = metrics.cost_and_time(metrics.read_costs(args.findings))
     print(json.dumps(result, indent=2))
     return 0
+
+
+def _not_fetched(chosen: list[sources.Source]) -> bool:
+    """Say which sources aren't checked out at their pinned commit, for example after a pin
+    changed. Their files would not match the commit that the output records."""
+    missing = [source for source in chosen if not sources.is_fetched(source)]
+    for source in missing:
+        print(
+            f"{source.name}: not checked out at {source.commit[:12]}, "
+            f"run: python -m app.eval fetch {source.name}",
+            file=sys.stderr,
+        )
+    return bool(missing)
 
 
 def _sources(names: list[str]) -> list[sources.Source]:
