@@ -2,12 +2,14 @@
 
 from app.scan.exporter import CheckoutExporter, ExportError, RefError, split_ref
 from app.scan.scope import OutOfScope, ScopeEntry, ScopeError, ScopeFile, UrlError, normalize_url
+from app.scan.service import ScanService
 
 __all__ = [
     "CheckoutExporter",
     "ExportError",
     "OutOfScope",
     "RefError",
+    "ScanService",
     "ScopeEntry",
     "ScopeError",
     "ScopeFile",
