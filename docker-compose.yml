@@ -4,6 +4,10 @@ services:
     env_file: .env
     ports:
       - "8000:8000"
+    # Checkouts and SARIF files of scans (docs/architecture.md, volumes). Writable while
+    # python -m app.store load-sarif runs in this service; read-only once the worker writes them.
+    volumes:
+      - sieve-data:/data
     depends_on:
       db:
         condition: service_healthy
@@ -28,3 +32,4 @@ services:
 
 volumes:
   db-data:
+  sieve-data:
