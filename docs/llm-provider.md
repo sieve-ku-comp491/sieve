@@ -19,7 +19,6 @@ Every LLM call in Sieve goes through `LLMClient` in `backend/app/llm/`. For each
       cache.py               cache keys and an in-memory cache
       call_log.py            the record of one call
       postgres.py            the llm_calls table, used as both call log and cache
-      llm_calls.sql          the table definition
       templates.py           prompt templates and data blocks
       prompts/               the template files
       fake.py                a provider for tests
@@ -114,7 +113,7 @@ Only complete answers with text are cached. A refusal, a cut-off or empty answer
 
 ## Call log
 
-Every call is a row in `llm_calls`, including cache hits and failed calls (N3). If the row can't be written, for example because the database is down, `ask` still returns the answer or raises the call's own `ProviderError`, and the whole record goes to the error log, so a paid answer is never lost. `PostgresCallStore.create_table()` creates the table from `app/llm/llm_calls.sql` until the findings store (T2.3) adds migrations. `job_id` will reference `jobs` once that table exists.
+Every call is a row in `llm_calls`, including cache hits and failed calls (N3). If the row can't be written, for example because the database is down, `ask` still returns the answer or raises the call's own `ProviderError`, and the whole record goes to the error log, so a paid answer is never lost. The findings store's migrations create the table (`app/store/migrations/0002_llm_calls.sql`), and `PostgresCallStore.create_table()` runs them. `job_id` references `jobs`, so a call can only name a job that exists.
 
 | Column | Contents |
 |---|---|

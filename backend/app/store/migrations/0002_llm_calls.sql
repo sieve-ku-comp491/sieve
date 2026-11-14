@@ -1,5 +1,6 @@
--- The LLM call log (requirement N3). PostgresCallStore.create_table() runs this file until the
--- findings store (T2.3) adds migrations. job_id will reference jobs once that table exists.
+-- The LLM call log (requirement N3, docs/llm-provider.md), taken over from the table that
+-- PostgresCallStore.create_table() used to create on its own. IF NOT EXISTS keeps a database
+-- where that already happened, and its rows.
 CREATE TABLE IF NOT EXISTS llm_calls (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     job_id uuid,
@@ -33,3 +34,5 @@ CREATE INDEX IF NOT EXISTS llm_calls_cache_lookup ON llm_calls (cache_key, creat
     WHERE NOT cached AND error IS NULL AND stop_reason = 'complete';
 
 CREATE INDEX IF NOT EXISTS llm_calls_job ON llm_calls (job_id);
+
+ALTER TABLE llm_calls ADD FOREIGN KEY (job_id) REFERENCES jobs;

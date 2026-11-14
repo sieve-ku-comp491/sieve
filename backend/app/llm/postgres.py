@@ -1,7 +1,6 @@
 """The call log in the llm_calls table, which also serves as the response cache."""
 
 import os
-from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -9,8 +8,7 @@ from psycopg.types.json import Jsonb
 
 from app.llm.call_log import CallRecord
 from app.llm.types import Attempt, LLMResponse, StopReason, Usage
-
-SCHEMA_FILE = Path(__file__).with_name("llm_calls.sql")
+from app.store.migrate import migrate
 
 INSERT = """
 INSERT INTO llm_calls (
@@ -50,8 +48,8 @@ class PostgresCallStore:
         self._conninfo = conninfo or os.environ["DATABASE_URL"]
 
     def create_table(self) -> None:
-        with psycopg.connect(self._conninfo) as conn:
-            conn.execute(SCHEMA_FILE.read_text(encoding="utf-8"))
+        """Brings the findings store's tables up to date, llm_calls among them."""
+        migrate(self._conninfo)
 
     def record(self, record: CallRecord) -> None:
         usage = record.usage

@@ -1,5 +1,4 @@
 import os
-import uuid
 from decimal import Decimal
 
 import psycopg
@@ -10,6 +9,8 @@ from app.llm.postgres import PostgresCallStore
 from app.llm.types import Attempt, Message, StopReason, Usage
 
 DATABASE_URL = os.environ.get("SIEVE_TEST_DATABASE_URL")
+# llm_calls.job_id references jobs, so the calls belong to this job.
+JOB_ID = "3f1f9c1e-5d43-4c4b-9a39-6d0f3b1c2a54"
 
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL, reason="set SIEVE_TEST_DATABASE_URL to a throwaway PostgreSQL database"
@@ -20,6 +21,12 @@ pytestmark = pytest.mark.skipif(
 def store():
     store = PostgresCallStore(DATABASE_URL)
     store.create_table()
+    with psycopg.connect(DATABASE_URL) as conn:
+        conn.execute(
+            "INSERT INTO jobs (id, kind, payload) VALUES (%s, 'triage', '{}')"
+            " ON CONFLICT (id) DO NOTHING",
+            (JOB_ID,),
+        )
     yield store
     with psycopg.connect(DATABASE_URL) as conn:
         conn.execute("DELETE FROM llm_calls WHERE cache_key LIKE 'test:%'")
@@ -40,7 +47,7 @@ def record(key: str, **fields) -> CallRecord:
         "stop_reason": StopReason.COMPLETE.value,
         "raw_stop_reason": "end_turn",
         "attempts": (Attempt("claude-haiku-5-5", Usage(1000, 200, cache_read_tokens=50)),),
-        "job_id": str(uuid.uuid4()),
+        "job_id": JOB_ID,
         "request_id": "req_1",
     }
     return CallRecord(**(values | fields))
