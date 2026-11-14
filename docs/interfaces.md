@@ -98,7 +98,7 @@ We tested these flags with Semgrep 1.183.0 on PyGoat: the scan works with no net
 
 ### Suppression in the scanned code
 
-Each plug-in turns off the ways the scanned code can switch off its own findings, where the tool allows it: Semgrep runs with `--disable-nosem`, Bandit with `--ignore-nosec`, and ESLint with `--no-inline-config` and our own configuration file. When a tool has no such option, the adapter still keeps the suppressed results and marks them (docs/finding-format.md).
+Each plug-in turns off the ways the scanned code can switch off its own findings, where the tool allows it: Semgrep runs with `--disable-nosem`, Bandit with `--ignore-nosec`, ESLint with `--no-inline-config` and our own configuration file, and Gitleaks with `--ignore-gitleaks-allow`. When a tool has no such option, the adapter still keeps the suppressed results and marks them (docs/finding-format.md).
 
 We tested this with Semgrep 1.183.0. A `# nosemgrep` comment removed the finding from Semgrep's JSON output and marked it as suppressed in SARIF. With `--disable-nosem` it was reported normally. A `.semgrepignore` file in /src made Semgrep skip the file it named, even with that flag, which is why the export leaves such files out.
 
