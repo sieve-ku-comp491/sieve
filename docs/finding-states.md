@@ -96,7 +96,7 @@ A repeated scan doesn't reuse finding rows. It stores new findings, and deduplic
 
 | Case | State of the new finding |
 |---|---|
-| An earlier finding with this fingerprint has a review, the context hash is the same, neither finding is ambiguous (except in two scans of the same commit), and the tool is not Gitleaks | Hidden from the review queue. Deduplication sets `hidden` and stores the latest earlier review in `carried_review_id`, so it goes from `new` straight to `approved` or `rejected`. Requirement F5 counts it with that decision. No report is drafted for it again. |
+| An earlier finding with this fingerprint has a review, the context hash is the same, neither finding is ambiguous (except in two scans of the same commit with the same tool and rules versions), the tool is not Gitleaks, and the earlier finding wasn't edited after its review | Hidden from the review queue. Deduplication sets `hidden` and stores the latest earlier review in `carried_review_id`, so it goes from `new` straight to `approved` or `rejected`. Requirement F5 counts it with that decision. No report is drafted for it again. |
 | An earlier finding matches, but any of those rules fails, for example the code around it changed | Shown again. `hidden` is false, so it goes `new`, `grouped`, `triaged` like any other finding, and the review screen shows the review in `carried_review_id` as a suggestion. |
 | No earlier finding has this fingerprint | A new finding, from `new` as usual. |
 | An earlier finding is not found by the new scan | Nothing changes. The earlier finding keeps its state in its own scan. |

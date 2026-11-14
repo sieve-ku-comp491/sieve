@@ -412,7 +412,7 @@ One row per group of findings in one scan that describe the same issue. Each gro
 | `scan_id` | uuid | no | the scan, references `scans` |
 | `representative_finding_id` | uuid | yes | the finding the review screen shows first. It references `findings (id, group_id)` together with the group's own `id`, so the representative must be a member of this group. The check is deferred to the end of the transaction, because the group and its members' `group_id` are written together. |
 | `method` | text | no | `rule`, `similarity` or `llm` |
-| `rule` | text | yes | for `rule`: the rule that matched, such as `same_function_related_cwe` |
+| `rule` | text | yes | for `rule`: the rule that matched, `same_function_related_cwe` or `nearby_lines_related_cwe` (`backend/app/dedup/rules.py`) |
 | `similarity` | numeric(4,3) | yes | for `similarity`: the score that put the findings together, from 0 to 1 |
 | `reason` | text | no | one sentence a reviewer can read, such as "Same function and related CWEs (CWE-77 and CWE-78)" |
 | `created_at` | timestamptz | no | |
@@ -426,6 +426,8 @@ Constraints:
 We tested these keys on PostgreSQL 17: a member from another scan and a representative from outside the group are both rejected, and a valid group commits.
 
 Repeated scans are not handled with groups. A finding from a later scan points to an earlier one through `findings.matched_finding_id`.
+
+Hidden findings are not grouped. An earlier review decides them, so they are not triaged.
 
 ### duplicate_group_llm_calls
 

@@ -259,6 +259,8 @@ A TriageRun records the scan, the models, the budget, the cost so far and a stat
 
 A triage item is one finding, or one duplicate group with its member findings. A group is checked and scored once, and the result applies to all of its members.
 
+The group step is `group_scan()` in `backend/app/dedup/store.py`. It runs a list of steps in order, each a `GroupingStep` that gets the scan's findings and the groups so far and returns the groups after its own work: the rules first (`RuleStep`), then text similarity, then the LLM for the groups the rules leave unclear. The rules ask a `FunctionLookup` for the enclosing function of each finding, `enclosing_function(file, line)`, which returns the function's name and lines, or nothing. Without it they group by the same file and nearby lines only.
+
 ### Triage item
 
 | Field | Type | Meaning |
