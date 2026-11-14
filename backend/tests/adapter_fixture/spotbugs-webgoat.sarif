@@ -1,0 +1,2016 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "extensions": [
+          {
+            "version": "4.10.5",
+            "name": "edu.umd.cs.findbugs.plugins.core",
+            "shortDescription": {
+              "text": "Core SpotBugs plugin"
+            },
+            "informationUri": "https://github.com/spotbugs",
+            "organization": "SpotBugs project"
+          },
+          {
+            "version": "",
+            "name": "com.h3xstream.findsecbugs",
+            "shortDescription": {
+              "text": "Find Security Bugs"
+            },
+            "informationUri": "https://find-sec-bugs.github.io",
+            "organization": "Find Security Bugs"
+          }
+        ],
+        "driver": {
+          "name": "SpotBugs",
+          "version": "4.10.5",
+          "language": "en",
+          "informationUri": "https://spotbugs.github.io/",
+          "rules": [
+            {
+              "id": "COMMAND_INJECTION",
+              "shortDescription": {
+                "text": "Potential Command Injection."
+              },
+              "fullDescription": {
+                "text": "The highlighted API is used to execute a system command. If unfiltered input \nis passed to this API, it can lead to arbitrary command execution. \nVulnerable Code: \nimport java.lang.Runtime;\n\nRuntime r = Runtime.getRuntime();\nr.exec(\"/bin/sh -c some_tool\" + input);\nReferencesOWASP: Command InjectionOWASP: Top 10 2013-A1-InjectionCWE-78: \nImproper Neutralization of Special Elements used in an OS Command ('OS Command \nInjection')"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "This usage of {0} can be vulnerable to Command Injection."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#COMMAND_INJECTION",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "78",
+                    "guid": "de860c32-bc93-5e70-89d7-0877e5abaefb",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "CRLF_INJECTION_LOGS",
+              "shortDescription": {
+                "text": "Potential CRLF Injection for logs."
+              },
+              "fullDescription": {
+                "text": "When data from an untrusted source is put into a logger and not neutralized \ncorrectly, an attacker could forge log entries or include malicious content. \nInserted false entries could be used to skew statistics, distract the \nadministrator or even to implicate another party in the commission of a \nmalicious act. If the log file is processed automatically, the attacker can \nrender the file unusable by corrupting the format of the file or injecting \nunexpected characters. An attacker may also inject code or other commands into \nthe log file and take advantage of a vulnerability in the log processing \nutility (e.g. command injection or XSS). \nCode at risk: \nString val = request.getParameter(\"user\");\nString metadata = request.getParameter(\"metadata\");\n[...]\nif(authenticated) {\n    log.info(\"User \" + val + \" (\" + metadata + \") was authenticated successfully\");\n}\nelse {\n    log.info(\"User \" + val + \" (\" + metadata + \") was not authenticated\");\n}\nA malicious user could send the metadata parameter with the value: \"Firefox) \nwas authenticated successfully\\r\\n[INFO] User bbb (Internet Explorer\". Solution: \nYou can manually sanitize each parameter. \nlog.info(\"User \" + val.replaceAll(\"[\\r\\n]\",\"\") + \" (\" + userAgent.replaceAll(\"[\\r\\n]\",\"\") + \") was not authenticated\");\nYou can also configure your logger service to replace new line for all message \nevents. Here is sample configuration for LogBack using the replace function. \n<pattern>%-5level - %replace(%msg){'[\\r\\n]', ''}%n</pattern>\nFinally, you can use a logger implementation that replace new line by spaces. \nThe project OWASP Security Logging has an implementation for Logback and Log4j. \n\nReferencesCWE-117: Improper Output Neutralization for LogsCWE-93: Improper \nNeutralization of CRLF Sequences ('CRLF Injection')CWE-93: Improper \nNeutralization of CRLF Sequences ('CRLF Injection')OWASP Security Logging"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "This use of {0} might be used to include CRLF characters into log messages."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#CRLF_INJECTION_LOGS",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "117",
+                    "guid": "e4360770-eb15-55cf-8880-7051868a1961",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "DESERIALIZATION_GADGET",
+              "shortDescription": {
+                "text": "This class could be used as deserialization gadget."
+              },
+              "fullDescription": {
+                "text": "Deserialization gadget are class that could be used by an attacker to take \nadvantage of a remote API using Native Serialization. This class is either \nadding custom behavior to deserialization with the readObject method \n(Serializable) or can be called from a serialized object (InvocationHandler). \nThis detector is intended to be used mostly by researcher. The real issue is \nusing deserialization for remote operation. Removing gadget is a hardening \npractice to reduce the risk of being exploited. \nReferencesCWE-502: Deserialization of Untrusted DataDeserialization of \nuntrusted dataSerialization and Deserialization A tool for generating payloads \nthat exploit unsafe Java object deserialization[1] Example of Denial of \nService using the class java.util.HashSet[2] OpenJDK: Deserialization issue in \nObjectInputStream.readSerialData() (CVE-2015-2590)[3] Rapid7: Sun Java \nCalendar Deserialization Privilege Escalation (CVE-2008-5353)"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "This class could make application using serialization vulnerable."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#DESERIALIZATION_GADGET",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "502",
+                    "guid": "ff25cc2c-fffa-57bc-8f05-4b360dd88816",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SERVLET_HEADER",
+              "shortDescription": {
+                "text": "HTTP headers untrusted."
+              },
+              "fullDescription": {
+                "text": "Request headers can easily be altered by the requesting user. In general, no \nassumption should be made that the request came from a regular browser without \nmodification by an attacker. As such, it is recommended that you not trust \nthis value in any security decisions you make with respect to a request. \nReferenceCWE-807: Untrusted Inputs in a Security Decision"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Request header can easily be altered by the client."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SERVLET_HEADER",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "807",
+                    "guid": "2626368c-6d4f-5429-aa52-ee96a99c8655",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SPRING_CSRF_UNRESTRICTED_REQUEST_MAPPING",
+              "shortDescription": {
+                "text": "Spring CSRF unrestricted RequestMapping."
+              },
+              "fullDescription": {
+                "text": "Methods annotated with RequestMapping are by default mapped to all the HTTP \nrequest methods. However, Spring Security's CSRF protection is not enabled by \ndefault for the HTTP request methods GET, HEAD, TRACE, and OPTIONS (as this \ncould cause the tokens to be leaked). Therefore, state-changing methods \nannotated with RequestMapping and not narrowing the mapping to the HTTP \nrequest methods POST, PUT, DELETE, or PATCH are vulnerable to CSRF attacks. \nVulnerable Code: \n@Controller\npublic class UnsafeController {\n\n    @RequestMapping(\"/path\")\n    public void writeData() {\n        // State-changing operations performed within this method.\n    }\n}\nSolution (Spring Framework 4.3 and later): \n@Controller\npublic class SafeController {\n\n    /**\n     * For methods without side-effects use @GetMapping.\n     */\n    @GetMapping(\"/path\")\n    public String readData() {\n        // No state-changing operations performed within this method.\n        return \"\";\n    }\n\n    /**\n     * For state-changing methods use either @PostMapping, @PutMapping, @DeleteMapping, or @PatchMapping.\n     */\n    @PostMapping(\"/path\")\n    public void writeData() {\n        // State-changing operations performed within this method.\n    }\n}\nSolution (Before Spring Framework 4.3): \n@Controller\npublic class SafeController {\n\n    /**\n     * For methods without side-effects use either\n     * RequestMethod.GET, RequestMethod.HEAD, RequestMethod.TRACE, or RequestMethod.OPTIONS.\n     */\n    @RequestMapping(value = \"/path\", method = RequestMethod.GET)\n    public String readData() {\n        // No state-changing operations performed within this method.\n        return \"\";\n    }\n\n    /**\n     * For state-changing methods use either\n     * RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, or RequestMethod.PATCH.\n     */\n    @RequestMapping(value = \"/path\", method = RequestMethod.POST)\n    public void writeData() {\n        // State-changing operations performed within this method.\n    }\n}\nReferencesSpring Security Official Documentation: Use proper HTTP verbs (CSRF \nprotection)OWASP: Cross-Site Request ForgeryOWASP: CSRF Prevention Cheat SheetCWE-352: \nCross-Site Request Forgery (CSRF)"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Unrestricted Spring's RequestMapping makes the method vulnerable to CSRF attacks."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SPRING_CSRF_UNRESTRICTED_REQUEST_MAPPING",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "352",
+                    "guid": "4cccead0-b8dc-5b81-98f4-9b2b99290363",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SPRING_ENDPOINT",
+              "shortDescription": {
+                "text": "Found Spring endpoint."
+              },
+              "fullDescription": {
+                "text": "This class is a Spring Controller. All methods annotated with RequestMapping \n(as well as its shortcut annotations GetMapping, PostMapping, PutMapping, DeleteMapping, \nand PatchMapping) are reachable remotely. This class should be analyzed to \nmake sure that remotely exposed methods are safe to expose to potential \nattackers."
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "{0} is a Spring endpoint (Controller)."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SPRING_ENDPOINT",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              }
+            },
+            {
+              "id": "SPRING_FILE_DISCLOSURE",
+              "shortDescription": {
+                "text": "Spring File Disclosure."
+              },
+              "fullDescription": {
+                "text": "Constructing a server-side redirect path with user input could allow an \nattacker to download application binaries (including application classes or \njar files) or view arbitrary files within protected directories.An attacker \nmay be able to forge a request parameter to match sensitive file locations. \nFor example, requesting \"http://example.com/?returnURL=WEB-INF/applicationContext.xml\" \nwould display the application's applicationContext.xml file. The attacker \nwould be able to locate and download the applicationContext.xml referenced in \nthe other configuration files, and even class files or jar files, obtaining \nsensitive information and launching other types of attacks. \nVulnerable Code: \n...\nString returnURL = request.getParameter(\"returnURL\");\nreturn new ModelAndView(returnURL);\n...\nSolution:Avoid constructing server-side redirects using user controlled input. \nReferencesCWE-552: Files or Directories Accessible to External Parties"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "ModelAndView populated with user controlled parameters."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SPRING_FILE_DISCLOSURE",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "552",
+                    "guid": "d6cffae3-f4ef-5209-b0e7-e53fdcbde3e5",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "FORMAT_STRING_MANIPULATION",
+              "shortDescription": {
+                "text": "Format String Manipulation."
+              },
+              "fullDescription": {
+                "text": "Allowing user input to control format parameters could enable an attacker to \ncause exceptions to be thrown or leak information.Attackers may be able to \nmodify the format string argument, such that an exception is thrown. If this \nexception is left uncaught, it may crash the application. Alternatively, if \nsensitive information is used within the unused arguments, attackers may \nchange the format string to reveal this information.The example code below \nlets the user specify the decimal points to which it shows the balance. The \nuser can in fact specify anything causing an exception to be thrown which \ncould lead to application failure. Even more critical within this example, if \nan attacker can specify the user input \"2f %3$s %4$.2\", the format string \nwould be \"The customer: %s %s has the balance %4$.2f %3$s %4$.2\". This would \nthen lead to the sensitive accountNo to be included within the resulting \nstring. \nVulnerable Code: \nFormatter formatter = new Formatter(Locale.US);\nString format = \"The customer: %s %s has the balance %4$.\" + userInput + \"f\";\nformatter.format(format, firstName, lastName, accountNo, balance);\nSolution:Avoid using user controlled values in the format string argument. \nReferencesCWE-134: Use of Externally-Controlled Format String"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Format string argument allowing user controlled parameters."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#FORMAT_STRING_MANIPULATION",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "134",
+                    "guid": "c1004dd3-0fd4-59aa-9063-320f7523e5b4",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "PATH_TRAVERSAL_IN",
+              "shortDescription": {
+                "text": "Potential Path Traversal (file read)."
+              },
+              "fullDescription": {
+                "text": "A file is opened to read its content. The filename comes from an input \nparameter. If an unfiltered parameter is passed to this file API, files from \nan arbitrary filesystem location could be read. \nThis rule identifies potential path traversal vulnerabilities. In many cases, \nthe constructed file path cannot be controlled by the user. If that is the \ncase, the reported instance is a false positive. \nVulnerable Code: \n@GET\n@Path(\"/images/{image}\")\n@Produces(\"images/*\")\npublic Response getImage(@javax.ws.rs.PathParam(\"image\") String image) {\n    File file = new File(\"resources/images/\", image); //Weak point\n\n    if (!file.exists()) {\n        return Response.status(Status.NOT_FOUND).build();\n    }\n\n    return Response.ok().entity(new FileInputStream(file)).build();\n}\nSolution: \nimport org.apache.commons.io.FilenameUtils;\n\n@GET\n@Path(\"/images/{image}\")\n@Produces(\"images/*\")\npublic Response getImage(@javax.ws.rs.PathParam(\"image\") String image) {\n    File file = new File(\"resources/images/\", FilenameUtils.getName(image)); //Fix\n\n    if (!file.exists()) {\n        return Response.status(Status.NOT_FOUND).build();\n    }\n\n    return Response.ok().entity(new FileInputStream(file)).build();\n}\nReferencesWASC: Path TraversalOWASP: Path TraversalCAPEC-126: Path TraversalCWE-22: \nImproper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "This API ({0}) reads a file whose location might be specified by user input."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#PATH_TRAVERSAL_IN",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "22",
+                    "guid": "19cf96fc-1234-5a3d-8e5d-21b225b7d3e8",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SPRING_CSRF_PROTECTION_DISABLED",
+              "shortDescription": {
+                "text": "Spring CSRF protection disabled."
+              },
+              "fullDescription": {
+                "text": "Disabling Spring Security's CSRF protection is unsafe for standard web \napplications. \nA valid use case for disabling this protection would be a service exposing \nstate-changing operations that is guaranteed to be used only by non-browser \nclients. \nInsecure configuration: \n@EnableWebSecurity\npublic class WebSecurityConfig extends WebSecurityConfigurerAdapter {\n\n    @Override\n    protected void configure(HttpSecurity http) throws Exception {\n        http.csrf().disable();\n    }\n}\nReferencesSpring Security Official Documentation: When to use CSRF protectionOWASP: \nCross-Site Request ForgeryOWASP: CSRF Prevention Cheat SheetCWE-352: \nCross-Site Request Forgery (CSRF)"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Disabling Spring Security's CSRF protection is unsafe for standard web applications."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SPRING_CSRF_PROTECTION_DISABLED",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "352",
+                    "guid": "4cccead0-b8dc-5b81-98f4-9b2b99290363",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SQL_INJECTION_JDBC",
+              "shortDescription": {
+                "text": "Potential JDBC Injection."
+              },
+              "fullDescription": {
+                "text": "The input values included in SQL queries need to be passed in safely. Bind \nvariables in prepared statements can be used to easily mitigate the risk of \nSQL injection. \nVulnerable Code: \nConnection conn = [...];\nStatement stmt = con.createStatement();\nResultSet rs = stmt.executeQuery(\"update COFFEES set SALES = \"+nbSales+\" where COF_NAME = '\"+coffeeName+\"'\");\nSolution: \nConnection conn = [...];\nconn.prepareStatement(\"update COFFEES set SALES = ? where COF_NAME = ?\");\nupdateSales.setInt(1, nbSales);\nupdateSales.setString(2, coffeeName);\nReferences (JDBC)Oracle Documentation: The Java Tutorials > Prepared StatementsReferences \n(SQL injection)WASC-19: SQL InjectionCAPEC-66: SQL InjectionCWE-89: Improper \nNeutralization of Special Elements used in an SQL Command ('SQL Injection')OWASP: \nTop 10 2013-A1-InjectionOWASP: SQL Injection Prevention Cheat SheetOWASP: \nQuery Parameterization Cheat Sheet"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "This use of {0} can be vulnerable to SQL injection (with JDBC)."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SQL_INJECTION_JDBC",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "89",
+                    "guid": "ef952f10-a202-504c-8649-9ffcb2291d69",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE",
+              "shortDescription": {
+                "text": "Nonconstant string passed to execute or addBatch method on an SQL statement."
+              },
+              "fullDescription": {
+                "text": "The method invokes the execute or addBatch method on an SQL statement with a \nString that seems to be dynamically generated. Consider using a prepared \nstatement instead. It is more efficient and less vulnerable to SQL injection \nattacks. \nSee CWE-89: Improper Neutralization of Special Elements used in an SQL Command \n('SQL Injection')."
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "{0} passes a nonconstant String to an execute or addBatch method on an SQL statement."
+                }
+              },
+              "helpUri": "https://spotbugs.readthedocs.io/en/latest/bugDescriptions.html#SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "89",
+                    "guid": "ef952f10-a202-504c-8649-9ffcb2291d69",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "ENTITY_MASS_ASSIGNMENT",
+              "shortDescription": {
+                "text": "Mass assignment."
+              },
+              "fullDescription": {
+                "text": "Software frameworks sometime allow developers to automatically bind HTTP \nrequest parameters into program code variables or objects to make using that \nframework easier on developers. This can sometimes cause harm. \nAttackers can sometimes use this methodology to create new parameters that the \ndeveloper never intended which in turn creates or overwrites new variable or \nobjects in program code that was not intended. \nVulnerable Code: \n@javax.persistence.Entity\nclass UserEntity {\n\n    @Id\n    @GeneratedValue(strategy = GenerationType.IDENTITY)\n    private Long id;\n\n    private String username;\n\n    private String password;\n\n    private Long role;\n}\n\n[...]\n@Controller\nclass UserController {\n\n    @PutMapping(\"/user/\")\n    @ResponseStatus(value = HttpStatus.OK)\n    public void update(UserEntity user) {\n\n        userService.save(user); //ALL fields from the user can be altered\n    }\n\n}\nGeneral Guidelines: \n  * Data transfer objects should be used instead including only the parameters \n    needed as input/response to/from the API. \n  * Sensitive parameters should be removed properly before transferring to UI. \n  * Data should be persisted in database only after proper sanitization checks. \n    \n  \nSpring MVC Solution:In Spring specifically, you can apply the following \nsolution to allow or disallow specific fields.With whitelist: \n@Controller\nclass UserController {\n\n   @InitBinder\n   public void initBinder(WebDataBinder binder, WebRequest request)\n   {\n      binder.setAllowedFields([\"username\",\"password\"]);\n   }\n\n}\n    \nWith a blacklist: @Controller\nclass UserController {\n\n   @InitBinder\n   public void initBinder(WebDataBinder binder, WebRequest request)\n   {\n      binder.setDisallowedFields([\"role\"]);\n   }\n\n}\n    \nReferencesOWASP Cheat Sheet: Mass AssignmentCWE-915: Improperly Controlled \nModification of Dynamically-Determined Object Attributes"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Persistent objects as MVC parameter could allow attacker to set fields that the developer never intended to be set via request parameters."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#ENTITY_MASS_ASSIGNMENT",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "915",
+                    "guid": "ec76b642-6a30-570d-93b4-289a1b26ca78",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SQL_INJECTION_SPRING_JDBC",
+              "shortDescription": {
+                "text": "Potential JDBC Injection (Spring JDBC)."
+              },
+              "fullDescription": {
+                "text": "The input values included in SQL queries need to be passed in safely. Bind \nvariables in prepared statements can be used to easily mitigate the risk of \nSQL injection. \nVulnerable Code: \nJdbcTemplate jdbc = new JdbcTemplate();\nint count = jdbc.queryForObject(\"select count(*) from Users where name = '\"+paramName+\"'\", Integer.class);\n@Value(\"properties\")\nprivate String sql;\n\npublic function count() {\n    JdcbOperation jdbc = new JdcbOperation();\n    int count = jdbc.query(sql);\n}\nSolution: \nJdbcTemplate jdbc = new JdbcTemplate();\nint count = jdbc.queryForObject(\"select count(*) from Users where name = ?\", Integer.class, paramName);\nprivate final static String sql = \"select count(*) from Users\";\n\npublic function count() {\n    JdcbOperation jdbc = new JdcbOperation();\n    int count = jdbc.query(sql);\n}\nReferences (Spring JDBC)Spring Official Documentation: Data access with JDBCReferences \n(SQL injection)WASC-19: SQL InjectionCAPEC-66: SQL InjectionCWE-89: Improper \nNeutralization of Special Elements used in an SQL Command ('SQL Injection')OWASP: \nTop 10 2013-A1-InjectionOWASP: SQL Injection Prevention Cheat SheetOWASP: \nQuery Parameterization Cheat Sheet"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "This use of {0} can be vulnerable to SQL injection (with Spring JDBC)."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SQL_INJECTION_SPRING_JDBC",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "89",
+                    "guid": "ef952f10-a202-504c-8649-9ffcb2291d69",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SERVLET_PARAMETER",
+              "shortDescription": {
+                "text": "Untrusted servlet parameter."
+              },
+              "fullDescription": {
+                "text": "The Servlet can read GET and POST parameters from various methods. The value \nobtained should be considered unsafe. You may need to validate or sanitize \nthose values before passing them to sensitive APIs such as: \n  * SQL query (May leads to SQL injection) \n  * File opening (May leads to path traversal) \n  * Command execution (Potential Command injection) \n  * HTML construction (Potential XSS) \n  * etc... \n  \nReferenceCWE-20: Improper Input Validation"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "The method {0} returns a String value that is controlled by the client."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SERVLET_PARAMETER",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "20",
+                    "guid": "b090a1e1-92d8-51fd-ac1f-fbc6939eb44d",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "PREDICTABLE_RANDOM",
+              "shortDescription": {
+                "text": "Predictable pseudorandom number generator."
+              },
+              "fullDescription": {
+                "text": "The use of a predictable random value can lead to vulnerabilities when used in \ncertain security critical contexts. For example, when the value is used as: \n  * a CSRF token: a predictable token can lead to a CSRF attack as an attacker \n    will know the value of the token \n  * a password reset token (sent by email): a predictable password token can \n    lead to an account takeover, since an attacker will guess the URL of the \n    \"change password\" form \n  * any other secret value \n  \nA quick fix could be to replace the use of java.util.Random with something \nstronger, such as java.security.SecureRandom. \nVulnerable Code: \nString generateSecretToken() {\n    Random r = new Random();\n    return Long.toHexString(r.nextLong());\n}\nSolution: \nimport org.apache.commons.codec.binary.Hex;\n\nString generateSecretToken() {\n    SecureRandom secRandom = new SecureRandom();\n\n    byte[] result = new byte[32];\n    secRandom.nextBytes(result);\n    return Hex.encodeHexString(result);\n}\nReferencesCracking Random Number Generators - Part 1 (https://jazzy.id.au)CERT: \nMSC02-J. Generate strong random numbersCWE-330: Use of Insufficiently Random \nValuesPredicting Struts CSRF Token (Example of real-life vulnerability and \nexploitation)"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "This random generator ({0}) is predictable."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#PREDICTABLE_RANDOM",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "330",
+                    "guid": "80cf7ee1-5a29-5fb4-a2f1-701272abf9b7",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "IMPROPER_UNICODE",
+              "shortDescription": {
+                "text": "Improper handling of Unicode transformations."
+              },
+              "fullDescription": {
+                "text": "Unexpected behavior in unicode transformations can sometimes lead to bugs, \nsome of them affecting software security. A code that applies the uppercase \ntransformation to two strings could mistakenly interpret both strings as being \nequal. \nIn the code bellow, the string \"ADM\\u0131N\" would cause the condition to be \ntrue. When the uppercase transformation is applied, the character `\\u0131` \nwill become '\\u0049' (I). It can be an issue if the developer only one user to \nbe \"ADMIN\". \nif(username.toUpperCase().equals(\"ADMIN\")) {\n  //...\n}\nSimilar characters transformations can occur with normalization functions. In \nthe code bellow, the string \"BAC\\u212AUP\" would cause the condition to be \ntrue. When the normalization transformation is applied, the character `\\u212A` \nwill become '\\u004B' (K). \nif(Normalizer.normalize(input, Normalizer.Form.NFC).equals(\"BACKUP\")) {\n  //...\n}\nReferencesUnicode for Security ProfessionalsUnicode Security Guide: Character \nTransformationsCWE-176: Improper Handling of Unicode EncodingUnicode: Unicode \nSecurity Considerations"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Improper handling of Unicode transformations such as case mapping and normalization."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#IMPROPER_UNICODE",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "176",
+                    "guid": "caae0840-1583-5ad6-9822-3d01b325b926",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "XXE_DOCUMENT",
+              "shortDescription": {
+                "text": "XML parsing vulnerable to XXE (DocumentBuilder)."
+              },
+              "fullDescription": {
+                "text": "Attack XML External Entity (XXE) attacks can occur when an XML parser supports \nXML entities while processing XML received from an untrusted source. \nRisk 1: Expose local file content (XXE: XML External Entity) \n\n<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<!DOCTYPE foo [\n   <!ENTITY xxe SYSTEM \"file:///etc/passwd\" > ]>\n<foo>&xxe;</foo>\nRisk 2: Denial of service (XEE: XML Entity Expansion) \n<?xml version=\"1.0\"?>\n<!DOCTYPE lolz [\n <!ENTITY lol \"lol\">\n <!ELEMENT lolz (#PCDATA)>\n <!ENTITY lol1 \"&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;\">\n <!ENTITY lol2 \"&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;\">\n <!ENTITY lol3 \"&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;\">\n[...]\n <!ENTITY lol9 \"&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;\">\n]>\n<lolz>&lol9;</lolz>\nSolution In order to avoid exposing dangerous feature of the XML parser, you \ncan do the following change to the code. \nVulnerable Code: \n\nDocumentBuilder db = DocumentBuilderFactory.newInstance().newDocumentBuilder();\n\nDocument doc = db.parse(input);\nThe following snippets show two available solutions. You can set one feature \nor both. \nSolution using \"Secure processing\" mode: \nThis setting will protect you against Denial of Service attack and remote file \naccess. \nDocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\ndbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);\nDocumentBuilder db = dbf.newDocumentBuilder();\n\nDocument doc = db.parse(input);\nSolution disabling DTD: \nBy disabling DTD, almost all XXE attacks will be prevented. \nDocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\ndbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\nDocumentBuilder db = dbf.newDocumentBuilder();\n\nDocument doc = db.parse(input);\nReferencesCWE-611: Improper Restriction of XML External Entity Reference \n('XXE')CERT: IDS10-J. Prevent XML external entity attacksOWASP.org: XML \nExternal Entity (XXE) ProcessingWS-Attacks.org: XML Entity ExpansionWS-Attacks.org: \nXML External Entity DOSWS-Attacks.org: XML Entity Reference AttackIdentifying \nXML External Entity vulnerability (XXE)Xerces2 complete features list"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "The use of {0} (DocumentBuilder) is vulnerable to XML External Entity attacks."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#XXE_DOCUMENT",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "611",
+                    "guid": "b7383f8c-a52b-52c9-b7d1-95a3c511d9da",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING",
+              "shortDescription": {
+                "text": "A prepared statement is generated from a nonconstant String."
+              },
+              "fullDescription": {
+                "text": "The code creates an SQL prepared statement from a nonconstant String. If \nunchecked, tainted data from a user is used in building this String, SQL \ninjection could be used to make the prepared statement do something unexpected \nand undesirable. \nSee CWE-89: Improper Neutralization of Special Elements used in an SQL Command \n('SQL Injection')."
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "A prepared statement is generated from a nonconstant String in {0}."
+                }
+              },
+              "helpUri": "https://spotbugs.readthedocs.io/en/latest/bugDescriptions.html#SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "89",
+                    "guid": "ef952f10-a202-504c-8649-9ffcb2291d69",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "UNSAFE_HASH_EQUALS",
+              "shortDescription": {
+                "text": "Unsafe hash equals."
+              },
+              "fullDescription": {
+                "text": "An attacker might be able to detect the value of the secret hash due to the \nexposure of comparison timing. When the functions Arrays.equals() or String.equals() \nare called, they will exit earlier if fewer bytes are matched. \n\nVulnerable Code: \nString actualHash = ...\n\nif(userInput.equals(actualHash)) {\n    ...\n}\nSolution: \nString actualHash = ...\n\nif(MessageDigest.isEqual(userInput.getBytes(),actualHash.getBytes())) {\n    ...\n}\nReferencesCWE-203: Information Exposure Through DiscrepancyKey"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Unsafe comparison of hash that are susceptible to timing attack."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#UNSAFE_HASH_EQUALS",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "203",
+                    "guid": "87991d23-2fc3-5120-b88b-2a9757717e43",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "WEAK_MESSAGE_DIGEST_MD5",
+              "shortDescription": {
+                "text": "MD2, MD4 and MD5 are weak hash functions."
+              },
+              "fullDescription": {
+                "text": "The algorithms MD2, MD4 and MD5 are not a recommended MessageDigest. PBKDF2 \nshould be used to hash password for example. \n\"The security of the MD5 hash function is severely compromised. A collision \nattack exists that can find collisions within seconds on a computer with a 2.6 \nGHz Pentium 4 processor (complexity of 224.1).[1] Further, there is also a \nchosen-prefix collision attack that can produce a collision for two inputs \nwith specified prefixes within hours, using off-the-shelf computing hardware \n(complexity 239).[2]\"- Wikipedia: MD5 - Security \"SHA-224, SHA-256, SHA-384, \nSHA-512, SHA-512/224, and SHA-512/256:The use of these hash functions is \nacceptable for all hash function applications.\"- NIST: Transitioning the Use \nof Cryptographic Algorithms and Key Lengths p.15 \"The main idea of a PBKDF is \nto slow dictionary or brute force attacks on the passwords by increasing the \ntime needed to test each password. An attacker with a list of likely passwords \ncan evaluate the PBKDF using the known iteration counter and the salt. Since \nan attacker has to spend a significant amount of computing time for each try, \nit becomes harder to apply the dictionary or brute force attacks.\"- NIST: \nRecommendation for Password-Based Key Derivation p.12 Vulnerable Code: \nMessageDigest md5Digest = MessageDigest.getInstance(\"MD5\");\n    md5Digest.update(password.getBytes());\n    byte[] hashValue = md5Digest.digest();\nbyte[] hashValue = DigestUtils.getMd5Digest().digest(password.getBytes());\nSolution (Using bouncy castle): \npublic static byte[] getEncryptedPassword(String password, byte[] salt) throws NoSuchAlgorithmException, InvalidKeySpecException {\n    PKCS5S2ParametersGenerator gen = new PKCS5S2ParametersGenerator(new SHA256Digest());\n    gen.init(password.getBytes(\"UTF-8\"), salt.getBytes(), 4096);\n    return ((KeyParameter) gen.generateDerivedParameters(256)).getKey();\n}\nSolution (Java 8 and later): public static byte[] getEncryptedPassword(String password, byte[] salt) throws NoSuchAlgorithmException, InvalidKeySpecException {\n    KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, 4096, 256 * 8);\n    SecretKeyFactory f = SecretKeyFactory.getInstance(\"PBKDF2WithHmacSHA256\");\n    return f.generateSecret(spec).getEncoded();\n}\nReferences[1] On Collisions for MD5: Master Thesis by M.M.J. Stevens[2] Chosen-prefix \ncollisions for MD5 and applications: Paper written by Marc StevensWikipedia: \nMD5NIST: Transitioning the Use of Cryptographic Algorithms and Key LengthsNIST: \nRecommendation for Password-Based Key DerivationStackoverflow: Reliable \nimplementation of PBKDF2-HMAC-SHA256 for JavaCWE-327: Use of a Broken or Risky \nCryptographic Algorithm CWE-328: Use of Weak Hash"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "This API {0} (MDX) is not a recommended cryptographic hash function."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#WEAK_MESSAGE_DIGEST_MD5",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "328",
+                    "guid": "dc1e99c1-c57b-5af0-85a4-9ad3bfac9c82",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "COOKIE_USAGE",
+              "shortDescription": {
+                "text": "Potentially sensitive data in a cookie."
+              },
+              "fullDescription": {
+                "text": "The information stored in a custom cookie should not be sensitive or related \nto the session. In most cases, sensitive data should only be stored in session \nand referenced by the user's session cookie. See HttpSession (HttpServletRequest.getSession()) \n\nCustom cookies can be used for information that needs to live longer than and \nis independent of a specific session. \nReferenceCWE-315: Cleartext Storage of Sensitive Information in a Cookie"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Sensitive data may be stored by the application in a cookie."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#COOKIE_USAGE",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "315",
+                    "guid": "1e8b2edd-a6e3-55f9-b6f2-739f59d0fd49",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SERVLET_CONTENT_TYPE",
+              "shortDescription": {
+                "text": "Untrusted Content-Type header."
+              },
+              "fullDescription": {
+                "text": "The HTTP header Content-Type can be controlled by the client. As such, its \nvalue should not be used in any security critical decisions. \nReferenceCWE-807: Untrusted Inputs in a Security Decision"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "The HTTP header Content-Type can be controlled by the client."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SERVLET_CONTENT_TYPE",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "807",
+                    "guid": "2626368c-6d4f-5429-aa52-ee96a99c8655",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SERVLET_HEADER_REFERER",
+              "shortDescription": {
+                "text": "Untrusted Referer header."
+              },
+              "fullDescription": {
+                "text": "Behavior: \n  * Any value can be assigned to this header if the request is coming from a \n    malicious user. \n  * The \"Referer\" will not be present if the request was initiated from \n    another origin that is secure (HTTPS). \n  \nRecommendations: \n  * No access control should be based on the value of this header. \n  * No CSRF protection should be based only on this value (because it is \n    optional). \n  \nReferenceCWE-807: Untrusted Inputs in a Security Decision"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "The header \"Referer\" can easily be spoofed by the client."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SERVLET_HEADER_REFERER",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "807",
+                    "guid": "2626368c-6d4f-5429-aa52-ee96a99c8655",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SERVLET_SERVER_NAME",
+              "shortDescription": {
+                "text": "Untrusted Hostname header."
+              },
+              "fullDescription": {
+                "text": "The hostname header can be controlled by the client. As such, its value should \nnot be used in any security critical decisions. Both ServletRequest.getServerName() \nand HttpServletRequest.getHeader(\"Host\") have the same behavior which is to \nextract the Host header. \nGET /testpage HTTP/1.1\nHost: www.example.com\n[...]\nThe web container serving your application may redirect requests to your \napplication by default. This would allow a malicious user to place any value \nin the Host header. It is recommended that you do not trust this value in any \nsecurity decisions you make with respect to a request. \nReferenceCWE-807: Untrusted Inputs in a Security Decision"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "The hostname received can often be controlled by the client."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SERVLET_SERVER_NAME",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "807",
+                    "guid": "2626368c-6d4f-5429-aa52-ee96a99c8655",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "OBJECT_DESERIALIZATION",
+              "shortDescription": {
+                "text": "Object deserialization is used in {1}."
+              },
+              "fullDescription": {
+                "text": "Object deserialization of untrusted data can lead to remote code execution, if \nthere is a class in classpath that allows the trigger of malicious operation. \nLibraries developers tend to fix class that provided potential malicious \ntrigger. There are still classes that are known to trigger Denial of Service[1]. \n\nDeserialization is a sensible operation that has a great history of \nvulnerabilities. The web application might become vulnerable as soon as a new \nvulnerability is found in the Java Virtual Machine[2] [3]. \nCode at risk: \npublic UserData deserializeObject(InputStream receivedFile) throws IOException, ClassNotFoundException {\n\n    try (ObjectInputStream in = new ObjectInputStream(receivedFile)) {\n        return (UserData) in.readObject();\n    }\n}\nSolutions: \nAvoid deserializing object provided by remote users. \nReferencesCWE-502: Deserialization of Untrusted DataDeserialization of \nuntrusted dataSerialization and Deserialization A tool for generating payloads \nthat exploit unsafe Java object deserialization[1] Example of Denial of \nService using the class java.util.HashSet[2] OpenJDK: Deserialization issue in \nObjectInputStream.readSerialData() (CVE-2015-2590)[3] Rapid7: Sun Java \nCalendar Deserialization Privilege Escalation (CVE-2008-5353)"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Object deserialization is used in {0}."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#OBJECT_DESERIALIZATION",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "502",
+                    "guid": "ff25cc2c-fffa-57bc-8f05-4b360dd88816",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "HTTPONLY_COOKIE",
+              "shortDescription": {
+                "text": "Cookie without the HttpOnly flag."
+              },
+              "fullDescription": {
+                "text": "A new cookie is created without the HttpOnly flag set. The HttpOnly flag is a \ndirective to the browser to make sure that the cookie can not be red by \nmalicious script. When a user is the target of a \"Cross-Site Scripting\", the \nattacker would benefit greatly from getting the session id for example. \nCode at risk: \nCookie cookie = new Cookie(\"email\",userName);\nresponse.addCookie(cookie);\nSolution (Specific configuration): \nCookie cookie = new Cookie(\"email\",userName);\ncookie.setSecure(true);\ncookie.setHttpOnly(true); //HttpOnly flag\nSolution (Servlet 3.0 configuration): \n<web-app xmlns=\"http://java.sun.com/xml/ns/javaee\" version=\"3.0\">\n[...]\n<session-config>\n <cookie-config>\n  <http-only>true</http-only>\n  <secure>true</secure>\n </cookie-config>\n</session-config>\n</web-app>\nReferenceCoding Horror blog: Protecting Your Cookies: HttpOnlyOWASP: HttpOnlyRapid7: \nMissing HttpOnly Flag From Cookie CWE-1004: Sensitive Cookie Without \n'HttpOnly' Flag"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Cookie without the HttpOnly flag could be read by a malicious script in the browser."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#HTTPONLY_COOKIE",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "1004",
+                    "guid": "0783f9dc-1212-5d10-894d-057c797ba987",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SERVLET_HEADER_USER_AGENT",
+              "shortDescription": {
+                "text": "Untrusted User-Agent header."
+              },
+              "fullDescription": {
+                "text": "The header \"User-Agent\" can easily be spoofed by the client. Adopting \ndifferent behaviors based on the User-Agent (for crawler UA) is not \nrecommended. \nReferenceCWE-807: Untrusted Inputs in a Security Decision"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "The header \"User-Agent\" can easily be spoofed by the client."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SERVLET_HEADER_USER_AGENT",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "807",
+                    "guid": "2626368c-6d4f-5429-aa52-ee96a99c8655",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "HARD_CODE_PASSWORD",
+              "shortDescription": {
+                "text": "Hard coded password."
+              },
+              "fullDescription": {
+                "text": "Passwords should not be kept in the source code. The source code can be widely \nshared in an enterprise environment, and is certainly shared in open source. \nTo be managed safely, passwords and secret keys should be stored in separate \nconfiguration files or keystores. (Hard coded keys are reported separately by Hard \nCoded Key pattern) \n\nVulnerable Code: \nprivate String SECRET_PASSWORD = \"letMeIn!\";\n\nProperties props = new Properties();\nprops.put(Context.SECURITY_CREDENTIALS, \"p@ssw0rd\");\nReferencesCWE-259: Use of Hard-coded Password"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Hard coded password found."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#HARD_CODE_PASSWORD",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "259",
+                    "guid": "50b06d54-751a-5af0-9a8c-5ba16677987d",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "INSECURE_COOKIE",
+              "shortDescription": {
+                "text": "Cookie without the secure flag."
+              },
+              "fullDescription": {
+                "text": "A new cookie is created without the Secure flag set. The Secure flag is a \ndirective to the browser to make sure that the cookie is not sent for insecure \ncommunication (http://). \nCode at risk: \nCookie cookie = new Cookie(\"userName\",userName);\nresponse.addCookie(cookie);\nSolution (Specific configuration): \nCookie cookie = new Cookie(\"userName\",userName);\ncookie.setSecure(true); // Secure flag\ncookie.setHttpOnly(true);\nSolution (Servlet 3.0 configuration): \n<web-app xmlns=\"http://java.sun.com/xml/ns/javaee\" version=\"3.0\">\n[...]\n<session-config>\n <cookie-config>\n  <http-only>true</http-only>\n  <secure>true</secure>\n </cookie-config>\n</session-config>\n</web-app>\nReferenceCWE-614: Sensitive Cookie in HTTPS Session Without 'Secure' AttributeCWE-315: \nCleartext Storage of Sensitive Information in a CookieCWE-311: Missing \nEncryption of Sensitive DataOWASP: Secure FlagRapid7: Missing Secure Flag From \nSSL Cookie"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Cookie without the secure flag could be sent in clear text if an HTTP URL is visited."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#INSECURE_COOKIE",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "614",
+                    "guid": "06a50c3b-db90-53ee-9dcd-bdf22e7b9a5a",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "WEAK_FILENAMEUTILS",
+              "shortDescription": {
+                "text": "FilenameUtils not filtering null bytes."
+              },
+              "fullDescription": {
+                "text": "Some FilenameUtils' methods don't filter NULL bytes (0x00). \nIf a null byte is injected into a filename, if this filename is passed to the \nunderlying OS, the file retrieved will be the name of the file that is \nspecified prior to the NULL byte, since at the OS level, all strings are \nterminated by a null byte even though Java itself doesn't care about null \nbytes or treat them special. This OS behavior can be used to bypass filename \nvalidation that looks at the end of the filename (e.g., ends with \".log\") to \nmake sure it's a safe file to access. \nTo fix this, two things are recommended: \n  * Upgrade to Java 7 update 40 or later, or Java 8+ since NULL byte injection \n    in filenames is fixed in those versions. \n  * Strongly validate any filenames provided by untrusted users to make sure \n    they are valid (i.e., don't contain null, don't include path characters, \n    etc). \n  \nIf you know you are using a modern version of Java immune to NULL byte \ninjection, you can probably disable this rule. \nReferencesWASC-28: Null Byte InjectionCWE-158: Improper Neutralization of Null \nByte or NUL Character"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "FilenameUtils.{0} doesn't filter null bytes."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#WEAK_FILENAMEUTILS",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "158",
+                    "guid": "6058bdc1-240c-5a84-806e-0988ab06ae5b",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "SERVLET_QUERY_STRING",
+              "shortDescription": {
+                "text": "Untrusted query string."
+              },
+              "fullDescription": {
+                "text": "The query string is the concatenation of the GET parameter names and values. \nParameters other than those intended can be passed in. \nFor the URL request /app/servlet.htm?a=1&b=2, the query string extract will be a=1&b=2 \n\nJust as is true for individual parameter values retrieved via methods like HttpServletRequest.getParameter(), \nthe value obtained from HttpServletRequest.getQueryString() should be \nconsidered unsafe. You may need to validate or sanitize anything pulled from \nthe query string before passing it to sensitive APIs. \nReferenceCWE-20: Improper Input Validation"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "The query string can be any value."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SERVLET_QUERY_STRING",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "20",
+                    "guid": "b090a1e1-92d8-51fd-ac1f-fbc6939eb44d",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "POTENTIAL_XML_INJECTION",
+              "shortDescription": {
+                "text": "An unsafe string is potentially injected into an XML string."
+              },
+              "fullDescription": {
+                "text": "Unsafe strings (e.g. from a user input) may contain XML tags. If such a string \nis inserted into an XML document then it may change its structure to a valid \nbut semantically different document. To prevent this unsafe strings must b \nsanitized first. \nExample:An XML document may look like this: \n&langle;product&rangle;\n    &langle;name&rangle;Cell Phone&langle;/name&rangle;\n    &langle;price&rangle;800&langle;/price&rangle;\n    &langle;amount&rangle;1&langle;/amount&rangle;\n&langle;/product&rangle;\nAn attacker may put the following string to the field \"amount\": 1&langle;/amount&rangle;&langle;price&rangle;1&langle;/price&rangle;&langle;amount&rangle;1\nIf the XML parser works in a way that the second price overwrites the first \none then the attacker may buy the cell phone for 1 singe dollar. ReferencesIDS16-J. \nPrevent XML Injection"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "{0} is potentially injected into an XML string in method {1}."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#POTENTIAL_XML_INJECTION",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              }
+            },
+            {
+              "id": "INFORMATION_EXPOSURE_THROUGH_AN_ERROR_MESSAGE",
+              "shortDescription": {
+                "text": "Information Exposure Through An Error Message."
+              },
+              "fullDescription": {
+                "text": "The sensitive information may be valuable information on its own (such as a \npassword), or it may be useful for launching other, more deadly attacks. If an \nattack fails, an attacker may use error information provided by the server to \nlaunch another more focused attack. For example, an attempt to exploit a path \ntraversal weakness (CWE-22) might yield the full pathname of the installed \napplication. In turn, this could be used to select the proper number of \"..\" \nsequences to navigate to the targeted file. An attack using SQL injection \n(CWE-89) might not initially succeed, but an error message could reveal the \nmalformed query, which would expose query logic and possibly even passwords or \nother sensitive information used within the query. \nVulnerable Code: \ntry {\n  out = httpResponse.getOutputStream()\n} catch (Exception e) {\n  e.printStackTrace(out);\n}\nReferencesCWE-209: Information Exposure Through an Error MessageCWE-211: \nInformation Exposure Through Externally-Generated Error Message"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "Possible information exposure through an error message."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#INFORMATION_EXPOSURE_THROUGH_AN_ERROR_MESSAGE",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "209",
+                    "guid": "f4809885-c9d6-5931-8bb1-50534e74f6cc",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "URLCONNECTION_SSRF_FD",
+              "shortDescription": {
+                "text": "URLConnection Server-Side Request Forgery (SSRF) and File Disclosure."
+              },
+              "fullDescription": {
+                "text": "Server-Side Request Forgery occur when a web server executes a request to a \nuser supplied destination parameter that is not validated. Such \nvulnerabilities could allow an attacker to access internal services or to \nlaunch attacks from your web server. \nURLConnection can be used with file:// protocol or other protocols to access \nlocal filesystem and potentially other services. \nVulnerable Code: \nnew URL(String url).openConnection()\nnew URL(String url).openStream()\nnew URL(String url).getContent()\nSolution/Countermeasures: \n  * Don't accept URL destinations from users \n  * Accept a destination key, and use it to look up the target destination \n    associate with the key \n  * White list URLs (if possible) \n  * Validate that the beginning of the URL is part of a white list \n  \nReferencesCWE-918: Server-Side Request Forgery (SSRF)Understanding Server-Side \nRequest ForgeryCWE-73: External Control of File Name or PathAbusing jar:// \ndownloads"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "This web server request could be used by an attacker to expose internal services and filesystem."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#URLCONNECTION_SSRF_FD",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "918",
+                    "guid": "5bb88194-5222-563c-b8e6-b0b769ed3c9a",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "XXE_XMLSTREAMREADER",
+              "shortDescription": {
+                "text": "XML parsing vulnerable to XXE (XMLStreamReader)."
+              },
+              "fullDescription": {
+                "text": "Attack XML External Entity (XXE) attacks can occur when an XML parser supports \nXML entities while processing XML received from an untrusted source. \nRisk 1: Expose local file content (XXE: XML External Entity) \n\n<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<!DOCTYPE foo [\n   <!ENTITY xxe SYSTEM \"file:///etc/passwd\" > ]>\n<foo>&xxe;</foo>\nRisk 2: Denial of service (XEE: XML Entity Expansion) \n<?xml version=\"1.0\"?>\n<!DOCTYPE lolz [\n <!ENTITY lol \"lol\">\n <!ELEMENT lolz (#PCDATA)>\n <!ENTITY lol1 \"&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;\">\n <!ENTITY lol2 \"&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;\">\n <!ENTITY lol3 \"&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;\">\n[...]\n <!ENTITY lol9 \"&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;\">\n]>\n<lolz>&lol9;</lolz>\nSolution In order to avoid exposing dangerous feature of the XML parser, you \ncan do the following change to the code. \nVulnerable Code: \n\npublic void parseXML(InputStream input) throws XMLStreamException {\n\n    XMLInputFactory factory = XMLInputFactory.newFactory();\n    XMLStreamReader reader = factory.createXMLStreamReader(input);\n    [...]\n}\nThe following snippets show two available solutions. You can set one property \nor both. \nSolution disabling External Entities: \n\npublic void parseXML(InputStream input) throws XMLStreamException {\n\n    XMLInputFactory factory = XMLInputFactory.newFactory();\n    factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);\n    XMLStreamReader reader = factory.createXMLStreamReader(input);\n    [...]\n}\nSolution disabling DTD: \n\npublic void parseXML(InputStream input) throws XMLStreamException {\n\n    XMLInputFactory factory = XMLInputFactory.newFactory();\n    factory.setProperty(XMLInputFactory.SUPPORT_DTD, false);\n    XMLStreamReader reader = factory.createXMLStreamReader(input);\n    [...]\n}\nReferencesCWE-611: Improper Restriction of XML External Entity Reference \n('XXE')CERT: IDS10-J. Prevent XML external entity attacksOWASP.org: XML \nExternal Entity (XXE) ProcessingWS-Attacks.org: XML Entity ExpansionWS-Attacks.org: \nXML External Entity DOSWS-Attacks.org: XML Entity Reference AttackIdentifying \nXML External Entity vulnerability (XXE)JEP 185: Restrict Fetching of External \nXML Resources"
+              },
+              "messageStrings": {
+                "default": {
+                  "text": "The XML parsing is vulnerable to XML External Entity attacks."
+                }
+              },
+              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#XXE_XMLSTREAMREADER",
+              "properties": {
+                "tags": [
+                  "SECURITY"
+                ]
+              },
+              "relationships": [
+                {
+                  "target": {
+                    "id": "611",
+                    "guid": "b7383f8c-a52b-52c9-b7d1-95a3c511d9da",
+                    "toolComponent": {
+                      "name": "CWE",
+                      "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+                    }
+                  },
+                  "kinds": [
+                    "superset"
+                  ]
+                }
+              ]
+            }
+          ],
+          "supportedTaxonomies": [
+            {
+              "name": "CWE",
+              "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310"
+            }
+          ]
+        }
+      },
+      "invocations": [
+        {
+          "exitCode": 1,
+          "exitCodeDescription": "BUGS FOUND",
+          "executionSuccessful": true
+        }
+      ],
+      "results": [
+        {
+          "ruleId": "SPRING_ENDPOINT",
+          "ruleIndex": 5,
+          "message": {
+            "id": "default",
+            "text": "Found Spring endpoint",
+            "arguments": [
+              "org.owasp.webgoat.lessons.challenges.challenge5.Assignment5"
+            ]
+          },
+          "level": "note",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/challenges/challenge5/Assignment5.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 36,
+                  "endLine": 42
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "login(String, String)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.challenges.challenge5.Assignment5.login(String, String)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "SQL_INJECTION_JDBC",
+          "ruleIndex": 10,
+          "message": {
+            "id": "default",
+            "text": "Potential JDBC Injection",
+            "arguments": [
+              "java/sql/Connection.prepareStatement(Ljava/lang/String;)Ljava/sql/PreparedStatement;"
+            ]
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/challenges/challenge5/Assignment5.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 44
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "login(String, String)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.challenges.challenge5.Assignment5.login(String, String)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING",
+          "ruleIndex": 18,
+          "message": {
+            "id": "default",
+            "text": "A prepared statement is generated from a nonconstant String",
+            "arguments": [
+              "org.owasp.webgoat.lessons.challenges.challenge5.Assignment5.login(String, String)"
+            ]
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/challenges/challenge5/Assignment5.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 44
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "login(String, String)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.challenges.challenge5.Assignment5.login(String, String)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "PREDICTABLE_RANDOM",
+          "ruleIndex": 15,
+          "message": {
+            "id": "default",
+            "text": "Predictable pseudorandom number generator",
+            "arguments": [
+              "java.util.Random"
+            ]
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 37
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "getMd5(HttpServletRequest)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.getMd5(HttpServletRequest)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "PREDICTABLE_RANDOM",
+          "ruleIndex": 15,
+          "message": {
+            "id": "default",
+            "text": "Predictable pseudorandom number generator",
+            "arguments": [
+              "java.util.Random"
+            ]
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 55
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "getSha256(HttpServletRequest)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.getSha256(HttpServletRequest)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "SPRING_CSRF_UNRESTRICTED_REQUEST_MAPPING",
+          "ruleIndex": 4,
+          "message": {
+            "id": "default",
+            "text": "Spring CSRF unrestricted RequestMapping"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 34,
+                  "endLine": 46
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "getMd5(HttpServletRequest)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.getMd5(HttpServletRequest)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "SPRING_CSRF_UNRESTRICTED_REQUEST_MAPPING",
+          "ruleIndex": 4,
+          "message": {
+            "id": "default",
+            "text": "Spring CSRF unrestricted RequestMapping"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 53,
+                  "endLine": 60
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "getSha256(HttpServletRequest)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.getSha256(HttpServletRequest)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "SPRING_ENDPOINT",
+          "ruleIndex": 5,
+          "message": {
+            "id": "default",
+            "text": "Found Spring endpoint",
+            "arguments": [
+              "org.owasp.webgoat.lessons.cryptography.HashingAssignment"
+            ]
+          },
+          "level": "note",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 70,
+                  "endLine": 80
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "completed(HttpServletRequest, String, String)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.completed(HttpServletRequest, String, String)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "SPRING_ENDPOINT",
+          "ruleIndex": 5,
+          "message": {
+            "id": "default",
+            "text": "Found Spring endpoint",
+            "arguments": [
+              "org.owasp.webgoat.lessons.cryptography.HashingAssignment"
+            ]
+          },
+          "level": "note",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 34,
+                  "endLine": 46
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "getMd5(HttpServletRequest)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.getMd5(HttpServletRequest)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "SPRING_ENDPOINT",
+          "ruleIndex": 5,
+          "message": {
+            "id": "default",
+            "text": "Found Spring endpoint",
+            "arguments": [
+              "org.owasp.webgoat.lessons.cryptography.HashingAssignment"
+            ]
+          },
+          "level": "note",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 53,
+                  "endLine": 60
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "getSha256(HttpServletRequest)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.getSha256(HttpServletRequest)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "UNSAFE_HASH_EQUALS",
+          "ruleIndex": 19,
+          "message": {
+            "id": "default",
+            "text": "Unsafe hash equals"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 74
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "completed(HttpServletRequest, String, String)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.completed(HttpServletRequest, String, String)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "UNSAFE_HASH_EQUALS",
+          "ruleIndex": 19,
+          "message": {
+            "id": "default",
+            "text": "Unsafe hash equals"
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 76
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "completed(HttpServletRequest, String, String)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.completed(HttpServletRequest, String, String)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "ruleId": "WEAK_MESSAGE_DIGEST_MD5",
+          "ruleIndex": 20,
+          "message": {
+            "id": "default",
+            "text": "MD2, MD4 and MD5 are weak hash functions",
+            "arguments": [
+              "MD5"
+            ]
+          },
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
+                  "uriBaseId": "-1471205888"
+                },
+                "region": {
+                  "startLine": 39
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "getMd5(HttpServletRequest)",
+                  "kind": "function",
+                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.getMd5(HttpServletRequest)"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "originalUriBaseIds": {
+        "-1471205888": {
+          "uri": "file:/src/src/main/java/"
+        }
+      },
+      "taxonomies": [
+        {
+          "name": "CWE",
+          "version": "4.10",
+          "minimumRequiredLocalizedDataSemanticVersion": "4.10",
+          "releaseDateUtc": "2023-01-31",
+          "guid": "b8c54a32-de19-51d2-9a08-f0abfbaa7310",
+          "informationUri": "https://cwe.mitre.org/data/published/cwe_v4.10.pdf/",
+          "downloadUri": "https://cwe.mitre.org/data/xml/cwec_v4.10.xml.zip",
+          "isComprehensive": true,
+          "organization": "MITRE",
+          "language": "en",
+          "shortDescription": {
+            "text": "The MITRE Common Weakness Enumeration"
+          },
+          "taxa": [
+            {
+              "id": "1004",
+              "guid": "0783f9dc-1212-5d10-894d-057c797ba987",
+              "shortDescription": {
+                "text": "Sensitive Cookie Without 'HttpOnly' Flag"
+              },
+              "fullDescription": {
+                "text": "The product uses a cookie to store sensitive information, but the cookie is not marked with the HttpOnly flag."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "117",
+              "guid": "e4360770-eb15-55cf-8880-7051868a1961",
+              "shortDescription": {
+                "text": "Improper Output Neutralization for Logs"
+              },
+              "fullDescription": {
+                "text": "The product does not neutralize or incorrectly neutralizes output that is written to logs."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "134",
+              "guid": "c1004dd3-0fd4-59aa-9063-320f7523e5b4",
+              "shortDescription": {
+                "text": "Use of Externally-Controlled Format String"
+              },
+              "fullDescription": {
+                "text": "The product uses a function that accepts a format string as an argument, but the format string originates from an external source."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "158",
+              "guid": "6058bdc1-240c-5a84-806e-0988ab06ae5b",
+              "shortDescription": {
+                "text": "Improper Neutralization of Null Byte or NUL Character"
+              },
+              "fullDescription": {
+                "text": "The product receives input from an upstream component, but it does not neutralize or incorrectly neutralizes NUL characters or null bytes when they are sent to a downstream component."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              }
+            },
+            {
+              "id": "176",
+              "guid": "caae0840-1583-5ad6-9822-3d01b325b926",
+              "shortDescription": {
+                "text": "Improper Handling of Unicode Encoding"
+              },
+              "fullDescription": {
+                "text": "The product does not properly handle when an input contains Unicode encoding."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              }
+            },
+            {
+              "id": "20",
+              "guid": "b090a1e1-92d8-51fd-ac1f-fbc6939eb44d",
+              "shortDescription": {
+                "text": "Improper Input Validation"
+              },
+              "fullDescription": {
+                "text": "The product receives input or data, but it does\n        not validate or incorrectly validates that the input has the\n        properties that are required to process the data safely and\n        correctly."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "203",
+              "guid": "87991d23-2fc3-5120-b88b-2a9757717e43",
+              "shortDescription": {
+                "text": "Observable Discrepancy"
+              },
+              "fullDescription": {
+                "text": "The product behaves differently or sends different responses under different circumstances in a way that is observable to an unauthorized actor, which exposes security-relevant information about the state of the product, such as whether a particular operation was successful or not."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              }
+            },
+            {
+              "id": "209",
+              "guid": "f4809885-c9d6-5931-8bb1-50534e74f6cc",
+              "shortDescription": {
+                "text": "Generation of Error Message Containing Sensitive Information"
+              },
+              "fullDescription": {
+                "text": "The product generates an error message that includes sensitive information about its environment, users, or associated data."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "22",
+              "guid": "19cf96fc-1234-5a3d-8e5d-21b225b7d3e8",
+              "shortDescription": {
+                "text": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
+              },
+              "fullDescription": {
+                "text": "The product uses external input to construct a pathname that is intended to identify a file or directory that is located underneath a restricted parent directory, but the product does not properly neutralize special elements within the pathname that can cause the pathname to resolve to a location that is outside of the restricted directory."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "259",
+              "guid": "50b06d54-751a-5af0-9a8c-5ba16677987d",
+              "shortDescription": {
+                "text": "Use of Hard-coded Password"
+              },
+              "fullDescription": {
+                "text": "The product contains a hard-coded password, which it uses for its own inbound authentication or for outbound communication to external components."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "315",
+              "guid": "1e8b2edd-a6e3-55f9-b6f2-739f59d0fd49",
+              "shortDescription": {
+                "text": "Cleartext Storage of Sensitive Information in a Cookie"
+              },
+              "fullDescription": {
+                "text": "The product stores sensitive information in cleartext in a cookie."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              }
+            },
+            {
+              "id": "328",
+              "guid": "dc1e99c1-c57b-5af0-85a4-9ad3bfac9c82",
+              "shortDescription": {
+                "text": "Use of Weak Hash"
+              },
+              "fullDescription": {
+                "text": "The product uses an algorithm that produces a digest (output value) that does not meet security expectations for a hash function that allows an adversary to reasonably determine the original input (preimage attack), find another input that can produce the same hash (2nd preimage attack), or find multiple inputs that evaluate to the same hash (birthday attack)."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              }
+            },
+            {
+              "id": "330",
+              "guid": "80cf7ee1-5a29-5fb4-a2f1-701272abf9b7",
+              "shortDescription": {
+                "text": "Use of Insufficiently Random Values"
+              },
+              "fullDescription": {
+                "text": "The product uses insufficiently random numbers or values in a security context that depends on unpredictable numbers."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "352",
+              "guid": "4cccead0-b8dc-5b81-98f4-9b2b99290363",
+              "shortDescription": {
+                "text": "Cross-Site Request Forgery (CSRF)"
+              },
+              "fullDescription": {
+                "text": "The web application does not, or can not, sufficiently verify whether a well-formed, valid, consistent request was intentionally provided by the user who submitted the request."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "502",
+              "guid": "ff25cc2c-fffa-57bc-8f05-4b360dd88816",
+              "shortDescription": {
+                "text": "Deserialization of Untrusted Data"
+              },
+              "fullDescription": {
+                "text": "The product deserializes untrusted data without sufficiently verifying that the resulting data will be valid."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            },
+            {
+              "id": "552",
+              "guid": "d6cffae3-f4ef-5209-b0e7-e53fdcbde3e5",
+              "shortDescription": {
+                "text": "Files or Directories Accessible to External Parties"
+              },
+              "fullDescription": {
+                "text": "The product makes files or directories accessible to unauthorized actors, even though they should not be."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              }
+            },
+            {
+              "id": "611",
+              "guid": "b7383f8c-a52b-52c9-b7d1-95a3c511d9da",
+              "shortDescription": {
+                "text": "Improper Restriction of XML External Entity Reference"
+              },
+              "fullDescription": {
+                "text": "The product processes an XML document that can contain XML entities with URIs that resolve to documents outside of the intended sphere of control, causing the product to embed incorrect documents into its output."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              }
+            },
+            {
+              "id": "614",
+              "guid": "06a50c3b-db90-53ee-9dcd-bdf22e7b9a5a",
+              "shortDescription": {
+                "text": "Sensitive Cookie in HTTPS Session Without 'Secure' Attribute"
+              },
+              "fullDescription": {
+                "text": "The Secure attribute for sensitive cookies in HTTPS sessions is not set, which could cause the user agent to send those cookies in plaintext over an HTTP session."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              }
+            },
+            {
+              "id": "78",
+              "guid": "de860c32-bc93-5e70-89d7-0877e5abaefb",
+              "shortDescription": {
+                "text": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+              },
+              "fullDescription": {
+                "text": "The product constructs all or part of an OS command using externally-influenced input from an upstream component, but it does not neutralize or incorrectly neutralizes special elements that could modify the intended OS command when it is sent to a downstream component."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "807",
+              "guid": "2626368c-6d4f-5429-aa52-ee96a99c8655",
+              "shortDescription": {
+                "text": "Reliance on Untrusted Inputs in a Security Decision"
+              },
+              "fullDescription": {
+                "text": "The product uses a protection mechanism that relies on the existence or values of an input, but the input can be modified by an untrusted actor in a way that bypasses the protection mechanism."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "89",
+              "guid": "ef952f10-a202-504c-8649-9ffcb2291d69",
+              "shortDescription": {
+                "text": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+              },
+              "fullDescription": {
+                "text": "The product constructs all or part of an SQL command using externally-influenced input from an upstream component, but it does not neutralize or incorrectly neutralizes special elements that could modify the intended SQL command when it is sent to a downstream component."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "915",
+              "guid": "ec76b642-6a30-570d-93b4-289a1b26ca78",
+              "shortDescription": {
+                "text": "Improperly Controlled Modification of Dynamically-Determined Object Attributes"
+              },
+              "fullDescription": {
+                "text": "The product receives input from an upstream component that specifies multiple attributes, properties, or fields that are to be initialized or updated in an object, but it does not properly control which attributes can be modified."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              }
+            },
+            {
+              "id": "918",
+              "guid": "5bb88194-5222-563c-b8e6-b0b769ed3c9a",
+              "shortDescription": {
+                "text": "Server-Side Request Forgery (SSRF)"
+              },
+              "fullDescription": {
+                "text": "The web server receives a URL or similar request from an upstream component and retrieves the contents of this URL, but it does not sufficiently ensure that the request is being sent to the expected destination."
+              },
+              "defaultConfiguration": {
+                "level": "none"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
