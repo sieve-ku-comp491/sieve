@@ -4,6 +4,7 @@ from app.adapters.base import BaseSarifAdapter, SarifAdapter
 from app.adapters.finding import AdapterResult, Finding, FlowStep, Location
 from app.adapters.fingerprint import Fingerprinter, context_hash, fingerprint, normalize
 from app.adapters.semgrep import SemgrepAdapter
+from app.adapters.spotbugs import SpotBugsAdapter
 
 
 class AdapterError(LookupError):
@@ -14,7 +15,7 @@ class AdapterRegistry:
     """The adapter for each name a plug-in manifest can give in its adapter field."""
 
     def __init__(self, adapters: list[SarifAdapter] | None = None):
-        adapters = adapters if adapters is not None else [SemgrepAdapter()]
+        adapters = adapters if adapters is not None else [SemgrepAdapter(), SpotBugsAdapter()]
         self._adapters = {adapter.tool: adapter for adapter in adapters}
 
     def get(self, name: str) -> SarifAdapter:
@@ -35,6 +36,7 @@ __all__ = [
     "Location",
     "SarifAdapter",
     "SemgrepAdapter",
+    "SpotBugsAdapter",
     "context_hash",
     "fingerprint",
     "normalize",
