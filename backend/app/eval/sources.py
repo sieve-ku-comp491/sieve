@@ -52,18 +52,32 @@ def checkout_path(source: Source, root: Path | None = None) -> Path:
 
 
 def fetch(source: Source, root: Path | None = None) -> Path:
-    """Check out the source at its pinned commit, without history. Does nothing if it already is."""
+    """Check out the source at its pinned commit, without history.
+
+    The tree ends up exactly as the commit has it: a file that only an earlier pin had, or that
+    was changed or added by hand, is removed or restored. A source already at its commit is not
+    downloaded again.
+    """
     dest = checkout_path(source, root)
-    if dest.exists() and _head(dest) == source.commit:
-        return dest
-    dest.mkdir(parents=True, exist_ok=True)
-    _git(dest, "init", "--quiet")
-    _git(dest, "fetch", "--quiet", "--depth", "1", source.url, source.commit)
-    _git(dest, "-c", "advice.detachedHead=false", "checkout", "--quiet", "--force", "FETCH_HEAD")
+    if not (dest.exists() and _head(dest) == source.commit):
+        dest.mkdir(parents=True, exist_ok=True)
+        _git(dest, "init", "--quiet")
+        _git(dest, "fetch", "--quiet", "--depth", "1", source.url, source.commit)
+        _git(
+            dest, "-c", "advice.detachedHead=false", "checkout", "--quiet", "--force", "FETCH_HEAD"
+        )
+    _git(dest, "reset", "--quiet", "--hard")
+    _git(dest, "clean", "--quiet", "-ffdx")
     head = _head(dest)
     if head != source.commit:
         raise SourceError(f"{source.name}: checked out {head}, expected {source.commit}")
     return dest
+
+
+def is_fetched(source: Source, root: Path | None = None) -> bool:
+    """Whether the source is checked out at its pinned commit."""
+    dest = checkout_path(source, root)
+    return dest.exists() and _head(dest) == source.commit
 
 
 def _head(path: Path) -> str | None:
