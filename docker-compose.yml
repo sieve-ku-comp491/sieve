@@ -26,5 +26,28 @@ services:
       timeout: 3s
       retries: 10
 
+  # The forward proxy of the Java build step: HTTPS to Maven Central only (docs/interfaces.md).
+  # Build containers reach it on sieve-build, which has no route out, and it reaches Maven
+  # Central through egress.
+  maven-proxy:
+    build: ./maven-proxy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - sieve-build
+      - egress
+
+networks:
+  egress:
+  sieve-build:
+    # A fixed name, so the worker can attach build containers to it (SIEVE_BUILD_NETWORK).
+    name: sieve-build
+    internal: true
+
 volumes:
   db-data:
