@@ -191,6 +191,7 @@ classDiagram
     #tool_score(rule: dict) float
     #confidence(rule: dict, result: dict) str
     #tool_fingerprint(result: dict) str
+    #snippet(region: dict) str
     #keep(result: dict) bool
     #mask(lines: list~str~, location: Location) list~str~
   }
@@ -198,6 +199,11 @@ classDiagram
     +tool: str
     #confidence(rule: dict, result: dict) str
     #tool_fingerprint(result: dict) str
+  }
+  class BanditAdapter {
+    +tool: str
+    #confidence(rule: dict, result: dict) str
+    #snippet(region: dict) str
   }
   class SpotBugsAdapter {
     +tool: str
@@ -265,6 +271,7 @@ classDiagram
 
   SarifAdapter <|.. BaseSarifAdapter
   BaseSarifAdapter <|-- SemgrepAdapter
+  BaseSarifAdapter <|-- BanditAdapter
   BaseSarifAdapter <|-- SpotBugsAdapter
   BaseSarifAdapter <|-- EslintAdapter
   BaseSarifAdapter <|-- GitleaksAdapter
@@ -284,11 +291,12 @@ classDiagram
 A tool's adapter overrides only what its tool does differently:
 
 - `SemgrepAdapter.confidence()` reads the `HIGH CONFIDENCE`, `MEDIUM CONFIDENCE` and `LOW CONFIDENCE` rule tags, and `tool_fingerprint()` returns nothing, because Semgrep without a login writes `requires login` instead of a fingerprint.
+- `BanditAdapter.confidence()` reads each result's `issue_confidence` property, and `snippet()` returns nothing, so the snippet is read from the checkout, because Bandit's own snippet can come from the wrong line (docs/finding-format.md).
 - `SpotBugsAdapter.normalize_path()` also tries the source folders the Java build step listed, because SpotBugs writes paths relative to a source folder when it doesn't know the folder.
 - `EslintAdapter.cwes()` maps the rules of eslint-plugin-security to CWEs with the table in docs/finding-format.md, because the plug-in gives none.
 - `GitleaksAdapter.cwes()` returns `CWE-798`, and `mask()` replaces every flagged line with `REDACTED`. In other adapters `mask()` returns the lines unchanged.
 
-The Bandit adapter (T2.2) follows the same pattern. Each adapter is tested against a saved SARIF file from a real run of its tool (requirement F1).
+Each adapter is tested against a saved SARIF file from a real run of its tool (requirement F1).
 
 ## LLM provider
 

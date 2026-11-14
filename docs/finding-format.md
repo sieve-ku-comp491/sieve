@@ -67,7 +67,7 @@ Tools put CWE IDs in different places. The adapter accepts all of these and turn
 | Form | Used by | Example |
 |---|---|---|
 | a rule tag that starts with the ID | Semgrep | `CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')` |
-| a rule tag in CodeQL's form | CodeQL and tools that copy it | `external/cwe/cwe-089` |
+| a rule tag in CodeQL's form | CodeQL, Bandit and tools that copy it | `external/cwe/cwe-089` |
 | a relationship from the rule to the CWE taxonomy | tools that use SARIF taxonomies | `relationships[].target` with `id` `89` and `toolComponent.name` `CWE` |
 | `result.taxa` with the same target | the same tools, per result | |
 
@@ -105,7 +105,24 @@ Suppressed results are kept. The scanned repository is not ours, so a `# nosemgr
 | Tool | Where the confidence comes from |
 |---|---|
 | Semgrep | the rule tags `HIGH CONFIDENCE`, `MEDIUM CONFIDENCE` and `LOW CONFIDENCE`. Semgrep also writes `properties.precision`, but it is `very-high` on all 378 rules of the Python rule set, so the adapter ignores it. |
+| Bandit | the result's `properties.issue_confidence` (see Bandit below) |
 | Other tools | checked against real output in T2.2. Tools that don't report a confidence leave the field empty. |
+
+### Bandit
+
+We checked these against the Bandit plug-in's output on PyGoat at commit `2aa4cc1`: 130 results from 20 rules in 116 files.
+
+- `tool_severity` comes from the result's `level`, which Bandit 1.9.4 sets from the issue's severity: `error` for HIGH and `note` for LOW. For MEDIUM it leaves `level` out, because `warning` is the SARIF default, so the adapter's default gives `warning`.
+- `cwe` comes from the rule tag in CodeQL's form, such as `external/cwe/cwe-89`. Every rule that fired on PyGoat has one. For an issue without a CWE, which none of Bandit's own rules has, Bandit would write `external/cwe/cwe-None`, and the list stays empty.
+- `tool_confidence` comes from the result's `properties.issue_confidence`, HIGH, MEDIUM or LOW. Bandit also writes `precision` on the rule, but it is the confidence of the rule's first result in the run, not a property of the rule, so the adapter ignores it.
+- Bandit writes no fingerprints, no suppressions, no rule descriptions and no code flows. Paths are `file:///src/...` URIs.
+
+Bandit 1.9.4's SARIF writer has two bugs in the region. Its JSON output has the right lines.
+
+- `endLine` is the second line of the flagged range, not the last. On PyGoat, 21 results span more than two lines, and their end line is cut short. `endColumn` still belongs to the real last line.
+- The snippet is a single line, taken from the code that Bandit prints around the line it reports, starting one line above it. When the flagged code starts further up, as for a key in a dictionary that spans several lines, Bandit takes it with a negative index, which wraps around to the last line it printed. On PyGoat, 14 snippets are not the code on `startLine`. For example, both passwords in the dictionary on lines 10 to 14 of `dockerized_labs/dependency_attack_lab/app.py` are reported at lines 10 to 11, with `class MaliciousDependency:` from line 17 as the snippet.
+
+The adapter keeps the lines as Bandit reports them, since SARIF has no other line to take, but it never uses Bandit's snippet: it reads the flagged lines from the checkout. Two such findings in one dictionary have the same flagged lines, so they are marked ambiguous and are never hidden by an earlier review.
 
 ## Fingerprint
 
