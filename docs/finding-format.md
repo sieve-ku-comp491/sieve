@@ -177,10 +177,13 @@ Deduplication links each new finding to the earlier findings of the same reposit
 
 - An earlier finding with that fingerprint has a review. The latest such review counts, from any earlier scan, not only the previous one, so a finding that was hidden in the second scan stays hidden in the third.
 - That earlier finding has the same context hash, and it isn't empty.
-- Neither finding is ambiguous, except in two scans of the same commit.
+- Neither finding is ambiguous, except in two scans of the same commit with the same tool and rules versions. Other rules can flag other copies of the same code, which changes the occurrence numbers.
 - The tool is not Gitleaks. Its fingerprint hides the secret, so a test key and a real key on the same line look the same.
+- The review still decides that earlier finding: nobody edited the finding after it, so its state is `approved`, `rejected` or `reported` (docs/finding-states.md). A review followed by an edit is only a suggestion.
 
 In every other case the finding is shown again, with the earlier decision as a suggestion. Showing a finding twice costs a reviewer a few seconds, while hiding a real bug defeats the purpose of Sieve, so every doubt goes towards showing.
+
+`backend/app/dedup/matching.py` applies these rules when a plug-in run's findings are stored, in the same transaction.
 
 ### How well it works
 
