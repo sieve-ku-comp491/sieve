@@ -11,7 +11,7 @@ import docker
 import docker.errors
 import pytest
 
-from app.adapters import EslintAdapter
+from app.adapters.eslint import EslintAdapter
 from app.checkout import CheckoutReader
 from app.runner import (
     DockerEngine,
