@@ -1,0 +1,9 @@
+name = "eslint"
+image = "sieve-plugin-eslint:10.14.0-security4.2.1"
+languages = ["javascript", "typescript"]
+adapter = "eslint"
+timeout_seconds = 600
+
+[versions]
+tool = "10.14.0"
+rules = "eslint-plugin-security 4.2.1"

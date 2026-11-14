@@ -74,12 +74,13 @@ Tools put CWE IDs in different places. The adapter accepts all of these and turn
 The list has no duplicates and is sorted by number. When a tool never gives CWEs, its adapter adds them:
 
 - The Gitleaks adapter sets `CWE-798` (hard-coded credentials) on every finding.
-- The ESLint adapter maps the 15 rules of eslint-plugin-security 4.2.1, which carry no CWE at all. This is our own mapping, checked again in T2.2:
+- The ESLint adapter maps the 15 rules of eslint-plugin-security 4.2.1, which carry no CWE at all. ESLint reports them with the prefix `security/`, such as `security/detect-child-process`. This is our own mapping:
 
 | Rule | CWE |
 |---|---|
-| `detect-bidi-characters`, `detect-invisible-characters` | CWE-1007 |
-| `detect-buffer-noassert` | CWE-119 |
+| `detect-bidi-characters` | CWE-451 |
+| `detect-invisible-characters` | CWE-1007 |
+| `detect-buffer-noassert` | CWE-125, CWE-787 |
 | `detect-child-process` | CWE-78 |
 | `detect-disable-mustache-escape` | CWE-79 |
 | `detect-eval-with-expression` | CWE-95 |
@@ -88,9 +89,15 @@ The list has no duplicates and is sorted by number. When a tool never gives CWEs
 | `detect-non-literal-fs-filename` | CWE-22 |
 | `detect-non-literal-regexp`, `detect-unsafe-regex` | CWE-1333 |
 | `detect-non-literal-require` | CWE-829 |
-| `detect-object-injection` | CWE-1321 |
+| `detect-object-injection` | CWE-915 |
 | `detect-possible-timing-attacks` | CWE-208 |
 | `detect-pseudoRandomBytes` | CWE-338 |
+
+We checked every row on 14 Nov 2026 against the rule's documentation and code in eslint-plugin-security 4.2.1 and the CWE definitions on cwe.mitre.org, and changed three:
+
+- `detect-bidi-characters` was CWE-1007, which is about homoglyphs, characters that look alike. Bidi control characters instead change the order in which an editor shows the code, so the reviewer sees different code from what runs. That is CWE-451, UI misrepresentation of critical information. `detect-invisible-characters` stays CWE-1007: its own example is two names that look the same, one with a hidden character.
+- `detect-buffer-noassert` was CWE-119, which MITRE marks as discouraged for mapping, pointing to CWE-125 and CWE-787 instead. The rule flags both the read and the write methods of `Buffer` with `noAssert`, so it gets both.
+- `detect-object-injection` was CWE-1321, prototype pollution. The rule flags every `object[expression]`, and its documentation describes overwriting any property of the object, like Ruby's mass assignment, with prototypes as one case. That is CWE-915, the parent of CWE-1321.
 
 The adapter keeps the CWEs the tool gives, even when they look wrong. Semgrep tags two of its SQL injection rules with CWE-915 and CWE-704, for example. Deduplication and the triage agent deal with that, not the adapter.
 
@@ -105,6 +112,7 @@ Suppressed results are kept. The scanned repository is not ours, so a `# nosemgr
 | Tool | Where the confidence comes from |
 |---|---|
 | Semgrep | the rule tags `HIGH CONFIDENCE`, `MEDIUM CONFIDENCE` and `LOW CONFIDENCE`. Semgrep also writes `properties.precision`, but it is `very-high` on all 378 rules of the Python rule set, so the adapter ignores it. |
+| ESLint | none. The SARIF formatter writes only a `category` property on each rule, and it is `Possible Security Vulnerability` on every rule of eslint-plugin-security, so the field stays empty. |
 | Other tools | checked against real output in T2.2. Tools that don't report a confidence leave the field empty. |
 
 ## Fingerprint
