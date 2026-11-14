@@ -279,6 +279,16 @@ erDiagram
 - Times are `timestamptz`, stored in UTC.
 - Deleting a finding deletes its locations. Every other foreign key blocks the delete, because reviews and verdicts must never lose the finding they refer to (requirement N3). We don't delete scans in normal use.
 
+## Migrations
+
+The tables, the `finding_states` view and the `export_refusals` function of docs/finding-states.md are created by numbered SQL files in `backend/app/store/migrations/`. `python -m app.store migrate` applies the ones a database doesn't have yet, all in one transaction, and records them in `schema_migrations`. The back end's container runs it before the API starts. We use plain SQL files and a small runner (`app/store/migrate.py`) instead of a tool such as Alembic, because the back end talks to PostgreSQL through psycopg with plain SQL and has no ORM for a tool to build on.
+
+A change to a table is a new migration file with the next number. Never edit a migration that is on main, because databases that already have it won't run it again.
+
+The unique keys `analyzer_runs (scan_id, plugin)` and `locations (finding_id, kind, position)` also serve the `(scan_id)` and `(finding_id)` lookups in the index table below, so those two have no index of their own.
+
+The store's tests in `backend/tests` run against PostgreSQL when `SIEVE_TEST_DATABASE_URL` is set, as described in docs/llm-provider.md, "Tests". Each test run migrates a schema of its own and drops it at the end. CI runs them on PostgreSQL 17.
+
 ## Scan side
 
 ### scans
