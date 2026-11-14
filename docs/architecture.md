@@ -137,7 +137,7 @@ The `pgdata` volume, the Maven cache volumes, the scope file and the `./exports`
 | `web` | the React app, built at image build time and served by nginx. nginx forwards `/api` to `api` and adds the API token. It answers only requests whose `Host` is `localhost` or `127.0.0.1`. | 8080, bound to 127.0.0.1 | `frontend` | the API token from `.env` |
 | `api` | the FastAPI back end: the REST API, the scope check, the review workflow and the Markdown export. It reads and writes the database, puts long tasks in the job queue, and reads checkouts to show cited code on the review screen. | 8000, bound to 127.0.0.1 | `frontend`, `backend` | `./exports` on the host, the scope file and `sieve-data` read-only, and the API token from `.env` |
 | `worker` | the same image as `api`, started with a different command. It takes jobs from the queue and runs scans, triage runs and report drafts. | none | `backend`, `egress` | `sieve-data`, the Docker socket, the scope file read-only, and the LLM API keys from `.env` |
-| `maven-proxy` | a small forward proxy that allows connections only to Maven Central, for the Java build step (docs/interfaces.md) | none | `sieve-build`, `egress` | none |
+| `maven-proxy` | Squid, a forward proxy that allows connections only to Maven Central, for the Java build step (docs/interfaces.md). Built from `maven-proxy/`. | none | `sieve-build`, `egress` | none |
 | `db` | PostgreSQL. The version is pinned in T1.3. | none | `backend` | `pgdata` |
 | `mock-platform` (stretch) | the mock submission server (T5.4), started only with the `stretch` Compose profile | none | `backend` | none |
 
