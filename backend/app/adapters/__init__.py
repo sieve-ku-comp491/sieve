@@ -1,5 +1,6 @@
 """SARIF adapters: each plug-in's SARIF file turned into findings (docs/finding-format.md)."""
 
+from app.adapters.bandit import BanditAdapter
 from app.adapters.base import BaseSarifAdapter, SarifAdapter
 from app.adapters.finding import AdapterResult, Finding, FlowStep, Location
 from app.adapters.fingerprint import Fingerprinter, context_hash, fingerprint, normalize
@@ -14,7 +15,7 @@ class AdapterRegistry:
     """The adapter for each name a plug-in manifest can give in its adapter field."""
 
     def __init__(self, adapters: list[SarifAdapter] | None = None):
-        adapters = adapters if adapters is not None else [SemgrepAdapter()]
+        adapters = adapters if adapters is not None else [SemgrepAdapter(), BanditAdapter()]
         self._adapters = {adapter.tool: adapter for adapter in adapters}
 
     def get(self, name: str) -> SarifAdapter:
@@ -28,6 +29,7 @@ __all__ = [
     "AdapterError",
     "AdapterRegistry",
     "AdapterResult",
+    "BanditAdapter",
     "BaseSarifAdapter",
     "Finding",
     "Fingerprinter",

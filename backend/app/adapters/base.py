@@ -157,6 +157,11 @@ class BaseSarifAdapter:
         """Kept only by adapters that know their tool's fingerprint is stable."""
         return None
 
+    def snippet(self, region: dict) -> str | None:
+        """The tool's own snippet of a region. Without one, the snippet is read from the
+        checkout."""
+        return _clean_text(_text(region.get("snippet")))
+
     def keep(self, result: dict) -> bool:
         return result.get("kind", "fail") == "fail"
 
@@ -255,7 +260,7 @@ class BaseSarifAdapter:
             end_line=end,
             start_column=_column(region.get("startColumn")),
             end_column=_column(region.get("endColumn")),
-            snippet=_clean_text(_text(region.get("snippet"))),
+            snippet=self.snippet(region),
         )
 
     def _data_flow(

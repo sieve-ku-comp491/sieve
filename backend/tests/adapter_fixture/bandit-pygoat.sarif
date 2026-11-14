@@ -1,0 +1,639 @@
+{
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Bandit",
+          "organization": "PyCQA",
+          "rules": [
+            {
+              "id": "B105",
+              "name": "hardcoded_password_string",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-259"
+                ],
+                "precision": "medium"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/plugins/b105_hardcoded_password_string.html"
+            },
+            {
+              "id": "B201",
+              "name": "flask_debug_true",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-94"
+                ],
+                "precision": "medium"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/plugins/b201_flask_debug_true.html"
+            },
+            {
+              "id": "B104",
+              "name": "hardcoded_bind_all_interfaces",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-605"
+                ],
+                "precision": "medium"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/plugins/b104_hardcoded_bind_all_interfaces.html"
+            },
+            {
+              "id": "B106",
+              "name": "hardcoded_password_funcarg",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-259"
+                ],
+                "precision": "medium"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/plugins/b106_hardcoded_password_funcarg.html"
+            },
+            {
+              "id": "B506",
+              "name": "yaml_load",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-20"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/plugins/b506_yaml_load.html"
+            },
+            {
+              "id": "B311",
+              "name": "blacklist",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-330"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b311-random"
+            },
+            {
+              "id": "B110",
+              "name": "try_except_pass",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-703"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html"
+            },
+            {
+              "id": "B324",
+              "name": "hashlib",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-327"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/plugins/b324_hashlib.html"
+            },
+            {
+              "id": "B404",
+              "name": "blacklist",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-78"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_imports.html#b404-import-subprocess"
+            },
+            {
+              "id": "B602",
+              "name": "subprocess_popen_with_shell_equals_true",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-78"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/plugins/b602_subprocess_popen_with_shell_equals_true.html"
+            },
+            {
+              "id": "B307",
+              "name": "blacklist",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-78"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b307-eval"
+            },
+            {
+              "id": "B403",
+              "name": "blacklist",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-502"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_imports.html#b403-import-pickle"
+            },
+            {
+              "id": "B301",
+              "name": "blacklist",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-502"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b301-pickle"
+            },
+            {
+              "id": "B608",
+              "name": "hardcoded_sql_expressions",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-89"
+                ],
+                "precision": "low"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html"
+            },
+            {
+              "id": "B113",
+              "name": "request_without_timeout",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-400"
+                ],
+                "precision": "low"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/plugins/b113_request_without_timeout.html"
+            },
+            {
+              "id": "B409",
+              "name": "blacklist",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-20"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_imports.html#b409-import-xml-pulldom"
+            },
+            {
+              "id": "B406",
+              "name": "blacklist",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-20"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_imports.html#b406-import-xml-sax"
+            },
+            {
+              "id": "B317",
+              "name": "blacklist",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-20"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b313-b320-xml-bad-sax"
+            },
+            {
+              "id": "B319",
+              "name": "blacklist",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-20"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/blacklists/blacklist_calls.html#b313-b320-xml-bad-pulldom"
+            },
+            {
+              "id": "B603",
+              "name": "subprocess_without_shell_equals_true",
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-78"
+                ],
+                "precision": "high"
+              },
+              "helpUri": "https://bandit.readthedocs.io/en/1.9.4/plugins/b603_subprocess_without_shell_equals_true.html"
+            }
+          ],
+          "version": "1.9.4",
+          "semanticVersion": "1.9.4"
+        }
+      },
+      "invocations": [
+        {
+          "executionSuccessful": true,
+          "endTimeUtc": "2026-11-14T09:11:09Z"
+        }
+      ],
+      "properties": {
+        "metrics": {
+          "_totals": {
+            "loc": 6329,
+            "nosec": 0,
+            "skipped_tests": 0,
+            "SEVERITY.UNDEFINED": 0,
+            "CONFIDENCE.UNDEFINED": 0,
+            "SEVERITY.LOW": 75,
+            "CONFIDENCE.LOW": 2,
+            "SEVERITY.MEDIUM": 32,
+            "CONFIDENCE.MEDIUM": 101,
+            "SEVERITY.HIGH": 23,
+            "CONFIDENCE.HIGH": 27
+          },
+          "/src/dockerized_labs/dependency_attack_lab/app.py": {
+            "loc": 157,
+            "nosec": 0,
+            "skipped_tests": 0,
+            "SEVERITY.UNDEFINED": 0,
+            "SEVERITY.LOW": 3,
+            "SEVERITY.MEDIUM": 1,
+            "SEVERITY.HIGH": 1,
+            "CONFIDENCE.UNDEFINED": 0,
+            "CONFIDENCE.LOW": 0,
+            "CONFIDENCE.MEDIUM": 5,
+            "CONFIDENCE.HIGH": 0
+          },
+          "/src/dockerized_labs/sql_injection_lab/app.py": {
+            "loc": 60,
+            "nosec": 0,
+            "skipped_tests": 0,
+            "SEVERITY.UNDEFINED": 0,
+            "SEVERITY.LOW": 1,
+            "SEVERITY.MEDIUM": 2,
+            "SEVERITY.HIGH": 1,
+            "CONFIDENCE.UNDEFINED": 0,
+            "CONFIDENCE.LOW": 1,
+            "CONFIDENCE.MEDIUM": 3,
+            "CONFIDENCE.HIGH": 0
+          }
+        }
+      },
+      "results": [
+        {
+          "message": {
+            "text": "Possible hardcoded password: 'your-secret-key-here'"
+          },
+          "level": "note",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "snippet": {
+                    "text": "app.config[\"SECRET_KEY\"] = \"your-secret-key-here\"\n"
+                  },
+                  "endColumn": 24,
+                  "endLine": 7,
+                  "startColumn": 12,
+                  "startLine": 7
+                },
+                "artifactLocation": {
+                  "uri": "file:///src/dockerized_labs/dependency_attack_lab/app.py"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "app = Flask(__name__)\napp.config[\"SECRET_KEY\"] = \"your-secret-key-here\"\n\n"
+                  },
+                  "endLine": 8,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "properties": {
+            "issue_confidence": "MEDIUM",
+            "issue_severity": "LOW"
+          },
+          "ruleId": "B105",
+          "ruleIndex": 0
+        },
+        {
+          "message": {
+            "text": "Possible hardcoded password: 'SuperSecret123!'"
+          },
+          "level": "note",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "snippet": {
+                    "text": "class MaliciousDependency:\n"
+                  },
+                  "endColumn": 18,
+                  "endLine": 11,
+                  "startColumn": 5,
+                  "startLine": 10
+                },
+                "artifactLocation": {
+                  "uri": "file:///src/dockerized_labs/dependency_attack_lab/app.py"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "    \"api_key\": \"sk_live_123456\",\n    \"db_password\": \"SuperSecret123!\",\n    \"user_token\": \"token_abc123\",\n}\n\n\nclass MaliciousDependency:\n"
+                  },
+                  "endLine": 17,
+                  "startLine": 11
+                }
+              }
+            }
+          ],
+          "properties": {
+            "issue_confidence": "MEDIUM",
+            "issue_severity": "LOW"
+          },
+          "ruleId": "B105",
+          "ruleIndex": 0
+        },
+        {
+          "message": {
+            "text": "Possible hardcoded password: 'token_abc123'"
+          },
+          "level": "note",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "snippet": {
+                    "text": "class MaliciousDependency:\n"
+                  },
+                  "endColumn": 17,
+                  "endLine": 11,
+                  "startColumn": 5,
+                  "startLine": 10
+                },
+                "artifactLocation": {
+                  "uri": "file:///src/dockerized_labs/dependency_attack_lab/app.py"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "    \"db_password\": \"SuperSecret123!\",\n    \"user_token\": \"token_abc123\",\n}\n\n\nclass MaliciousDependency:\n    \"\"\"Simulated malicious dependency that steals data\"\"\"\n"
+                  },
+                  "endLine": 18,
+                  "startLine": 12
+                }
+              }
+            }
+          ],
+          "properties": {
+            "issue_confidence": "MEDIUM",
+            "issue_severity": "LOW"
+          },
+          "ruleId": "B105",
+          "ruleIndex": 0
+        },
+        {
+          "message": {
+            "text": "A Flask app appears to be run with debug=True, which exposes the Werkzeug debugger and allows the execution of arbitrary code."
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "snippet": {
+                    "text": "    app.run(host=\"0.0.0.0\", port=5020, debug=True)\n"
+                  },
+                  "endColumn": 51,
+                  "endLine": 198,
+                  "startColumn": 5,
+                  "startLine": 198
+                },
+                "artifactLocation": {
+                  "uri": "file:///src/dockerized_labs/dependency_attack_lab/app.py"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "if __name__ == \"__main__\":\n    app.run(host=\"0.0.0.0\", port=5020, debug=True)\n"
+                  },
+                  "endLine": 198,
+                  "startLine": 197
+                }
+              }
+            }
+          ],
+          "properties": {
+            "issue_confidence": "MEDIUM",
+            "issue_severity": "HIGH"
+          },
+          "ruleId": "B201",
+          "ruleIndex": 1
+        },
+        {
+          "message": {
+            "text": "Possible binding to all interfaces."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "snippet": {
+                    "text": "    app.run(host=\"0.0.0.0\", port=5020, debug=True)\n"
+                  },
+                  "endColumn": 27,
+                  "endLine": 198,
+                  "startColumn": 18,
+                  "startLine": 198
+                },
+                "artifactLocation": {
+                  "uri": "file:///src/dockerized_labs/dependency_attack_lab/app.py"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "if __name__ == \"__main__\":\n    app.run(host=\"0.0.0.0\", port=5020, debug=True)\n"
+                  },
+                  "endLine": 198,
+                  "startLine": 197
+                }
+              }
+            }
+          ],
+          "properties": {
+            "issue_confidence": "MEDIUM",
+            "issue_severity": "MEDIUM"
+          },
+          "ruleId": "B104",
+          "ruleIndex": 2
+        },
+        {
+          "message": {
+            "text": "Possible hardcoded password: 'your-secret-key-here'"
+          },
+          "level": "note",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "snippet": {
+                    "text": "app.config[\"SECRET_KEY\"] = \"your-secret-key-here\"\n"
+                  },
+                  "endColumn": 24,
+                  "endLine": 7,
+                  "startColumn": 12,
+                  "startLine": 7
+                },
+                "artifactLocation": {
+                  "uri": "file:///src/dockerized_labs/sql_injection_lab/app.py"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "app = Flask(__name__)\napp.config[\"SECRET_KEY\"] = \"your-secret-key-here\"\n\n"
+                  },
+                  "endLine": 8,
+                  "startLine": 6
+                }
+              }
+            }
+          ],
+          "properties": {
+            "issue_confidence": "MEDIUM",
+            "issue_severity": "LOW"
+          },
+          "ruleId": "B105",
+          "ruleIndex": 0
+        },
+        {
+          "message": {
+            "text": "Possible SQL injection vector through string-based query construction."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "snippet": {
+                    "text": "            f\"SELECT * FROM users WHERE username='{username}' AND password='{password}'\"\n"
+                  },
+                  "endColumn": 51,
+                  "endLine": 51,
+                  "startColumn": 15,
+                  "startLine": 51
+                },
+                "artifactLocation": {
+                  "uri": "file:///src/dockerized_labs/sql_injection_lab/app.py"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "        sql_query = (\n            f\"SELECT * FROM users WHERE username='{username}' AND password='{password}'\"\n        )\n"
+                  },
+                  "endLine": 52,
+                  "startLine": 50
+                }
+              }
+            }
+          ],
+          "properties": {
+            "issue_confidence": "LOW",
+            "issue_severity": "MEDIUM"
+          },
+          "ruleId": "B608",
+          "ruleIndex": 13
+        },
+        {
+          "message": {
+            "text": "A Flask app appears to be run with debug=True, which exposes the Werkzeug debugger and allows the execution of arbitrary code."
+          },
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "snippet": {
+                    "text": "    app.run(host=\"0.0.0.0\", port=5012, debug=True)\n"
+                  },
+                  "endColumn": 51,
+                  "endLine": 78,
+                  "startColumn": 5,
+                  "startLine": 78
+                },
+                "artifactLocation": {
+                  "uri": "file:///src/dockerized_labs/sql_injection_lab/app.py"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "\n    app.run(host=\"0.0.0.0\", port=5012, debug=True)\n"
+                  },
+                  "endLine": 78,
+                  "startLine": 77
+                }
+              }
+            }
+          ],
+          "properties": {
+            "issue_confidence": "MEDIUM",
+            "issue_severity": "HIGH"
+          },
+          "ruleId": "B201",
+          "ruleIndex": 1
+        },
+        {
+          "message": {
+            "text": "Possible binding to all interfaces."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "region": {
+                  "snippet": {
+                    "text": "    app.run(host=\"0.0.0.0\", port=5012, debug=True)\n"
+                  },
+                  "endColumn": 27,
+                  "endLine": 78,
+                  "startColumn": 18,
+                  "startLine": 78
+                },
+                "artifactLocation": {
+                  "uri": "file:///src/dockerized_labs/sql_injection_lab/app.py"
+                },
+                "contextRegion": {
+                  "snippet": {
+                    "text": "\n    app.run(host=\"0.0.0.0\", port=5012, debug=True)\n"
+                  },
+                  "endLine": 78,
+                  "startLine": 77
+                }
+              }
+            }
+          ],
+          "properties": {
+            "issue_confidence": "MEDIUM",
+            "issue_severity": "MEDIUM"
+          },
+          "ruleId": "B104",
+          "ruleIndex": 2
+        }
+      ]
+    }
+  ],
+  "version": "2.1.0",
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json"
+}
