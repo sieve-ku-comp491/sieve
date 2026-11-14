@@ -24,6 +24,8 @@ The worker reads these from its environment. The defaults fit the Compose setup 
 | `SIEVE_DATA_VOLUME` | `sieve-data` | the volume that analyzer containers get folders of, as volume subpaths (Docker Engine 26 or later). Empty means the folders of `SIEVE_DATA_DIR` are mounted as host folders instead, for runs outside the worker container. |
 | `SIEVE_BUILD_NETWORK` | `sieve-build` | the network of build steps. It must be an internal bridge network, such as one made with `docker network create --internal sieve-build`, or the runner refuses to start a build on it. |
 | `DOCKER_SOCKET` | the Docker SDK's default | the Docker Engine socket |
+| `SIEVE_PLUGINS_DIR` | `/plugins` | the folder with one subfolder and `plugin.toml` per plug-in. Compose mounts this folder there. |
+| `SIEVE_SCOPE_FILE` | `/etc/sieve/scope.toml` | the scope file (README.md, "Scope file"), read by the API and the worker |
 
 ## Tests
 
