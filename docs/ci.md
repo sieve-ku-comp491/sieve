@@ -4,7 +4,7 @@
 
 | Job | What it does | Fails when |
 |---|---|---|
-| Back end (ruff, pytest) | sets up Python 3.14, installs `backend/requirements-dev.txt` with pip, runs `ruff check` and `pytest` in `backend/`. Skipped while `backend/requirements-dev.txt` doesn't exist. | a lint error or a failing test |
+| Back end (ruff, pytest) | sets up Python 3.14, installs `backend/requirements-dev.txt` with pip, runs `ruff check` and `pytest` in `backend/`, with a PostgreSQL 17 service container for the findings store and call log tests (`SIEVE_TEST_DATABASE_URL`). Skipped while `backend/requirements-dev.txt` doesn't exist. | a lint error or a failing test |
 | Front end (ESLint) | runs `npm ci` and `npm run lint` in `frontend/`. Skipped while `frontend/package.json` doesn't exist. | an ESLint error |
 | Secret scan (Gitleaks) | checks out the full git history and runs Gitleaks 8.30.1, the version pinned in docs/requirements.md | Gitleaks finds anything, also in an old commit whose file was deleted later |
 | Version pins | runs `scripts/check_pins.py` | a `FROM` line or a Compose image without a version or with `latest`, a requirements line without `==`, or a `package.json` without a committed `package-lock.json` |
