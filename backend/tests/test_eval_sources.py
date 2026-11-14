@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from app.eval.sources import Source, SourceError, checkout_path, fetch, load_sources
+from app.eval.sources import Source, SourceError, checkout_path, fetch, is_fetched, load_sources
 
 REQUIREMENTS = Path(__file__).resolve().parents[2] / "docs/requirements.md"
 GIT = ["git", "-c", "user.name=test", "-c", "user.email=test@localhost"]
@@ -71,3 +71,37 @@ def test_fetch_fails_on_an_unknown_commit(tmp_path):
     source = Source("sample", "dataset", (tmp_path / "upstream").as_uri(), "1", "0" * 40)
     with pytest.raises(SourceError):
         fetch(source, tmp_path / "data")
+
+
+def test_a_pin_change_leaves_exactly_the_new_commit(tmp_path):
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    subprocess.run([*GIT, "-C", str(upstream), "init", "--quiet"], check=True)
+    (upstream / "kept.txt").write_text("v1\n")
+    (upstream / "only_old.txt").write_text("gone in v2\n")
+    (upstream / ".gitignore").write_text("*.log\n")
+    subprocess.run([*GIT, "-C", str(upstream), "add", "--all"], check=True)
+    subprocess.run([*GIT, "-C", str(upstream), "commit", "--quiet", "-m", "v1"], check=True)
+    old = _commit_of(upstream)
+    (upstream / "only_old.txt").unlink()
+    (upstream / "kept.txt").write_text("v2\n")
+    subprocess.run([*GIT, "-C", str(upstream), "commit", "--quiet", "-am", "v2"], check=True)
+    new = _commit_of(upstream)
+
+    path = fetch(Source("s", "dataset", upstream.as_uri(), "1", old), tmp_path / "data")
+    (path / "kept.txt").write_text("changed by hand\n")
+    (path / "added_by_hand.txt").write_text("x\n")
+    (path / "run.log").write_text("ignored\n")
+    pinned = Source("s", "dataset", upstream.as_uri(), "2", new)
+    assert not is_fetched(pinned, tmp_path / "data")
+
+    fetch(pinned, tmp_path / "data")
+    assert sorted(p.name for p in path.iterdir() if p.name != ".git") == [".gitignore", "kept.txt"]
+    assert (path / "kept.txt").read_text() == "v2\n"
+    assert is_fetched(pinned, tmp_path / "data")
+
+
+def _commit_of(path: Path) -> str:
+    return subprocess.run(
+        ["git", "-C", str(path), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
