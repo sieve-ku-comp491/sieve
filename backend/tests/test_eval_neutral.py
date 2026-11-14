@@ -276,3 +276,20 @@ def test_same_files_give_the_same_commit(tmp_path):
         (tmp_path / name / "a.txt").write_text("x\n")
         commits.append(commit_copy(tmp_path / name))
     assert commits[0] == commits[1]
+
+
+def test_commit_ignores_line_ending_and_signing_settings(tmp_path, monkeypatch):
+    # A machine with autocrlf, as on Windows, and signing turned on, but no key.
+    config = tmp_path / "gitconfig"
+    config.write_text("[core]\n\tautocrlf = true\n[commit]\n\tgpgsign = true\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    copy = tmp_path / "copy"
+    copy.mkdir()
+    (copy / "a.txt").write_bytes(b"one\r\ntwo\r\n")
+    commit = commit_copy(copy)
+    stored = subprocess.run(
+        ["git", "-C", str(copy), "cat-file", "-p", f"{commit}:a.txt"],
+        capture_output=True,
+        check=True,
+    ).stdout
+    assert stored == b"one\r\ntwo\r\n"
