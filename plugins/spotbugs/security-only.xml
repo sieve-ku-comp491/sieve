@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Only bugs in the SECURITY category are reported: the Find Security Bugs patterns and the
+     few SpotBugs patterns in that category. The same filter as include.xml in Find Security
+     Bugs' own command-line package. -->
+<FindBugsFilter>
+  <Match>
+    <Bug category="SECURITY"/>
+  </Match>
+</FindBugsFilter>
