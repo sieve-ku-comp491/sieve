@@ -7,6 +7,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from app.adapters import AdapterResult, Finding, Location
+from app.dedup.matching import match_earlier_findings
 from app.runner.manifest import PluginManifest
 from app.runner.runner import PluginRun
 
@@ -142,8 +143,9 @@ class PostgresRunStore:
 
     def save_findings(self, run: PluginRun, result: AdapterResult) -> list[str]:
         """Stores the run's findings with their locations, and the run itself with its dropped
-        count, in one transaction. Either all of it is saved or none. Sets each finding's
-        finding_id and returns the IDs in the order of result.findings."""
+        count, in one transaction. Either all of it is saved or none. The same transaction
+        matches each finding to earlier scans of the repository (app.dedup.matching). Sets each
+        finding's finding_id and returns the IDs in the order of result.findings."""
         for finding in result.findings:
             if (finding.scan_id, finding.run_id) != (run.scan_id, run.run_id):
                 raise StoreError(f"a finding of run {finding.run_id} given for run {run.run_id}")
@@ -165,6 +167,7 @@ class PostgresRunStore:
                 ]
                 if rows:
                     cursor.executemany(INSERT_LOCATION, rows)
+            match_earlier_findings(conn, run.run_id)
         for finding, finding_id in zip(result.findings, ids, strict=True):
             finding.finding_id = finding_id
         return ids
