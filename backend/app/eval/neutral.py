@@ -281,7 +281,8 @@ def make_copy(
             data = path.read_bytes()
             try:
                 text = rewriter.text(data.decode("utf-8"), path.suffix)
-                target.write_text(text, encoding="utf-8")
+                # "\n" on every system, so a copy made on Windows has the same bytes.
+                target.write_text(text, encoding="utf-8", newline="\n")
             except UnicodeDecodeError:
                 target.write_bytes(data)
             files[relative] = target.relative_to(dest).as_posix()
@@ -338,7 +339,21 @@ def leaks(dest: Path, profile: Profile, names: Names) -> list[str]:
 
 def commit_copy(dest: Path) -> str:
     """Make the copy a git repository with one commit, so a scan can check out an exact commit."""
-    git = ["git", "-C", str(dest), "-c", "user.name=sieve-eval", "-c", "user.email=eval@localhost"]
+    # The settings that change a commit between machines are fixed here: line ending conversion,
+    # signing, the author and the date.
+    git = [
+        "git",
+        "-C",
+        str(dest),
+        "-c",
+        "user.name=sieve-eval",
+        "-c",
+        "user.email=eval@localhost",
+        "-c",
+        "core.autocrlf=false",
+        "-c",
+        "commit.gpgsign=false",
+    ]
     env = {**os.environ, "GIT_AUTHOR_DATE": COMMIT_DATE, "GIT_COMMITTER_DATE": COMMIT_DATE}
     for args in (
         ["init", "--quiet"],
