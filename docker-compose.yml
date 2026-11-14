@@ -2,12 +2,40 @@ services:
   backend:
     build: ./backend
     env_file: .env
+    environment:
+      SIEVE_SCOPE_FILE: /etc/sieve/scope.toml
     ports:
       - "127.0.0.1:8000:8000"
-    # Checkouts and SARIF files of scans (docs/architecture.md, volumes). Writable while
-    # python -m app.store load-sarif runs in this service; read-only once the worker writes them.
+    # The API reads the checkouts and SARIF files that the worker writes (docs/architecture.md,
+    # volumes), and the scope file, for the scope check before a scan is queued.
+    volumes:
+      - sieve-data:/data:ro
+      - ./scope.toml:/etc/sieve/scope.toml:ro
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Runs the scan jobs: clones the repository from the scope file and starts one analyzer
+  # container per plug-in through the host's Docker Engine (docs/architecture.md, "How the
+  # worker starts analyzer containers").
+  worker:
+    build: ./backend
+    command: ["sh", "-c", "python -m app.store migrate && exec python -m app.worker"]
+    env_file: .env
+    environment:
+      SIEVE_SCOPE_FILE: /etc/sieve/scope.toml
+      SIEVE_PLUGINS_DIR: /plugins
     volumes:
       - sieve-data:/data
+      - ./scope.toml:/etc/sieve/scope.toml:ro
+      - ./plugins:/plugins:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - backend
+      - egress
     depends_on:
       db:
         condition: service_healthy
@@ -18,6 +46,8 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       SIEVE_API_TOKEN: ${SIEVE_API_TOKEN:-}
+    networks:
+      - frontend
     depends_on:
       - backend
 
@@ -26,12 +56,24 @@ services:
     env_file: .env
     volumes:
       - db-data:/var/lib/postgresql/data
+    networks:
+      - backend
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
 
+networks:
+  frontend:
+  # No outside access: the database can't be reached from outside the project.
+  backend:
+    internal: true
+  # Clones of public repositories by the worker.
+  egress:
+
 volumes:
   db-data:
+  # A fixed name, because the worker gives analyzer containers folders of this volume by name.
   sieve-data:
+    name: sieve-data
