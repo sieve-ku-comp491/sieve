@@ -211,6 +211,6 @@ The trade-off: access to the Docker socket is the same as root access on the hos
 - Only the worker has the socket. The API, which the browser and CLI talk to, doesn't.
 - The worker has no ports, so nothing can connect to it.
 - The worker never runs code from the scanned repository. It does read the checkout: the adapters read the flagged lines, and the triage agent reads code for its prompts. The export contains no symbolic links (docs/interfaces.md), and every read goes through one checkout reader that refuses any path that leaves the checkout.
-- Cloning can't run code from the repository either. Git doesn't run hooks from a cloned repository, the worker clones without submodules, and the worker image pins Git 2.50.1 or later, which fixes the known clone-time attacks through submodules (CVE-2024-32002, CVE-2025-48384).
+- Cloning can't run code from the repository either. Git doesn't run hooks from a cloned repository, the worker clones without submodules, and the worker image pins a Git release that fixes the known clone-time attacks through submodules (CVE-2024-32002, CVE-2025-48384): 2.50.1 or later, or a maintenance release with the same fixes. The image has Debian 13's Git 2.47.3, released together with 2.50.1, because Debian 13 has no newer Git package.
 - The worker starts only images named in plug-in manifests, with the flags fixed in the runner's code. Requests from the API pass only IDs, never image names, paths or flags.
 - Sieve runs on the researcher's own machine, listens only on 127.0.0.1, and its API requires a token.
