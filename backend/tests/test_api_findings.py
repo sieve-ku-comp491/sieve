@@ -17,6 +17,7 @@ FIXTURE = Path(__file__).parent / "adapter_fixture"
 MANIFEST = Path(__file__).resolve().parents[2] / "plugins" / "semgrep" / "plugin.toml"
 LAB = "dockerized_labs/sql_injection_lab/app.py"
 SQL_RULE = "python.lang.security.audit.formatted-sql-query"
+TOKEN = "test-token"
 V4_KEYS = ["AV", "AC", "AT", "PR", "UI", "VC", "VI", "VA", "SC", "SI", "SA"]
 
 
@@ -33,8 +34,10 @@ def load(database, data_dir) -> str:
 
 
 def make_client(database, data_dir) -> TestClient:
-    app = create_app(Settings(database_url=database, data_dir=data_dir))
-    return TestClient(app, base_url="http://localhost")
+    app = create_app(Settings(token=TOKEN, database_url=database, data_dir=data_dir))
+    return TestClient(
+        app, base_url="http://localhost", headers={"Authorization": f"Bearer {TOKEN}"}
+    )
 
 
 @pytest.fixture(scope="module")

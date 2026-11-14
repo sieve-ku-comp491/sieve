@@ -11,12 +11,14 @@ from app.store.queries import FindingsReader
 
 @dataclass(frozen=True)
 class Settings:
+    token: str | None
     database_url: str | None
     data_dir: Path
 
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
+            token=os.environ.get("SIEVE_API_TOKEN"),
             database_url=os.environ.get("DATABASE_URL"),
             data_dir=Path(os.environ.get("SIEVE_DATA_DIR", "/data")),
         )
