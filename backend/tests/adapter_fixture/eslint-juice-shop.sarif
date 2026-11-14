@@ -1,0 +1,337 @@
+{
+  "version": "2.1.0",
+  "$schema": "http://json.schemastore.org/sarif-2.1.0-rtm.5",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "ESLint",
+          "informationUri": "https://eslint.org",
+          "rules": [
+            {
+              "id": "security/detect-object-injection",
+              "helpUri": "https://github.com/eslint-community/eslint-plugin-security/blob/main/docs/rules/detect-object-injection.md",
+              "properties": {
+                "category": "Possible Security Vulnerability"
+              },
+              "shortDescription": {
+                "text": "Detects \"variable[key]\" as a left- or right-hand assignment operand."
+              }
+            },
+            {
+              "id": "security/detect-non-literal-fs-filename",
+              "helpUri": "https://github.com/eslint-community/eslint-plugin-security/blob/main/docs/rules/detect-non-literal-fs-filename.md",
+              "properties": {
+                "category": "Possible Security Vulnerability"
+              },
+              "shortDescription": {
+                "text": "Detects variable in filename argument of \"fs\" calls, which might allow an attacker to access anything on your system."
+              }
+            },
+            {
+              "id": "security/detect-unsafe-regex",
+              "helpUri": "https://github.com/eslint-community/eslint-plugin-security/blob/main/docs/rules/detect-unsafe-regex.md",
+              "properties": {
+                "category": "Possible Security Vulnerability"
+              },
+              "shortDescription": {
+                "text": "Detects potentially unsafe regular expressions, which may take a very long time to run, blocking the event loop."
+              }
+            },
+            {
+              "id": "security/detect-non-literal-regexp",
+              "helpUri": "https://github.com/eslint-community/eslint-plugin-security/blob/main/docs/rules/detect-non-literal-regexp.md",
+              "properties": {
+                "category": "Possible Security Vulnerability"
+              },
+              "shortDescription": {
+                "text": "Detects \"RegExp(variable)\", which might allow an attacker to DOS your server with a long-running regular expression."
+              }
+            },
+            {
+              "id": "security/detect-eval-with-expression",
+              "helpUri": "https://github.com/eslint-community/eslint-plugin-security/blob/main/docs/rules/detect-eval-with-expression.md",
+              "properties": {
+                "category": "Possible Security Vulnerability"
+              },
+              "shortDescription": {
+                "text": "Detects \"eval(variable)\" which can allow an attacker to run arbitrary code inside your process."
+              }
+            },
+            {
+              "id": "security/detect-possible-timing-attacks",
+              "helpUri": "https://github.com/eslint-community/eslint-plugin-security/blob/main/docs/rules/detect-possible-timing-attacks.md",
+              "properties": {
+                "category": "Possible Security Vulnerability"
+              },
+              "shortDescription": {
+                "text": "Detects insecure comparisons (`==`, `!=`, `!==` and `===`), which check input sequentially."
+              }
+            },
+            {
+              "id": "security/detect-non-literal-require",
+              "helpUri": "https://github.com/eslint-community/eslint-plugin-security/blob/main/docs/rules/detect-non-literal-require.md",
+              "properties": {
+                "category": "Possible Security Vulnerability"
+              },
+              "shortDescription": {
+                "text": "Detects \"require(variable)\", which might allow an attacker to load and run arbitrary code, or access arbitrary files on disk."
+              }
+            }
+          ],
+          "version": "10.14.0"
+        }
+      },
+      "artifacts": [
+        {
+          "location": {
+            "uri": "file:///src/frontend/filter-bundle-stats-for-diagram.mts"
+          }
+        },
+        {
+          "location": {
+            "uri": "file:///src/frontend/src/assets/private/EffectComposer.js"
+          }
+        },
+        {
+          "location": {
+            "uri": "file:///src/routes/basket.ts"
+          }
+        },
+        {
+          "location": {
+            "uri": "file:///src/routes/captcha.ts"
+          }
+        },
+        {
+          "location": {
+            "uri": "file:///src/routes/changePassword.ts"
+          }
+        },
+        {
+          "location": {
+            "uri": "file:///src/routes/profileImageUrlUpload.ts"
+          }
+        }
+      ],
+      "results": [
+        {
+          "level": "warning",
+          "message": {
+            "text": "Unsafe Regular Expression"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///src/frontend/filter-bundle-stats-for-diagram.mts",
+                  "index": 102
+                },
+                "region": {
+                  "startLine": 11,
+                  "startColumn": 24,
+                  "endLine": 11,
+                  "endColumn": 60
+                }
+              }
+            }
+          ],
+          "ruleId": "security/detect-unsafe-regex",
+          "ruleIndex": 2
+        },
+        {
+          "level": "warning",
+          "message": {
+            "text": "Generic Object Injection Sink"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///src/frontend/filter-bundle-stats-for-diagram.mts",
+                  "index": 102
+                },
+                "region": {
+                  "startLine": 15,
+                  "startColumn": 12,
+                  "endLine": 15,
+                  "endColumn": 29
+                }
+              }
+            }
+          ],
+          "ruleId": "security/detect-object-injection",
+          "ruleIndex": 0
+        },
+        {
+          "level": "warning",
+          "message": {
+            "text": "Generic Object Injection Sink"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///src/frontend/filter-bundle-stats-for-diagram.mts",
+                  "index": 102
+                },
+                "region": {
+                  "startLine": 23,
+                  "startColumn": 16,
+                  "endLine": 23,
+                  "endColumn": 34
+                }
+              }
+            }
+          ],
+          "ruleId": "security/detect-object-injection",
+          "ruleIndex": 0
+        },
+        {
+          "level": "warning",
+          "message": {
+            "text": "Generic Object Injection Sink"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///src/frontend/src/assets/private/EffectComposer.js",
+                  "index": 375
+                },
+                "region": {
+                  "startLine": 67,
+                  "startColumn": 11,
+                  "endLine": 67,
+                  "endColumn": 27
+                }
+              }
+            }
+          ],
+          "ruleId": "security/detect-object-injection",
+          "ruleIndex": 0
+        },
+        {
+          "level": "warning",
+          "message": {
+            "text": "Generic Object Injection Sink"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///src/routes/basket.ts",
+                  "index": 466
+                },
+                "region": {
+                  "startLine": 28,
+                  "startColumn": 11,
+                  "endLine": 28,
+                  "endColumn": 29
+                }
+              }
+            }
+          ],
+          "ruleId": "security/detect-object-injection",
+          "ruleIndex": 0
+        },
+        {
+          "level": "warning",
+          "message": {
+            "text": "Generic Object Injection Sink"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///src/routes/basket.ts",
+                  "index": 466
+                },
+                "region": {
+                  "startLine": 28,
+                  "startColumn": 44,
+                  "endLine": 28,
+                  "endColumn": 62
+                }
+              }
+            }
+          ],
+          "ruleId": "security/detect-object-injection",
+          "ruleIndex": 0
+        },
+        {
+          "level": "warning",
+          "message": {
+            "text": "eval with argument of type Identifier"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///src/routes/captcha.ts",
+                  "index": 468
+                },
+                "region": {
+                  "startLine": 22,
+                  "startColumn": 20,
+                  "endLine": 22,
+                  "endColumn": 36
+                }
+              }
+            }
+          ],
+          "ruleId": "security/detect-eval-with-expression",
+          "ruleIndex": 4
+        },
+        {
+          "level": "warning",
+          "message": {
+            "text": "Potential timing attack, left side: true"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///src/routes/changePassword.ts",
+                  "index": 469
+                },
+                "region": {
+                  "startLine": 28,
+                  "startColumn": 5,
+                  "endLine": 31,
+                  "endColumn": 6
+                }
+              }
+            }
+          ],
+          "ruleId": "security/detect-possible-timing-attacks",
+          "ruleIndex": 5
+        },
+        {
+          "level": "warning",
+          "message": {
+            "text": "Found createWriteStream from package \"node:fs\" with non literal argument at index 0"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///src/routes/profileImageUrlUpload.ts",
+                  "index": 499
+                },
+                "region": {
+                  "startLine": 29,
+                  "startColumn": 30,
+                  "endLine": 29,
+                  "endColumn": 152
+                }
+              }
+            }
+          ],
+          "ruleId": "security/detect-non-literal-fs-filename",
+          "ruleIndex": 1
+        }
+      ]
+    }
+  ]
+}
