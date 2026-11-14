@@ -22,9 +22,9 @@ The worker reads these from its environment. The defaults fit the Compose setup 
 |---|---|---|
 | `SIEVE_DATA_DIR` | `/data` | where the worker mounts the `sieve-data` volume. Checkouts are in `scans/<scan ID>/src`, and each run writes to `runs/<run ID>/`. |
 | `SIEVE_DATA_VOLUME` | `sieve-data` | the volume that analyzer containers get folders of, as volume subpaths (Docker Engine 26 or later). Empty means the folders of `SIEVE_DATA_DIR` are mounted as host folders instead, for runs outside the worker container. |
-| `SIEVE_BUILD_NETWORK` | `sieve-build` | the network of build steps. It must be an internal bridge network, such as one made with `docker network create --internal sieve-build`, or the runner refuses to start a build on it. |
+| `SIEVE_BUILD_NETWORK` | `sieve-build` | the network of build steps. It must be an internal bridge network, or the runner refuses to start a build on it. Compose creates it with `maven-proxy` on it, which is the build's only way to Maven Central: `docker compose up -d maven-proxy` is enough for runs outside the worker. |
 | `DOCKER_SOCKET` | the Docker SDK's default | the Docker Engine socket |
 
 ## Tests
 
-`backend/tests/test_runner.py` checks the runner with a fake engine and needs no Docker. `test_runner_docker.py` runs the small test plug-in in `backend/tests/plugin_fixture/` on the real Docker Engine, and is skipped when Docker isn't running. `test_semgrep_plugin.py` scans a small vulnerable file with the Semgrep image, and is skipped when the image isn't built, which includes CI.
+`backend/tests/test_runner.py` checks the runner with a fake engine and needs no Docker. `test_runner_docker.py` runs the small test plug-in in `backend/tests/plugin_fixture/` on the real Docker Engine, and is skipped when Docker isn't running. It also builds `maven-proxy` and checks that a build step can reach Maven Central through it and no other host. `test_semgrep_plugin.py` scans a small vulnerable file with the Semgrep image, and is skipped when the image isn't built, which includes CI.
