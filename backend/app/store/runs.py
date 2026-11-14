@@ -1,5 +1,6 @@
 """Scans, plug-in runs and their findings in PostgreSQL (docs/database.md, scan side)."""
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -13,6 +14,8 @@ from app.runner.runner import PluginRun
 INSERT_SCAN = """
 INSERT INTO scans (repo_url, commit_sha, requested_ref) VALUES (%s, %s, %s) RETURNING id
 """
+
+GET_SCAN = "SELECT repo_url, commit_sha, requested_ref, status FROM scans WHERE id = %s"
 
 UPDATE_SCAN = """
 UPDATE scans SET
@@ -78,6 +81,15 @@ class StoreError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class ScanRequest:
+    scan_id: str
+    repo_url: str
+    commit_sha: str | None
+    requested_ref: str | None
+    status: str
+
+
 class PostgresRunStore:
     """The RunStore of the plug-in runner on the analyzer_runs table, plus the scans the runs
     belong to and the findings each run produced."""
@@ -92,6 +104,14 @@ class PostgresRunStore:
         with psycopg.connect(self._conninfo) as conn:
             row = conn.execute(INSERT_SCAN, (repo_url, commit_sha, requested_ref)).fetchone()
         return str(row[0])
+
+    def get_scan(self, scan_id: str) -> ScanRequest:
+        """What the worker needs to run the scan: the repository and the requested commit."""
+        with psycopg.connect(self._conninfo) as conn:
+            row = conn.execute(GET_SCAN, (scan_id,)).fetchone()
+        if row is None:
+            raise StoreError(f"no scan {scan_id}")
+        return ScanRequest(scan_id, *row)
 
     def update_scan(
         self,
