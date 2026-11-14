@@ -111,20 +111,24 @@ def follow(api: Api, scan_id: str, out: TextIO, poll: float) -> int:
 
     while True:
         detail = api.get(f"/scans/{scan_id}")
-        if detail["commit_sha"]:
+        status = detail["status"]
+        if status not in FINAL:
+            show("status", f"scan {status}")
+        # The languages are known once the export is done: when the runs exist, or when the
+        # scan ended without failing.
+        if detail["commit_sha"] and (detail["runs"] or status in ("completed", "partial")):
             languages = ", ".join(detail["languages"]) or "none found"
             show("commit", f"commit {detail['commit_sha']}, languages: {languages}")
         for run in detail["runs"]:
             show("run " + run["plugin"], f"  {run['plugin']}: {_run_text(run)}")
-        status = detail["status"]
         if status in FINAL:
             line = f"scan {status}: {detail['finding_count']} findings"
             if detail["error"]:
                 line += f". {detail['error']}"
             show("status", line)
-            print(f"list them with: python -m app.cli findings {scan_id}", file=out)
+            if detail["finding_count"]:
+                print(f"list them with: python -m app.cli findings {scan_id}", file=out)
             return 0 if status == "completed" else 1
-        show("status", f"scan {status}")
         time.sleep(poll)
 
 

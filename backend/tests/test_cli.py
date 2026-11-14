@@ -214,6 +214,20 @@ def test_scan_progress_shows_each_change_once():
     ]
 
 
+def test_a_failed_scan_shows_its_error_without_a_commit_line():
+    sha = "0dc3c4f403bea36b83a03c7c07a7d676b939eab3"
+    error = f"commit {sha} is not on a branch or tag of https://github.com/a/b"
+    api = ScriptedApi(
+        [
+            {"status": "running", "commit_sha": sha},
+            {"status": "failed", "commit_sha": sha, "error": error},
+        ]
+    )
+    out = io.StringIO()
+    assert cli.follow(api, "s1", out, poll=0) == 1
+    assert out.getvalue().splitlines() == ["scan running", f"scan failed: 0 findings. {error}"]
+
+
 def test_a_completed_scan_exits_with_0():
     api = ScriptedApi([{"status": "completed", "finding_count": 2}])
     out = io.StringIO()
