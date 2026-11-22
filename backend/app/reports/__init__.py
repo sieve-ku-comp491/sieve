@@ -17,9 +17,12 @@ from app.reports.models import (
     UnknownFormat,
     UnknownReport,
 )
+from app.reports.service import ReportService
+from app.reports.store import InMemoryReportStore, ReportStore, StoredReport
 
 __all__ = [
     "FindingContext",
+    "InMemoryReportStore",
     "Location",
     "MarkdownFormat",
     "NotApproved",
@@ -29,10 +32,13 @@ __all__ = [
     "ReportExported",
     "ReportFormat",
     "ReportInvalid",
+    "ReportService",
+    "ReportStore",
     "ReportText",
     "RuleHit",
     "Severity",
     "StaleVersion",
+    "StoredReport",
     "UnknownFormat",
     "UnknownReport",
     "default_formats",
