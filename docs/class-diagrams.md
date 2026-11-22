@@ -598,10 +598,22 @@ classDiagram
     +draft(finding_ids: list~str~) Report
     +edit(report_id: str, fields: dict, editor: str) Report
     +redraft(report_id: str) Report
-    +approve_text(report_id: str, version: int, approver: str)
-    +export(report_id: str, format: str) str
+    +approve_text(report_id: str, version: int, approver: str) Report
+    +export(report_id: str, exported_by: str, format: str) str
   }
   class NotApproved {
+    <<exception>>
+  }
+  class ReportInvalid {
+    <<exception>>
+  }
+  class ReportDraftError {
+    <<exception>>
+  }
+  class ReportExported {
+    <<exception>>
+  }
+  class StaleVersion {
     <<exception>>
   }
 
@@ -613,6 +625,16 @@ classDiagram
   ReportService --> ReportFormat
   ReportService ..> Report
   ReportService ..> NotApproved : raises
+  ReportService ..> ReportInvalid : raises
+  ReportService ..> ReportDraftError : raises
+  ReportService ..> ReportExported : raises
+  ReportService ..> StaleVersion : raises
 ```
 
-`ReportService.export()` checks that every finding in the report is approved and that a person approved the report's current text, and raises `NotApproved` otherwise, so nothing leaves Sieve without a person's approval (requirement F5). `draft()` writes the first version of the text through `LLMClient`. `edit()`, when the reviewer changes a field, and `redraft()`, when the reviewer asks for a new draft, each save a new version without an approval, so the text has to be approved again with `approve_text()`. It takes the version the reviewer read, so a newer text can't be approved unseen. At export, the service saves which version was exported and the review that approved each finding (requirement F5, test 4). HackerOne's format maps the severity to its CVSS-based rating, and Bugcrowd's maps it to a VRT priority.
+`ReportService.export()` checks that every finding in the report is approved and that a person approved the report's current text, and raises `NotApproved` with every reason otherwise, so nothing leaves Sieve without a person's approval (requirement F5). It writes the file to the exports folder and returns its text, and `exported_by` is who exported it. At export, the service saves which version was exported and the review that approved each finding (requirement F5, test 4).
+
+`draft()` asks for a report only for approved findings, and `NotApproved` stops a rejected or unreviewed one before any call is made (F6, test 2). It writes the first version of the text through `LLMClient`. The template in `backend/app/llm/prompts/report_draft.md` holds only our instructions. The findings, the code and the verdict go in as data, and the severity and the locations of the report are copied from the finding, never taken from the model's answer. An answer that isn't a complete report, with all six parts and none empty, raises `ReportDraftError`, and nothing is saved. The CWE entry of each of the finding's CWEs is added to the references (F6, test 1). Asking again for the same findings returns the report that exists and makes no call.
+
+`edit()`, when the reviewer changes a part of the text, and `redraft()`, when the reviewer asks for a new draft, each save a new version without an approval, so the text has to be approved again with `approve_text()`. The earlier versions stay. `edit()` changes the six text parts, and raises `ReportInvalid` if the result is not a complete report. An edit that changes nothing saves nothing, so it doesn't undo an approval. `redraft()` sends the earlier text and the number of the new draft as data, so it is a different request and the cache can't answer it with the same text. `approve_text()` takes the version the reviewer read, and raises `StaleVersion` if a newer one has been saved, so a newer text can't be approved unseen. An exported report is final: `edit()`, `redraft()` and `approve_text()` raise `ReportExported` for it, as the API refuses new edits on a reported finding (docs/finding-states.md).
+
+The store behind the service is an interface. The tests use an in-memory store, and the Postgres store on the tables of docs/database.md implements the same interface. HackerOne's format maps the severity to its CVSS-based rating, and Bugcrowd's maps it to a VRT priority.
