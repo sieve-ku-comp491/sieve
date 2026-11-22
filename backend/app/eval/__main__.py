@@ -51,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
     dedup.add_argument("--predicted", type=Path, required=True)
     severity = kinds.add_parser("severity", help="CVSS metrics, score error and level agreement")
     severity.add_argument("--cases", type=Path, required=True)
+    baseline = kinds.add_parser("severity-baseline", help="the analyzer's own severity as a level")
+    baseline.add_argument("--cases", type=Path, required=True)
     cost = kinds.add_parser("cost", help="API cost and time per finding")
     cost.add_argument("--findings", type=Path, required=True)
 
@@ -142,6 +144,8 @@ def run_metrics(args: argparse.Namespace) -> int:
         )
     elif args.metric == "severity":
         result = metrics.severity_agreement(metrics.read_severity(args.cases))
+    elif args.metric == "severity-baseline":
+        result = metrics.severity_baseline(metrics.read_severity_baseline(args.cases))
     else:
         result = metrics.cost_and_time(metrics.read_costs(args.findings))
     print(json.dumps(result, indent=2))

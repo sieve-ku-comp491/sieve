@@ -13,6 +13,7 @@ from app.eval.metrics import (
     read_findings,
     related,
     severity_agreement,
+    severity_baseline,
 )
 
 
@@ -244,3 +245,37 @@ def test_findings_without_a_cwe_are_counted():
     assert result["findings_without_cwe"] == 2
     # They flag nothing, so the rates are the same as without them.
     assert result["raw"] == false_positive_check(CASES, FINDINGS)["raw"]
+
+
+def test_severity_baseline():
+    # error, warning and note map to high, medium and low. CVE-1 is 9.8, critical, and the tool
+    # said error, which is high: no match. CVE-2 is 7.5, high, with error: a match. CVE-3 is
+    # 5.0, medium, with warning: a match. CVE-4 is 3.0, low, with warning, which is medium: no
+    # match. CVE-5 has no finding.
+    rows = [
+        {"case_id": "CVE-1", "published_score": "9.8", "tool_severity": "error"},
+        {"case_id": "CVE-2", "published_score": "7.5", "tool_severity": "error"},
+        {"case_id": "CVE-3", "published_score": "5.0", "tool_severity": "warning"},
+        {"case_id": "CVE-4", "published_score": "3.0", "tool_severity": "warning"},
+        {"case_id": "CVE-5", "published_score": "6.1", "tool_severity": ""},
+    ]
+    assert severity_baseline(rows) == {
+        "cases": 5,
+        "no_finding": 1,
+        "level_agreement": 0.5,
+        "by_level": {
+            "critical": {"high": 1},
+            "high": {"high": 1},
+            "low": {"medium": 1},
+            "medium": {"medium": 1},
+        },
+    }
+
+
+def test_severity_baseline_input_errors():
+    with pytest.raises(MetricError, match="unknown tool severity"):
+        severity_baseline([{"case_id": "C", "published_score": "5", "tool_severity": "fatal"}])
+    with pytest.raises(MetricError, match="no cases"):
+        severity_baseline([])
+    only_missing = [{"case_id": "C", "published_score": "5", "tool_severity": ""}]
+    assert severity_baseline(only_missing)["level_agreement"] is None
