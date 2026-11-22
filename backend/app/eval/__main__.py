@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from app.eval import expected, metrics, neutral, nvd, sources
+from app.eval import expected, findings, metrics, neutral, nvd, sources
 
 DATASETS = {
     "benchmark-java": lambda root, s: expected.benchmark_java(root, s.commit),
@@ -29,6 +29,17 @@ def main(argv: list[str] | None = None) -> int:
 
     cves = commands.add_parser("cves", help="look up the NVD vector of each CWE-Bench-Java CVE")
     cves.add_argument("--out", type=Path, default=nvd.CVES_FILE)
+
+    tools = commands.add_parser("findings", help="turn analyzer SARIF files into a findings CSV")
+    tools.add_argument(
+        "--sarif",
+        action="append",
+        required=True,
+        metavar="TOOL=FILE",
+        help="a tool name and its SARIF file, for example semgrep=results.sarif, repeatable",
+    )
+    tools.add_argument("--strip-prefix", default="", help="remove this leading folder from paths")
+    tools.add_argument("--out", type=Path, required=True)
 
     score = commands.add_parser("metrics", help="compute one metric and print it as JSON")
     kinds = score.add_subparsers(dest="metric", required=True)
@@ -100,6 +111,26 @@ def run_cves(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_findings(args: argparse.Namespace) -> int:
+    every, total = [], 0
+    for item in args.sarif:
+        tool, _, file = item.partition("=")
+        if not tool or not file:
+            raise SystemExit(f"--sarif needs TOOL=FILE, got {item!r}")
+        result = findings.read_sarif(tool, Path(file), args.strip_prefix)
+        every.extend(result.findings)
+        total += result.without_location + result.outside_checkout
+        print(
+            f"{tool}: {len(result.findings)} findings, {result.without_location} without a "
+            f"location, {result.outside_checkout} outside the scanned folder"
+        )
+    findings.write_findings(every, args.out)
+    print(f"{len(every)} findings in {args.out}")
+    if total:
+        print(f"warning: {total} results could not be matched to a path", file=sys.stderr)
+    return 0
+
+
 def run_metrics(args: argparse.Namespace) -> int:
     if args.metric == "false-positives":
         result = metrics.false_positive_check(
@@ -142,6 +173,7 @@ COMMANDS = {
     "fetch": run_fetch,
     "expected": run_expected,
     "neutral": run_neutral,
+    "findings": run_findings,
     "cves": run_cves,
     "metrics": run_metrics,
 }
