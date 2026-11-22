@@ -26,6 +26,7 @@ From `backend/`, with the virtual environment from the README:
     python -m app.eval neutral benchmark-java      # make a neutral copy, see below
     python -m app.eval neutral benchmark-python
     python -m app.eval cves                        # look up CVSS vectors in the NVD
+    python -m app.eval findings --help             # analyzer SARIF files as a findings CSV
     python -m app.eval metrics --help              # the metric scripts
 
 Everything the commands write goes to `eval-data/` in the repository root, which is in .gitignore, except `cves`, which rewrites the committed `backend/app/eval/cves.csv` unless `--out` names another file. Set `SIEVE_EVAL_DIR` to use another folder. `fetch` checks out each source without history, about 350 MB in all, most of it the Java Benchmark, and doesn't download a source that is already at its commit. It always leaves the folder exactly as the commit has it: after a pin changes, the files that only the old version had are removed, and files changed or added by hand are restored or removed. `expected`, `neutral` and `cves` stop and say to run `fetch` when a source isn't checked out at its pinned commit, so their output never records a commit that the files don't match. `cves` waits 6.5 seconds between NVD requests, as the NVD allows without an API key, so it takes about 13 minutes. With `NVD_API_KEY` set, it waits 0.7 seconds.
@@ -89,7 +90,7 @@ A model may have seen the OWASP Benchmarks during training and recognize a test 
 - It removes the pom's description, which names the project and its authors, and the two lines of the properties file that give the Benchmark's version and the number of cases per folder, which no code reads. It renames the package `org.owasp.benchmark` to `org.example.app`, and leaves out the category index pages, whose headings name each vulnerability class.
 - Real uses of OWASP libraries stay, such as the ESAPI encoder and ESAPI's own properties file, because ordinary applications use them too.
 
-Each copy is then a git repository with one commit. Its files are written with `\n` line endings, and the commit has a fixed author and date and ignores the machine's `core.autocrlf` and `commit.gpgsign`, so the same seed gives the same commit on every machine. A leak check reads every file and path of the copy, and the command fails if anything still names the Benchmark, a category or an author, if a source file still has a comment, or if a "safe" value is left in the test code. On the pinned commits, it finds nothing in either copy. The Java copy keeps all 2,766 classes in the folder of their package with the file name of their class, and every Python file still compiles and has the same tokens as the original, apart from the removed license header. Without the Benchmark's libraries, `javac` gives the copy exactly the same 54,500 errors as the original, apart from the new names, all from missing libraries such as the servlet API, so removing the comments and renaming the values broke no code. We haven't built the copy with Maven yet.
+Each copy is then a git repository with one commit. Its files are written with `\n` line endings, and the commit has a fixed author and date and ignores the machine's `core.autocrlf` and `commit.gpgsign`, so the same seed gives the same commit on every machine. A leak check reads every file and path of the copy, and the command fails if anything still names the Benchmark, a category or an author, if a source file still has a comment, or if a "safe" value is left in the test code. On the pinned commits, it finds nothing in either copy. The Java copy keeps all 2,766 classes in the folder of their package with the file name of their class, and every Python file still compiles and has the same tokens as the original, apart from the removed license header. Without the Benchmark's libraries, `javac` gives the copy exactly the same 54,500 errors as the original, apart from the new names, all from missing libraries such as the servlet API, so removing the comments and renaming the values broke no code. The Java copy builds with Maven on JDK 25 in 89 seconds (see the baseline run).
 
 The answers go to `eval-data/answers/<dataset>/`, outside the copy: `expected.csv` with the neutral names, `mapping.csv` from every original name to its neutral one, `seed.txt` and the copy's commit. The triage agent's tools read only the scanned checkout (docs/architecture.md), so they can't reach the answers. Never put the answers folder inside a scanned checkout, and `neutral` refuses to write it there. `--seed` makes the same names again.
 
@@ -132,10 +133,133 @@ The CSV has `case_id`, `published_vector`, `published_score`, `predicted_vector`
 
 The CSV has `finding_id`, `cost_usd` and `seconds`. The output has the total, mean and median cost and time per finding. Manual triage for the N2 baseline uses the same file with a cost of 0.
 
+## Baseline run
+
+The baseline measures each analyzer on its own, before any triage. Its output is what the false-positive check has to improve (requirement F4, test 3, objective O2). The analyzers ran directly on the neutral copies of both Benchmarks, outside the pipeline, so the Java baseline doesn't wait for the SpotBugs plug-in.
+
+### How it was run
+
+The copies were made with seed 20261122 from the pinned Benchmarks. The Java copy is commit `d04f8626c8d9` and the Python copy is commit `24e7bb65bdf5`, and `eval-data/answers/` has the answers. Each copy was exported with `git archive`, as the runner does, and scanned like this:
+
+| Analyzer | Version | How |
+|---|---|---|
+| Semgrep, Python and Java | 1.183.0, semgrep-rules at `16b9e6d` | the plug-in image `sieve-plugin-semgrep:1.183.0-16b9e6d` (built from plugins/semgrep), started with the flags of docs/interfaces.md: no network, a read-only root, user 10001, all capabilities dropped, 4 GB of memory, 2 CPUs |
+| Bandit, Python | 1.9.4 with the sarif extra | `bandit -r . --ignore-nosec --exit-zero -f sarif`, run from inside the exported folder, the settings of the Bandit plug-in in #66 |
+| SpotBugs with Find Security Bugs, Java | SpotBugs 4.10.5, Find Security Bugs 1.14.0 | `-effort:max -low -nested:false` and the filter `security-only.xml`, the settings of the SpotBugs plug-in in #70 |
+
+SpotBugs analyzes compiled code, so the Java copy was built first, with Maven 3.9.16 on JDK 25 (the image `maven:3.9.16-eclipse-temurin-25-noble`): `mvn -B -ntp -DskipTests package org.apache.maven.plugins:maven-dependency-plugin:3.11.0:copy-dependencies -DincludeScope=compile -Dspotless.apply.skip=true`. It builds 4,541 classes and copies 126 libraries. The Benchmark's pom runs Spotless, a code formatter that needs the project's git history and its `.prefs` files, which the copy doesn't have, so the build skips it. The two SpotBugs downloads were checked against the SHA-256 values in the plug-in's Dockerfile.
+
+`findings` turns each tool's SARIF file into the CSV that the false-positive check reads, and reads the CWE, the path and the severity with the code of the pipeline's adapter (`app.adapters.BaseSarifAdapter`):
+
+    python -m app.eval findings --sarif semgrep=semgrep.sarif --sarif spotbugs=spotbugs.sarif \
+        --root spotbugs=<the folder that was built> --out findings-java-combined.csv
+    python -m app.eval metrics false-positives --expected answers/benchmark-java/expected.csv \
+        --findings findings-java-combined.csv
+
+SpotBugs names a file by a base folder inside the build, so `--root` makes its paths relative to the scanned folder. `findings` counts the results it can't place and prints a warning, and none of the runs here had one. Each analyzer has its own CSV, and the combined CSV has all of them, so the same command gives the rates of each analyzer and of their combined output.
+
+The neutral copy gives the same results as the original: Bandit flags exactly the same 204 cases in both Python Benchmarks.
+
+### Results
+
+Each test case is scored as a whole, as in the Benchmark's own scorecards: a case is flagged when some finding in its file has its CWE or a related one. A true positive is a flagged real case, a false positive a flagged case that is not real, and the rates are over the cases. The cases of the Benchmarks are in the first column of the CWE tables.
+
+Java Benchmark, 2,740 cases, 1,415 of them real:
+
+| Analyzer | True positives | False positives | Missed | Clear | True-positive rate | False-positive rate |
+|---|---|---|---|---|---|---|
+| Semgrep | 1,248 | 552 | 167 | 773 | 0.882 | 0.417 |
+| SpotBugs | 1,375 | 639 | 40 | 686 | 0.972 | 0.482 |
+| Combined | 1,375 | 698 | 40 | 627 | 0.972 | 0.527 |
+
+Python Benchmark, 1,230 cases, 452 of them real:
+
+| Analyzer | True positives | False positives | Missed | Clear | True-positive rate | False-positive rate |
+|---|---|---|---|---|---|---|
+| Semgrep | 145 | 106 | 307 | 672 | 0.321 | 0.136 |
+| Bandit | 179 | 25 | 273 | 753 | 0.396 | 0.032 |
+| Combined | 239 | 117 | 213 | 661 | 0.529 | 0.150 |
+
+The same rates for each CWE. A rate is a dash when the CWE has no case of that kind:
+
+Java:
+
+| CWE | Real | Not real | Semgrep TPR | Semgrep FPR | SpotBugs TPR | SpotBugs FPR | Combined TPR | Combined FPR |
+|---|---|---|---|---|---|---|---|---|
+| CWE-22 | 133 | 135 | 0.90 | 0.79 | 1.00 | 0.95 | 1.00 | 0.99 |
+| CWE-78 | 126 | 125 | 0.93 | 0.87 | 1.00 | 0.89 | 1.00 | 1.00 |
+| CWE-79 | 246 | 209 | 0.82 | 0.52 | 1.00 | 0.52 | 1.00 | 0.69 |
+| CWE-89 | 272 | 232 | 0.93 | 0.73 | 1.00 | 0.91 | 1.00 | 0.91 |
+| CWE-90 | 27 | 32 | 0.96 | 0.88 | 1.00 | 0.84 | 1.00 | 0.97 |
+| CWE-327 | 130 | 116 | 1.00 | 0.00 | 1.00 | 0.00 | 1.00 | 0.00 |
+| CWE-328 | 129 | 107 | 0.69 | 0.00 | 0.69 | 0.00 | 0.69 | 0.00 |
+| CWE-330 | 218 | 275 | 1.00 | 0.00 | 1.00 | 0.00 | 1.00 | 0.00 |
+| CWE-501 | 83 | 43 | 0.52 | 0.42 | 1.00 | 0.81 | 1.00 | 0.81 |
+| CWE-614 | 36 | 31 | 1.00 | 0.00 | 1.00 | 0.00 | 1.00 | 0.00 |
+| CWE-643 | 15 | 20 | 0.93 | 0.65 | 1.00 | 0.95 | 1.00 | 0.95 |
+
+Python:
+
+| CWE | Real | Not real | Semgrep TPR | Semgrep FPR | Bandit TPR | Bandit FPR | Combined TPR | Combined FPR |
+|---|---|---|---|---|---|---|---|---|
+| CWE-22 | 65 | 103 | 0.03 | 0.02 | 0.00 | 0.00 | 0.03 | 0.02 |
+| CWE-78 | 13 | 7 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| CWE-79 | 31 | 58 | 0.00 | 0.28 | 0.00 | 0.00 | 0.00 | 0.28 |
+| CWE-89 | 5 | 11 | 1.00 | 0.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| CWE-90 | 16 | 13 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| CWE-94 | 20 | 33 | 1.00 | 1.00 | 0.00 | 0.00 | 1.00 | 1.00 |
+| CWE-328 | 71 | 80 | 0.76 | 0.00 | 1.00 | 0.00 | 1.00 | 0.00 |
+| CWE-330 | 99 | 227 | 0.00 | 0.00 | 0.78 | 0.00 | 0.78 | 0.00 |
+| CWE-501 | 18 | 19 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| CWE-502 | 18 | 36 | 1.00 | 0.33 | 0.72 | 0.19 | 1.00 | 0.33 |
+| CWE-601 | 13 | 21 | 0.08 | 0.05 | 0.00 | 0.00 | 0.08 | 0.05 |
+| CWE-611 | 8 | 20 | 1.00 | 1.00 | 0.00 | 0.00 | 1.00 | 1.00 |
+| CWE-614 | 24 | 15 | 1.00 | 1.00 | 0.00 | 0.00 | 1.00 | 1.00 |
+| CWE-643 | 51 | 135 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+
+Some things the numbers say:
+
+- No analyzer gives a clean answer. On the Java Benchmark, SpotBugs finds nearly every real case (0.972) but also flags about half of the cases that are not real (0.482). Semgrep misses more (0.882) and flags fewer false positives (0.417). On the Python Benchmark, Bandit finds 0.396 of the real cases with a false-positive rate of 0.032, Semgrep finds 0.321 with 0.136, and together they find 0.529 with 0.150, so about half of the real cases are missed.
+- The rates are very different from one CWE to another. On the Java Benchmark, the weak randomness, weak crypto and insecure cookie cases (CWE-330, CWE-327 and CWE-614) are found with no false positive, while for CWE-22, CWE-78 and CWE-89 nearly every case is flagged, real or not. That is the noise that triage has to remove.
+- Most of what Semgrep reports outside the test cases is in the Benchmarks' HTML pages and JavaScript files: 836 results in HTML and 24 in JavaScript on the Python Benchmark, and 743 and 24 on the Java Benchmark. They are not test cases, so they don't count in the rates, but a researcher and the triage agent would see them.
+- Four SpotBugs results have no CWE, and the check counts them in `findings_without_cwe`.
+
+### What the target of O2 means in numbers
+
+The target is to remove at least half of the false positives and keep at least 90% of the true positives (`false_positives_removed` at least 0.5 and `true_positives_kept` at least 0.9). On the combined output, that is:
+
+| Benchmark | False positives now | Triage has to remove | True positives now | Triage has to keep |
+|---|---|---|---|---|
+| Java | 698 | at least 349 | 1,375 | at least 1238 |
+| Python | 117 | at least 59 | 239 | at least 216 |
+
+The Python Benchmark has only 239 flagged real cases to keep, so one lost true positive moves `true_positives_kept` by 0.4 points.
+
+### Run times
+
+The timings are for one Mac, with Docker Desktop and the container limits of the runner, 2 CPUs and 4 GB. They are for checking the time limits of the plug-ins (`timeout_seconds` in docs/interfaces.md, issue #20). The limit of a plug-in with a build step covers the build and the scan together.
+
+| Step | Files | Time | Limit |
+|---|---|---|---|
+| Semgrep, Python Benchmark | 2,496 scanned | 129 s, with nothing else running | 600 s |
+| Semgrep, Java Benchmark | 5,542 scanned | 336 s, with light work going on at the same time | 600 s |
+| Bandit, Python Benchmark | 1,236 | 3.7 to 3.9 s, three runs | 600 s |
+| Maven build of the Java Benchmark | 2,766 sources, 4,541 classes | 89 s | 1,800 s with the scan |
+| SpotBugs, Java Benchmark | 4,541 classes | 73 s | 1,800 s |
+
+These are the best times we got, and they don't show the margin that the limits really have. Semgrep on the Java Benchmark takes 56% of its 600 s. Later, with the Mac on battery and in Low Power Mode, the same scan had not finished after 62 minutes and was stopped, and an earlier run that was timed while the Mac slept in the middle of it also showed a wrong time, so the timings depend a lot on the machine. A repository larger than the Benchmark, or a slower machine, can pass 600 s. The run then ends as `timed_out`, the scan becomes `partial`, and Semgrep's findings are missing. The manifest's `timeout_seconds` can be raised to at most 3,600 s, and the SpotBugs plug-in already has 1,800 s. We suggest the same 1,800 s for Semgrep, until the scans are timed again on a computer that is plugged in with Low Power Mode off. To time them again, run the commands above one after another and take the time from `date` before and after each.
+
+### Severity baseline
+
+Table 5 of the proposal compares the severity step with "the analyzer's own severity". None of our tools gives a score (docs/finding-format.md), so the evaluation defines a mapping from the SARIF level in `tool_severity` to a CVSS level: error is high, warning is medium, note is low and none is none. No tool rates anything as critical. `python -m app.eval metrics severity-baseline --cases <cases.csv>` compares that level with the level of the published CVSS score. The CSV has one row per CVE, with `case_id`, `published_score` and the `tool_severity` of the most severe finding at the CVE's vulnerable location, and an empty value when the analyzers found nothing there.
+
+The mapping and the metric are done and tested on a small example. The numbers are not: they need the analyzers to run on the vulnerable commit of each of the 117 CVEs of CWE-Bench-Java, which means building 117 projects. That is a separate job, and it can start from the CVE list in `cves.csv`.
+
 ## Not covered yet
 
 - Recent CVEs, chosen after the pilot run of T6.2, see above.
 - The labeled duplicate groups and the labeled Juice Shop sample, made by hand in T6.3. The dedup metric reads the groups as they are. The Juice Shop sample is labeled per finding, with many findings in one file, while the false-positive check judges whole files, so it needs a per-finding mode, added with T6.3.
-- The severity baseline of Table 5, the analyzer's own severity. It needs a mapping from `tool_severity` to a level, which docs/finding-format.md leaves to the evaluation, so it comes with the baseline run of T6.2.
+- The numbers of the severity baseline, which need the analyzers to run on the CVEs' projects, see the baseline run.
+- The pilot triage, the budget per finding that it sets, and the choice of the two models. They need the draft prompt, the candidate models and an API key.
 - How a scan reaches the neutral copies, see above.
 - The target applications have no expected results of their own: they are scanned for duplicates, reports and the PoC check.
