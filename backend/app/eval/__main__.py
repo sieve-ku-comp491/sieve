@@ -39,6 +39,14 @@ def main(argv: list[str] | None = None) -> int:
         help="a tool name and its SARIF file, for example semgrep=results.sarif, repeatable",
     )
     tools.add_argument("--strip-prefix", default="", help="remove this leading folder from paths")
+    tools.add_argument(
+        "--root",
+        action="append",
+        default=[],
+        metavar="TOOL=DIR",
+        help="the scanned folder of a tool as an absolute path, for a tool that names files by "
+        "a base folder, such as spotbugs, repeatable",
+    )
     tools.add_argument("--out", type=Path, required=True)
 
     score = commands.add_parser("metrics", help="compute one metric and print it as JSON")
@@ -114,12 +122,11 @@ def run_cves(args: argparse.Namespace) -> int:
 
 
 def run_findings(args: argparse.Namespace) -> int:
+    roots = dict(_pair(item, "--root", "TOOL=DIR") for item in args.root)
     every, total = [], 0
     for item in args.sarif:
-        tool, _, file = item.partition("=")
-        if not tool or not file:
-            raise SystemExit(f"--sarif needs TOOL=FILE, got {item!r}")
-        result = findings.read_sarif(tool, Path(file), args.strip_prefix)
+        tool, file = _pair(item, "--sarif", "TOOL=FILE")
+        result = findings.read_sarif(tool, Path(file), args.strip_prefix, roots.get(tool, ""))
         every.extend(result.findings)
         total += result.without_location + result.outside_checkout
         print(
@@ -150,6 +157,13 @@ def run_metrics(args: argparse.Namespace) -> int:
         result = metrics.cost_and_time(metrics.read_costs(args.findings))
     print(json.dumps(result, indent=2))
     return 0
+
+
+def _pair(item: str, option: str, form: str) -> tuple[str, str]:
+    left, _, right = item.partition("=")
+    if not left or not right:
+        raise SystemExit(f"{option} needs {form}, got {item!r}")
+    return left, right
 
 
 def _not_fetched(chosen: list[sources.Source]) -> bool:

@@ -87,3 +87,31 @@ def test_the_csv_is_what_the_false_positive_check_reads(tmp_path):
     first, second = read_findings(path)
     assert first.cwes == {"CWE-22", "CWE-23"} and first.verdict == ""
     assert second.cwes == frozenset()
+
+
+def test_a_file_named_by_a_base_folder_is_made_relative_to_the_scanned_root(tmp_path):
+    # SpotBugs writes a path relative to a base folder inside the build, and lists the base.
+    path = tmp_path / "spotbugs.sarif"
+    run = {
+        "tool": {"driver": {"name": "spotbugs", "rules": [BANDIT_RULE]}},
+        "originalUriBaseIds": {"-1": {"uri": "file:/build/src/main/java/"}},
+        "results": [
+            result("B602", "org/x/Case1.java", base_id="-1"),
+            result("B602", "org/with%20space/Case2.java", base_id="-1"),
+            {
+                "ruleId": "B602",
+                "locations": [
+                    {"physicalLocation": {"artifactLocation": {"uri": "elsewhere/Other.java"}}}
+                ],
+            },
+        ],
+    }
+    path.write_text(json.dumps({"runs": [run]}))
+    read = read_sarif("spotbugs", path, root="/build")
+    assert [f.file for f in read.findings] == [
+        "src/main/java/org/x/Case1.java",
+        "src/main/java/org/with space/Case2.java",
+    ]
+    assert read.outside_checkout == 1
+    # Without root the same file can't be placed, and the result is counted.
+    assert read_sarif("spotbugs", path).outside_checkout == 2
