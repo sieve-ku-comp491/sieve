@@ -6,7 +6,7 @@ needs no change to the report service (requirement N5, test 4; docs/class-diagra
 
 from typing import Protocol
 
-from app.reports.models import Report
+from app.reports.models import Location, Report
 
 
 class ReportFormat(Protocol):
@@ -29,6 +29,7 @@ class MarkdownFormat:
             "",
             f"Severity: {severity.level.capitalize()} (CVSS 4.0 score {severity.score:.1f})",
             f"Vector: {severity.vector}",
+            *(f"Location: {_where(location)}" for location in report.locations),
             "",
             "## Summary",
             "",
@@ -58,6 +59,13 @@ class MarkdownFormat:
 
 def default_formats() -> dict[str, ReportFormat]:
     return {format.name: format for format in (MarkdownFormat(),)}
+
+
+def _where(location: Location) -> str:
+    """A file and its lines, as the report preview shows them (docs/ui-mockups.md)."""
+    if location.start_line == location.end_line:
+        return f"{location.file}, line {location.start_line}"
+    return f"{location.file}, lines {location.start_line} to {location.end_line}"
 
 
 def _line(text: str) -> str:

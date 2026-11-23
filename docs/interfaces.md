@@ -369,6 +369,7 @@ Markdown is the core export format, with one file per report:
 
 Severity: Critical (CVSS 4.0 score 9.3)
 Vector: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
+Location: dockerized_labs/sql_injection_lab/app.py, lines 46 to 57
 
 ## Summary
 
@@ -384,5 +385,7 @@ Vector: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N
 
 - https://cwe.mitre.org/data/definitions/89.html
 ```
+
+Each place in `locations` has its own Location line, as the report preview shows it (docs/ui-mockups.md), so a program's triager knows where the code is.
 
 The HackerOne and Bugcrowd formats are stretch goals (T4.2). They use the same fields, with HackerOne's CVSS-based severity and Bugcrowd's VRT priority.
