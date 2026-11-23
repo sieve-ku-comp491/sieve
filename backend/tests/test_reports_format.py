@@ -36,6 +36,7 @@ def test_the_layout_of_docs_interfaces():
         "\n"
         "Severity: Critical (CVSS 4.0 score 9.3)\n"
         "Vector: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:N/SC:N/SI:N/SA:N\n"
+        "Location: app/views.py, lines 52 to 59\n"
         "\n"
         "## Summary\n"
         "\n"
@@ -84,3 +85,11 @@ def test_markdown_is_the_default_format_and_a_format_has_a_name_and_an_extension
     assert list(formats) == ["markdown"]
     format: ReportFormat = formats["markdown"]
     assert (format.name, format.file_extension) == ("markdown", ".md")
+
+
+def test_every_location_has_its_own_line_and_one_line_is_singular():
+    report = make_report(
+        locations=(Location("app/views.py", 46, 46), Location("app/db.py", 10, 12))
+    )
+    text = MarkdownFormat().render(report)
+    assert "Location: app/views.py, line 46\nLocation: app/db.py, lines 10 to 12\n\n" in text
