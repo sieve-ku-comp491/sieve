@@ -140,7 +140,12 @@ class ReportService:
         path = self.exports_dir / f"{report_id}{report_format.file_extension}"
         self.exports_dir.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8", newline="\n")
-        self.store.mark_exported(report_id, text.version, str(path), exported_by, self.now())
+        try:
+            self.store.mark_exported(report_id, text.version, str(path), exported_by, self.now())
+        except Exception:
+            # The store checks again as it marks the report. A file it refused must not stay.
+            path.unlink(missing_ok=True)
+            raise
         return content
 
     def get(self, report_id: str) -> Report:

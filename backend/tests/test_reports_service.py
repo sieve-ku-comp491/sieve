@@ -489,3 +489,17 @@ def test_the_data_block_of_the_prompt_is_the_one_the_client_makes(tmp_path):
     context = make_context()
     expected = data_block(prompt_values(context), context.code)
     assert provider.requests[0].messages[-1].content == expected
+
+
+def test_a_file_the_store_refuses_at_export_is_removed(tmp_path):
+    service, store, _, _, report_id = drafted(tmp_path)
+    service.approve_text(report_id, 1, "ayse")
+
+    def refuse(*args):
+        raise NotApproved(["finding finding-1 is rejected, not decided"])
+
+    store.mark_exported = refuse
+    with pytest.raises(NotApproved):
+        service.export(report_id, exported_by="ayse")
+    assert list((tmp_path / "exports").iterdir()) == []
+    assert store.get_report(report_id).status == "draft"
