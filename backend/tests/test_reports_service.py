@@ -490,6 +490,37 @@ def test_export_refuses_text_whose_severity_was_edited_since_the_draft(tmp_path)
     assert "Severity: High (CVSS 4.0 score 7.5)" in service.export(report_id, exported_by="ayse")
 
 
+def test_a_redraft_after_a_member_is_rejected_covers_the_approved_members_only(tmp_path):
+    service, store, provider, report_id = group_drafted(
+        tmp_path, [reply(), reply(title="A new title")]
+    )
+    store.set_state("f3", "rejected")
+
+    report = service.redraft(report_id)
+
+    assert report.locations == (Location("app/views.py", 52, 59),)
+    assert "WRONG.py" not in provider.requests[-1].messages[-1].content
+    service.approve_text(report_id, 2, "ayse")
+    content = service.export(report_id, exported_by="ayse")
+    assert "WRONG.py" not in content
+
+
+def test_the_cwe_entries_a_report_needs_are_those_of_its_approved_members(tmp_path):
+    whole = make_context(finding_ids=GROUP, cwes=("CWE-79", "CWE-89"))
+    two = make_context(finding_ids=GROUP[:2], states=whole.states)
+    service, store, *_ = make_service(
+        tmp_path, [whole, two], replies=[reply(), reply(title="A new title")]
+    )
+    report_id = service.draft(GROUP).report_id
+    store.set_state("f3", "rejected")
+    service.redraft(report_id)
+
+    # The rejected member's CWE-79 is no longer needed, so the edit and the export pass.
+    service.edit(report_id, {"fix": "Use parameters."}, "ayse")
+    service.approve_text(report_id, 3, "ayse")
+    assert "79.html" not in service.export(report_id, exported_by="ayse")
+
+
 def test_an_exported_report_is_final(tmp_path):
     service, _, provider, _, report_id = drafted(tmp_path)
     service.approve_text(report_id, 1, "ayse")
