@@ -8,7 +8,8 @@ const TYPESCRIPT = ['**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts'];
 
 export default [
   {
-    files: ['**/*.jsx'],
+    // React projects often keep JSX in .js files, so every JavaScript file is parsed with JSX.
+    files: JAVASCRIPT,
     languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
   },
   {

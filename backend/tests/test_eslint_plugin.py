@@ -42,6 +42,14 @@ export function read (name: string): Buffer {
 }
 """
 
+# JSX in a .js file, as many React projects write it.
+JSX = """\
+export function App ({ code }) {
+  eval(code)
+  return <div>{code}</div>
+}
+"""
+
 # A configuration file in the scanned repository must never be loaded: it is code.
 TARGET_CONFIG = "throw new Error('the scanned repository configuration was loaded')\n"
 
@@ -76,8 +84,10 @@ def test_eslint_plugin_writes_valid_sarif(client, tmp_path):
     scan = ScanTarget(scan_id=str(uuid.uuid4()), repo_url="https://example.com/app")
     src = tmp_path / "scans" / scan.scan_id / "src"
     (src / "lib").mkdir(parents=True)
+    (src / "src").mkdir()
     (src / "run.js").write_text(JAVASCRIPT, newline="\n")
     (src / "lib" / "read.ts").write_text(TYPESCRIPT, newline="\n")
+    (src / "src" / "App.js").write_text(JSX, newline="\n")
     (src / "eslint.config.mjs").write_text(TARGET_CONFIG, newline="\n")
     (src / "README.md").write_text("not linted\n", newline="\n")
 
@@ -88,7 +98,7 @@ def test_eslint_plugin_writes_valid_sarif(client, tmp_path):
     log = (tmp_path / run.log_path).read_text(encoding="utf-8")
     assert run.status is RunStatus.SUCCEEDED, log
     # The repository's eslint.config.mjs is linted as a file like the others, not loaded.
-    assert run.files_scanned == 3
+    assert run.files_scanned == 4
     assert "ESLint 10.14.0" in log
 
     sarif = SarifValidator().validate(tmp_path / run.sarif_path)
@@ -97,4 +107,5 @@ def test_eslint_plugin_writes_valid_sarif(client, tmp_path):
     # The eslint-disable-line comment doesn't hide the finding.
     assert ("security/detect-child-process", "run.js", 4, "CWE-78") in found
     assert ("security/detect-non-literal-fs-filename", "lib/read.ts", 4, "CWE-22") in found
+    assert ("security/detect-eval-with-expression", "src/App.js", 2, "CWE-95") in found
     assert result.dropped == {}
