@@ -8,7 +8,7 @@ Each folder here is one analyzer, run by the plug-in runner in `backend/app/runn
 | `bandit` | Bandit 1.9.4 with the `sarif` extra | built in, all of them | `sieve-plugin-bandit:1.9.4` |
 | `eslint` | ESLint 10.14.0, with typescript-eslint 8.72.1's parser and TypeScript 6.0.3 | eslint-plugin-security 4.2.1, its recommended set, on JavaScript and TypeScript files | `sieve-plugin-eslint:10.14.0-security4.2.1` |
 | `gitleaks` | Gitleaks 8.30.1 | built in, on every file of the checkout, run with `--redact` | `sieve-plugin-gitleaks:8.30.1` |
-| `spotbugs` | SpotBugs 4.10.5 with Find Security Bugs 1.14.0, on classes built with Maven 3.9.16 and JDK 25 | the `SECURITY` category: the Find Security Bugs patterns and the few SpotBugs patterns in it | `sieve-plugin-spotbugs:4.10.5-fsb1.14.0`, and `sieve-plugin-spotbugs-build:jdk25-3.9.16` for the build step |
+| `spotbugs` | SpotBugs 4.10.5 with Find Security Bugs 1.14.0, on classes built with Maven 3.9.16 and JDK 25 | the `SECURITY` category: the Find Security Bugs patterns and the few SpotBugs patterns in it, without `SPRING_ENDPOINT` | `sieve-plugin-spotbugs:4.10.5-fsb1.14.0`, and `sieve-plugin-spotbugs-build:jdk25-3.9.16` for the build step |
 
 ## Building the images
 
