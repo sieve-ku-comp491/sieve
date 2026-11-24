@@ -351,3 +351,39 @@ def test_the_rule_step_groups_by_the_functions_it_finds(tmp_path):
     assert group.reason == (
         "Same function run_ping (lines 4 to 5) and related CWEs (CWE-77 and CWE-78)"
     )
+
+
+def test_a_comment_between_decorators_keeps_the_first_one(tmp_path):
+    python = (
+        "@app.route('/x')\n"
+        "# keep this public\n"
+        "@csrf_exempt\n"
+        "def view(request):\n"
+        "    return 1\n"
+        "\n"
+        "\n"
+        "class Page:\n"
+        "    @property\n"
+        "    # computed once\n"
+        "    @cached\n"
+        "    def title(self):\n"
+        "        return 'x'\n"
+    )
+    typescript = (
+        "class Panel {\n"
+        "  @Input()\n"
+        "  // shown in the header\n"
+        "  @Output()\n"
+        "  toggle(): void {\n"
+        "    this.open = !this.open;\n"
+        "  }\n"
+        "}\n"
+    )
+    lookup = lookup_for(tmp_path, {"views.py": python, "panel.ts": typescript})
+
+    view = FunctionSpan("view", 1, 5)
+    assert [lookup.enclosing_function("views.py", line) for line in range(1, 6)] == [view] * 5
+    title = FunctionSpan("Page.title", 9, 13)
+    assert [lookup.enclosing_function("views.py", line) for line in range(9, 14)] == [title] * 5
+    toggle = FunctionSpan("Panel.toggle", 2, 7)
+    assert [lookup.enclosing_function("panel.ts", line) for line in range(2, 8)] == [toggle] * 6

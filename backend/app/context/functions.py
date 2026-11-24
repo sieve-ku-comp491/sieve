@@ -145,11 +145,13 @@ def _span(node: Node) -> FunctionSpan:
     # decorator. Java's annotations and JavaScript's method decorators are inside the node.
     if node.parent is not None and node.parent.type == "decorated_definition":
         first = node.parent
-    # TypeScript puts the decorators of a class member before it in the class body.
+    # TypeScript puts the decorators of a class member before it in the class body, and
+    # comments can sit between them.
     member = node.parent if node.parent is not None and node.parent.type in FIELDS else node
     sibling = member.prev_named_sibling
-    while sibling is not None and sibling.type == "decorator":
-        first = sibling
+    while sibling is not None and sibling.type in ("decorator", "comment"):
+        if sibling.type == "decorator" and sibling.start_byte < first.start_byte:
+            first = sibling
         sibling = sibling.prev_named_sibling
     end_row, end_column = node.end_point[0], node.end_point[1]
     if end_column == 0 and end_row > node.start_point[0]:
