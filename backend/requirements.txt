@@ -6,6 +6,7 @@ attrs==26.1.0
 certifi==2026.10.23
 charset-normalizer==3.5.2
 click==8.5.1
+cvss==3.6
 docker==7.2.0
 docstring_parser==0.18.0
 fastapi==0.162.2
