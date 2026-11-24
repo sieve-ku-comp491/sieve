@@ -352,6 +352,16 @@ def test_the_rule_step_groups_by_the_functions_it_finds(tmp_path):
         "Same function run_ping (lines 4 to 5) and related CWEs (CWE-77 and CWE-78)"
     )
 
+    # Two tools four lines apart are one group by nearby lines, and only the lookup tells that
+    # they are in two functions.
+    apart = [
+        finding("s", 5, ["CWE-78"], tool="semgrep", rule=semgrep),
+        finding("b", 9, ["CWE-77"], tool="bandit", rule="B602"),
+    ]
+    (nearby,) = group_findings(apart, [RuleStep(None, nearby_lines=5)])
+    assert sorted(m.finding_id for m in nearby.members) == ["b", "s"]
+    assert group_findings(apart, [RuleStep(lookup, nearby_lines=5)]) == []
+
 
 def test_a_comment_between_decorators_keeps_the_first_one(tmp_path):
     python = (
