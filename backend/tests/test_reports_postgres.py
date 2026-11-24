@@ -6,6 +6,7 @@ SIEVE_TEST_DATABASE_URL, like the other store tests.
 """
 
 import json
+import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -56,7 +57,9 @@ def scan(database, tmp_path) -> str:
         MANIFEST,
         FIXTURE / "semgrep-pygoat.sarif",
         FIXTURE / "pygoat",
-        "https://github.com/adeyosemanputra/pygoat",
+        # A repository URL of its own, so the matching of repeated scans doesn't carry the
+        # reviews of an earlier test into this one.
+        f"https://github.com/adeyosemanputra/pygoat?test={uuid.uuid4().hex}",
         "2aa4cc14f251e4a780e94e200aed6b36a5b15c21",
     ).scan_id
 
@@ -397,38 +400,43 @@ def test_findings_from_different_groups_are_not_one_report(database, tmp_path, s
         store.finding_context((first, second))
 
 
-def test_a_rejection_between_the_check_and_the_write_is_caught_and_leaves_no_file(
-    database, tmp_path, approved, monkeypatch
+def test_the_store_refuses_a_report_whose_finding_was_rejected_after_the_service_checked(
+    database, tmp_path, approved
 ):
     finding_id, _ = approved
     service, store = make_service(database, tmp_path, [reply()])
     report_id = service.draft((finding_id,)).report_id
     service.approve_text(report_id, 1, "ayse")
-    # The service's own check passes, and the finding is rejected before the store marks the
-    # report. The store checks again in its transaction.
-    monkeypatch.setattr(store, "export_refusals", lambda report_id: [])
+    # The service's own check has passed, and the finding is rejected before the store marks
+    # the report. The store checks again in its transaction.
     review(database, finding_id, "reject")
 
     with pytest.raises(NotApproved, match="no approved finding"):
-        service.export(report_id, exported_by="ayse")
+        store.mark_exported(report_id, 1, str(tmp_path / "x.md"), "ayse", NOW)
 
-    assert not (tmp_path / "exports" / f"{report_id}.md").exists()
     assert service.get(report_id).status == "draft"
 
 
-def test_a_member_rejected_after_the_draft_is_left_out_at_export(database, tmp_path, scan):
+def test_a_member_rejected_after_the_draft_is_left_out_of_the_new_draft_and_the_export(
+    database, tmp_path, scan
+):
     first = finding(database, scan, CURSOR_EXECUTE, 46)
     second = finding(database, scan, CURSOR_EXECUTE, 47)
     third = finding(database, scan, RAW_QUERY, 57)
     group_id = group(database, scan, first, second, third)
     triage(database, scan, group_id=group_id)
     reviews = {fid: review(database, fid) for fid in (first, second, third)}
-    service, _ = make_service(database, tmp_path, [reply()])
+    service, _ = make_service(database, tmp_path, [reply(), reply(title="Two findings")])
     report_id = service.draft((first, second, third)).report_id
     service.approve_text(report_id, 1, "ayse")
     # Deduplication put the third finding in the wrong group, and the reviewer says so.
     review(database, third, "reject")
 
+    # The text was drafted for three places, so the export asks for a new draft.
+    with pytest.raises(NotApproved, match="ask for a new draft"):
+        service.export(report_id, exported_by="ayse")
+    service.redraft(report_id)
+    service.approve_text(report_id, 2, "ayse")
     service.export(report_id, exported_by="ayse")
 
     with psycopg.connect(database) as conn:
