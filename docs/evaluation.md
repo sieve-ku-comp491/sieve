@@ -144,16 +144,17 @@ The copies were made with seed 20261122 from the pinned Benchmarks. The Java cop
 | Analyzer | Version | How |
 |---|---|---|
 | Semgrep, Python and Java | 1.183.0, semgrep-rules at `16b9e6d` | the plug-in image `sieve-plugin-semgrep:1.183.0-16b9e6d` (built from plugins/semgrep), started with the flags of docs/interfaces.md: no network, a read-only root, user 10001, all capabilities dropped, 4 GB of memory, 2 CPUs |
-| Bandit, Python | 1.9.4 with the sarif extra | `bandit -r . --ignore-nosec --exit-zero -f sarif`, run from inside the exported folder, the settings of the Bandit plug-in in #66 |
+| Bandit, Python | 1.9.4 with the sarif extra | `bandit -r . --ignore-nosec --exit-zero -f sarif -o bandit.sarif`, run from inside the exported folder, the settings of the Bandit plug-in in #66. Without `-o`, Bandit writes a progress line in front of the SARIF on stdout, and `findings` can't read the file. |
 | SpotBugs with Find Security Bugs, Java | SpotBugs 4.10.5, Find Security Bugs 1.14.0 | `-effort:max -low -nested:false` and the filter `security-only.xml`, the settings of the SpotBugs plug-in in #70 |
 
 SpotBugs analyzes compiled code, so the Java copy was built first, with Maven 3.9.16 on JDK 25 (the image `maven:3.9.16-eclipse-temurin-25-noble`): `mvn -B -ntp -DskipTests package org.apache.maven.plugins:maven-dependency-plugin:3.11.0:copy-dependencies -DincludeScope=compile -Dspotless.apply.skip=true`. It builds 4,541 classes and copies 126 libraries. The Benchmark's pom runs Spotless, a code formatter that needs the project's git history and its `.prefs` files, which the copy doesn't have, so the build skips it. The two SpotBugs downloads were checked against the SHA-256 values in the plug-in's Dockerfile.
 
-`findings` turns each tool's SARIF file into the CSV that the false-positive check reads, and reads the CWE, the path and the severity with the code of the pipeline's adapter (`app.adapters.BaseSarifAdapter`):
+`findings` turns each tool's SARIF file into the CSV that the false-positive check reads, and reads the CWE, the path and the severity with the code of the pipeline's adapter (`app.adapters.BaseSarifAdapter`). Run from backend/, like the other commands here:
 
     python -m app.eval findings --sarif semgrep=semgrep.sarif --sarif spotbugs=spotbugs.sarif \
         --root spotbugs=<the folder that was built> --out findings-java-combined.csv
-    python -m app.eval metrics false-positives --expected answers/benchmark-java/expected.csv \
+    python -m app.eval metrics false-positives \
+        --expected ../eval-data/answers/benchmark-java/expected.csv \
         --findings findings-java-combined.csv
 
 SpotBugs names a file by a base folder inside the build, so `--root` makes its paths relative to the scanned folder. `findings` counts the results it can't place and prints a warning, and none of the runs here had one. Each analyzer has its own CSV, and the combined CSV has all of them, so the same command gives the rates of each analyzer and of their combined output.
