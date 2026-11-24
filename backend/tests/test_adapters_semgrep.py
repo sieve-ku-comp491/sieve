@@ -152,7 +152,7 @@ def test_registry():
     registry = AdapterRegistry()
     assert isinstance(registry.get("semgrep"), SemgrepAdapter)
     with pytest.raises(AdapterError):
-        registry.get("bandit")
+        registry.get("no-such-tool")
 
 
 def test_the_repo_manifest_names_this_adapter():

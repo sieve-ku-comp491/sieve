@@ -19,7 +19,7 @@ Each plug-in has its own directory in the repository:
       Dockerfile     installs the tool and its rules at pinned versions
       run.sh         the entry point: runs the tool, writes the SARIF file, maps exit codes
 
-The adapter that turns the plug-in's SARIF into findings lives in the back end (T2.2), and the manifest names it.
+The adapter that turns the plug-in's SARIF into findings lives in the back end (T2.2), and the manifest names it. The adapter named `x` is the class in `backend/app/adapters/x.py` whose `tool` is `x`, so a new adapter adds only its own module and tests.
 
 ### Manifest
 
