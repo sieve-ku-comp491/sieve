@@ -24,10 +24,14 @@ STEP_NUMBER = re.compile(r"^\s*(?:step\s*)?\d+\s*[.):]\s+", re.IGNORECASE)
 
 
 def prompt_values(
-    context: FindingContext, attempt: int = 1, previous: ReportText | None = None
+    context: FindingContext,
+    attempt: int = 1,
+    previous: ReportText | None = None,
+    retry: int = 0,
 ) -> dict:
     """The values of the data block. A new draft carries the earlier text and its number, so
-    asking again is a different request and the cache doesn't answer it with the same text."""
+    asking again is a different request and the cache doesn't answer it with the same text. A
+    retry after an answer that wasn't a report carries its own number for the same reason."""
     values: dict = {
         "rules": [
             {"tool": rule.tool, "rule": rule.rule_id, "message": rule.message}
@@ -46,6 +50,8 @@ def prompt_values(
         "injection_suspected": context.injection_suspected,
         "attempt": attempt,
     }
+    if retry:
+        values["retry"] = retry
     if previous is not None:
         values["previous_draft"] = {
             "title": previous.title,
