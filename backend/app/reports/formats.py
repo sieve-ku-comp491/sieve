@@ -64,12 +64,13 @@ def default_formats() -> dict[str, ReportFormat]:
 def _where(location: Location) -> str:
     """A file and its lines, as the report preview shows them (docs/ui-mockups.md)."""
     if location.start_line == location.end_line:
-        return f"{location.file}, line {location.start_line}"
-    return f"{location.file}, lines {location.start_line} to {location.end_line}"
+        return f"{_line(location.file)}, line {location.start_line}"
+    return f"{_line(location.file)}, lines {location.start_line} to {location.end_line}"
 
 
 def _line(text: str) -> str:
-    """A title is one line, whatever the text has in it."""
+    """A title or a file name is one line, whatever the text has in it, so it can't start a
+    section of its own."""
     return " ".join(text.split())
 
 
