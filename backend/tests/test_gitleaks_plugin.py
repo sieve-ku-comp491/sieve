@@ -21,6 +21,7 @@ from app.runner import (
     InMemoryRunStore,
     PluginManifest,
     PluginRunner,
+    Reason,
     RunnerSettings,
     RunStatus,
     SarifValidator,
@@ -66,9 +67,13 @@ def scan(client, tmp_path, files: dict[str, str]):
     return run, src
 
 
-def test_gitleaks_plugin_finds_the_key_and_redacts_it(client, tmp_path):
+def fake_settings() -> tuple[str, str]:
     key = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(32))
-    settings = f'DEBUG = False\napi_key = "{key}"\n'
+    return key, f'DEBUG = False\napi_key = "{key}"\n'
+
+
+def test_gitleaks_plugin_finds_the_key_and_redacts_it(client, tmp_path):
+    key, settings = fake_settings()
     run, src = scan(
         client,
         tmp_path,
@@ -100,3 +105,26 @@ def test_gitleaks_plugin_finds_the_key_and_redacts_it(client, tmp_path):
 def test_gitleaks_plugin_without_files_is_skipped(client, tmp_path):
     run, _ = scan(client, tmp_path, {})
     assert run.status is RunStatus.SKIPPED
+
+
+def test_gitleaks_plugin_ignores_the_scanned_folders_config(client, tmp_path):
+    _, settings = fake_settings()
+    allow_all = "[[allowlists]]\npaths = ['''.*''']\n"
+    run, src = scan(client, tmp_path, {"settings.py": settings, ".gitleaks.toml": allow_all})
+
+    log = (tmp_path / run.log_path).read_text(encoding="utf-8")
+    assert run.status is RunStatus.SUCCEEDED, log
+    sarif = SarifValidator().validate(tmp_path / run.sarif_path)
+    out = GitleaksAdapter().to_findings(sarif, run, CheckoutReader(src))
+    assert [(f.location.file, f.location.start_line) for f in out.findings] == [("settings.py", 2)]
+
+
+def test_gitleaks_plugin_fails_on_a_gitleaksignore(client, tmp_path):
+    _, settings = fake_settings()
+    # The fingerprint of the key's finding: Gitleaks itself would drop it.
+    ignore = "/src/settings.py:generic-api-key:2\n"
+    run, _ = scan(client, tmp_path, {"settings.py": settings, ".gitleaksignore": ignore})
+
+    assert (run.status, run.reason, run.exit_code) == (RunStatus.FAILED, Reason.EXIT_CODE, 1)
+    log = (tmp_path / run.log_path).read_text(encoding="utf-8")
+    assert "/src/.gitleaksignore would hide findings from Gitleaks" in log

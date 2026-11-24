@@ -3,10 +3,19 @@
 # the export has no .git folder, and we report on the checked-out commit.
 files=$(find "$SIEVE_SRC" -type f | wc -l) || exit 1
 [ "$files" -gt 0 ] || exit 3
-# --redact keeps the secrets out of the SARIF file and the log. Gitleaks exits with 1 both
-# on errors and, by default, when it finds leaks, so leaks get their own exit code here.
-gitleaks dir "$SIEVE_SRC" --redact --no-banner --no-color --ignore-gitleaks-allow \
-  --report-format sarif --report-path "$SIEVE_OUT/results.sarif" --exit-code 2
+# Gitleaks always obeys a .gitleaksignore at the root of the folder it scans, and no flag turns
+# that off. The export should leave it out (docs/interfaces.md), and when it doesn't, the run
+# fails rather than miss findings.
+if [ -e "$SIEVE_SRC/.gitleaksignore" ]; then
+  echo "run.sh: $SIEVE_SRC/.gitleaksignore would hide findings from Gitleaks, not scanning" >&2
+  exit 1
+fi
+# --config keeps Gitleaks from reading a .gitleaks.toml in /src. --redact keeps the secrets out
+# of the SARIF file and the log. Gitleaks exits with 1 both on errors and, by default, when it
+# finds leaks, so leaks get their own exit code here.
+gitleaks dir "$SIEVE_SRC" --config /opt/sieve/gitleaks.toml --redact --no-banner --no-color \
+  --ignore-gitleaks-allow --report-format sarif --report-path "$SIEVE_OUT/results.sarif" \
+  --exit-code 2
 case $? in
   0 | 2) ;;
   *) exit 1 ;;

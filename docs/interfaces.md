@@ -157,7 +157,7 @@ A scan that scans nothing reports success with no findings, which looks exactly 
 
 Other files the plug-in writes to /out are kept with the run for debugging, but nothing in Sieve reads them.
 
-The Gitleaks plug-in runs Gitleaks with `--redact`, so its SARIF file doesn't contain the secret values. The adapter also masks the lines Gitleaks flagged (docs/finding-format.md).
+The Gitleaks plug-in runs Gitleaks with `--redact`, so its SARIF file doesn't contain the secret values. The adapter also masks the lines Gitleaks flagged (docs/finding-format.md). It passes `--config` with its own file, which holds only `[extend]` and `useDefault = true`: without `--config`, Gitleaks 8.30.1 takes its rules and allowlists from a `.gitleaks.toml` in the folder it scans. Gitleaks always obeys a `.gitleaksignore` in that folder, and no flag turns it off, so the plug-in exits with 1 when /src has one, and the run fails with `exit_code`. We tested both with a fake key: a `.gitleaks.toml` that allowed every path, or a `.gitleaksignore` that listed the finding, hid it without these checks.
 
 ### Exit codes
 
