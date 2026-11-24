@@ -1,0 +1,2220 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Sieve",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scans": {
+      "get": {
+        "tags": [
+          "scans"
+        ],
+        "summary": "List Scans",
+        "description": "The scans, newest first.",
+        "operationId": "list_scans_scans_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Scan"
+                  },
+                  "title": "Response List Scans Scans Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scans/{scan_id}": {
+      "get": {
+        "tags": [
+          "scans"
+        ],
+        "summary": "Get Scan",
+        "description": "One scan with its plug-in runs, its latest triage run and its findings per state.",
+        "operationId": "get_scan_scans__scan_id__get",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scans/{scan_id}/findings": {
+      "get": {
+        "tags": [
+          "scans"
+        ],
+        "summary": "List Findings",
+        "description": "The scan's findings, highest severity first. Each filter can be given more than once,\nsuch as status=triaged&status=edited, and keeps findings that match any of its values.\nFindings without a verdict match no verdict or severity filter.",
+        "operationId": "list_findings_scans__scan_id__findings_get",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "new",
+                      "grouped",
+                      "triaged",
+                      "edited",
+                      "approved",
+                      "rejected",
+                      "reported"
+                    ],
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the finding's state",
+              "title": "Status"
+            },
+            "description": "the finding's state"
+          },
+          {
+            "name": "tool",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the plug-in, such as semgrep",
+              "title": "Tool"
+            },
+            "description": "the plug-in, such as semgrep"
+          },
+          {
+            "name": "severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "none",
+                      "low",
+                      "medium",
+                      "high",
+                      "critical"
+                    ],
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the CVSS v4.0 level",
+              "title": "Severity"
+            },
+            "description": "the CVSS v4.0 level"
+          },
+          {
+            "name": "verdict",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "true_positive",
+                      "false_positive",
+                      "unsure"
+                    ],
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict"
+            }
+          },
+          {
+            "name": "tool_severity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "error",
+                      "warning",
+                      "note",
+                      "none"
+                    ],
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the analyzer's own severity",
+              "title": "Tool Severity"
+            },
+            "description": "the analyzer's own severity"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "part of the file path or rule ID",
+              "title": "Q"
+            },
+            "description": "part of the file path or rule ID"
+          },
+          {
+            "name": "include_hidden",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "also list findings an earlier review decided",
+              "default": false,
+              "title": "Include Hidden"
+            },
+            "description": "also list findings an earlier review decided"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingPage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/findings/{finding_id}": {
+      "get": {
+        "tags": [
+          "findings"
+        ],
+        "summary": "Get Finding",
+        "description": "One finding with its locations, the code around it, its verdict, edits, reviews and\nduplicate group.",
+        "operationId": "get_finding_findings__finding_id__get",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Finding Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnalyzerRun": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "plugin": {
+            "type": "string",
+            "title": "Plugin"
+          },
+          "image": {
+            "type": "string",
+            "title": "Image"
+          },
+          "image_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Digest"
+          },
+          "tool_version": {
+            "type": "string",
+            "title": "Tool Version"
+          },
+          "rules_version": {
+            "type": "string",
+            "title": "Rules Version"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "files_scanned": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Files Scanned"
+          },
+          "result_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Count"
+          },
+          "dropped_count": {
+            "type": "integer",
+            "title": "Dropped Count"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "plugin",
+          "image",
+          "image_digest",
+          "tool_version",
+          "rules_version",
+          "status",
+          "reason",
+          "exit_code",
+          "files_scanned",
+          "result_count",
+          "dropped_count",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "AnalyzerRun"
+      },
+      "Code": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "start_line": {
+            "type": "integer",
+            "title": "Start Line",
+            "description": "the line number of the first line in lines"
+          },
+          "end_line": {
+            "type": "integer",
+            "title": "End Line"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "start_line",
+          "end_line",
+          "lines"
+        ],
+        "title": "Code",
+        "description": "Lines of the scanned file around the finding, read from the scan's checkout."
+      },
+      "FindingDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "scan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Scan Id"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "matched_finding_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Finding Id"
+          },
+          "carried_review_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carried Review Id"
+          },
+          "hidden": {
+            "type": "boolean",
+            "title": "Hidden"
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "tool_version": {
+            "type": "string",
+            "title": "Tool Version"
+          },
+          "rule_id": {
+            "type": "string",
+            "title": "Rule Id"
+          },
+          "rule_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Description"
+          },
+          "rule_help_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Help Uri"
+          },
+          "cwe": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cwe"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "tool_severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "note",
+              "none"
+            ],
+            "title": "Tool Severity"
+          },
+          "tool_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Score"
+          },
+          "tool_confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Confidence"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "related_locations": {
+            "items": {
+              "$ref": "#/components/schemas/Location"
+            },
+            "type": "array",
+            "title": "Related Locations"
+          },
+          "data_flow": {
+            "items": {
+              "$ref": "#/components/schemas/FlowStep"
+            },
+            "type": "array",
+            "title": "Data Flow"
+          },
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "fingerprint_ambiguous": {
+            "type": "boolean",
+            "title": "Fingerprint Ambiguous"
+          },
+          "context_hash": {
+            "type": "string",
+            "title": "Context Hash"
+          },
+          "suppressed": {
+            "type": "boolean",
+            "title": "Suppressed"
+          },
+          "tool_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Fingerprint"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "raw": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Raw"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "new",
+              "grouped",
+              "triaged",
+              "edited",
+              "approved",
+              "rejected",
+              "reported"
+            ],
+            "title": "State"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Code"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the flagged lines with up to 10 lines before and after. Empty when the checkout can't be read."
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VerdictOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the latest verdict of its triage item"
+          },
+          "latest_edit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FindingEdit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/Review"
+            },
+            "type": "array",
+            "title": "Reviews",
+            "description": "newest first"
+          },
+          "carried_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Review"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the earlier review that applies to it from an earlier scan. It decides the finding when hidden is true, and is a suggestion otherwise."
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Group"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "scan_id",
+          "run_id",
+          "group_id",
+          "matched_finding_id",
+          "carried_review_id",
+          "hidden",
+          "tool",
+          "tool_version",
+          "rule_id",
+          "rule_description",
+          "rule_help_uri",
+          "cwe",
+          "message",
+          "tool_severity",
+          "tool_score",
+          "tool_confidence",
+          "location",
+          "related_locations",
+          "data_flow",
+          "fingerprint",
+          "fingerprint_ambiguous",
+          "context_hash",
+          "suppressed",
+          "tool_fingerprint",
+          "language",
+          "raw",
+          "created_at",
+          "state",
+          "code",
+          "verdict",
+          "latest_edit",
+          "reviews",
+          "carried_review",
+          "group"
+        ],
+        "title": "FindingDetail",
+        "description": "One finding in the format of docs/finding-format.md, with what the finding detail\nscreen shows next to it."
+      },
+      "FindingEdit": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "verdict_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Verdict Id"
+          },
+          "editor": {
+            "type": "string",
+            "title": "Editor"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "true_positive",
+                  "false_positive",
+                  "unsure"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          },
+          "reasoning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning"
+          },
+          "cvss_v4_vector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss V4 Vector"
+          },
+          "cvss_v4_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss V4 Score"
+          },
+          "cvss_v4_level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss V4 Level"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "verdict_id",
+          "editor",
+          "verdict",
+          "reasoning",
+          "cvss_v4_vector",
+          "cvss_v4_score",
+          "cvss_v4_level",
+          "note",
+          "created_at"
+        ],
+        "title": "FindingEdit"
+      },
+      "FindingItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "scan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Scan Id"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "tool_version": {
+            "type": "string",
+            "title": "Tool Version"
+          },
+          "rule_id": {
+            "type": "string",
+            "title": "Rule Id"
+          },
+          "cwe": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cwe"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "tool_severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "note",
+              "none"
+            ],
+            "title": "Tool Severity"
+          },
+          "tool_confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Confidence"
+          },
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "start_line": {
+            "type": "integer",
+            "title": "Start Line"
+          },
+          "end_line": {
+            "type": "integer",
+            "title": "End Line"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "suppressed": {
+            "type": "boolean",
+            "title": "Suppressed"
+          },
+          "hidden": {
+            "type": "boolean",
+            "title": "Hidden"
+          },
+          "carried_review_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carried Review Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "new",
+              "grouped",
+              "triaged",
+              "edited",
+              "approved",
+              "rejected",
+              "reported"
+            ],
+            "title": "State"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "true_positive",
+                  "false_positive",
+                  "unsure"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict",
+            "description": "the latest verdict of its triage item, or the reviewer's edit of it. Empty before triage."
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity",
+            "description": "the CVSS v4.0 level, from the same place"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "the CVSS v4.0 score, from the same place"
+          },
+          "injection_suspected": {
+            "type": "boolean",
+            "title": "Injection Suspected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "scan_id",
+          "run_id",
+          "group_id",
+          "tool",
+          "tool_version",
+          "rule_id",
+          "cwe",
+          "message",
+          "tool_severity",
+          "tool_confidence",
+          "file",
+          "start_line",
+          "end_line",
+          "language",
+          "suppressed",
+          "hidden",
+          "carried_review_id",
+          "state",
+          "verdict",
+          "severity",
+          "score",
+          "injection_suspected"
+        ],
+        "title": "FindingItem",
+        "description": "One row of the review queue."
+      },
+      "FindingPage": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "the number of findings that match the filters"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FindingItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "limit",
+          "offset",
+          "items"
+        ],
+        "title": "FindingPage"
+      },
+      "FlowStep": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "start_line": {
+            "type": "integer",
+            "title": "Start Line"
+          },
+          "end_line": {
+            "type": "integer",
+            "title": "End Line"
+          },
+          "start_column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Column"
+          },
+          "end_column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Column"
+          },
+          "snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snippet"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "step": {
+            "type": "integer",
+            "title": "Step"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "start_line",
+          "end_line",
+          "start_column",
+          "end_column",
+          "snippet",
+          "step"
+        ],
+        "title": "FlowStep"
+      },
+      "Group": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "rule",
+              "similarity",
+              "llm"
+            ],
+            "title": "Method"
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule"
+          },
+          "similarity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Similarity"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "representative_finding_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Representative Finding Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/GroupMember"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "method",
+          "rule",
+          "similarity",
+          "reason",
+          "representative_finding_id",
+          "created_at",
+          "members"
+        ],
+        "title": "Group"
+      },
+      "GroupMember": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "rule_id": {
+            "type": "string",
+            "title": "Rule Id"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "start_line": {
+            "type": "integer",
+            "title": "Start Line"
+          },
+          "end_line": {
+            "type": "integer",
+            "title": "End Line"
+          },
+          "cwe": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cwe"
+          },
+          "tool_severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "note",
+              "none"
+            ],
+            "title": "Tool Severity"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "new",
+              "grouped",
+              "triaged",
+              "edited",
+              "approved",
+              "rejected",
+              "reported"
+            ],
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tool",
+          "rule_id",
+          "message",
+          "file",
+          "start_line",
+          "end_line",
+          "cwe",
+          "tool_severity",
+          "state"
+        ],
+        "title": "GroupMember"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "Health"
+      },
+      "Location": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "start_line": {
+            "type": "integer",
+            "title": "Start Line"
+          },
+          "end_line": {
+            "type": "integer",
+            "title": "End Line"
+          },
+          "start_column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Column"
+          },
+          "end_column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Column"
+          },
+          "snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snippet"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "start_line",
+          "end_line",
+          "start_column",
+          "end_column",
+          "snippet"
+        ],
+        "title": "Location"
+      },
+      "Review": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Decision"
+          },
+          "reviewer": {
+            "type": "string",
+            "title": "Reviewer"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "verdict_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict Id"
+          },
+          "finding_edit_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Edit Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "decision",
+          "reviewer",
+          "comment",
+          "verdict_id",
+          "finding_edit_id",
+          "created_at"
+        ],
+        "title": "Review"
+      },
+      "Scan": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "repo_url": {
+            "type": "string",
+            "title": "Repo Url"
+          },
+          "commit_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit Sha"
+          },
+          "requested_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Ref"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Languages"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "finding_count": {
+            "type": "integer",
+            "title": "Finding Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "repo_url",
+          "commit_sha",
+          "requested_ref",
+          "status",
+          "error",
+          "languages",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "finding_count"
+        ],
+        "title": "Scan"
+      },
+      "ScanDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "repo_url": {
+            "type": "string",
+            "title": "Repo Url"
+          },
+          "commit_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit Sha"
+          },
+          "requested_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Ref"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Languages"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "finding_count": {
+            "type": "integer",
+            "title": "Finding Count"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyzerRun"
+            },
+            "type": "array",
+            "title": "Runs"
+          },
+          "triage_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TriageRun"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the scan's latest triage run"
+          },
+          "state_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "new",
+                "grouped",
+                "triaged",
+                "edited",
+                "approved",
+                "rejected",
+                "reported"
+              ]
+            },
+            "type": "object",
+            "title": "State Counts",
+            "description": "the number of findings in each state, without the hidden ones"
+          },
+          "hidden_count": {
+            "type": "integer",
+            "title": "Hidden Count",
+            "description": "findings hidden because an earlier review applies to them"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "repo_url",
+          "commit_sha",
+          "requested_ref",
+          "status",
+          "error",
+          "languages",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "finding_count",
+          "runs",
+          "triage_run",
+          "state_counts",
+          "hidden_count"
+        ],
+        "title": "ScanDetail"
+      },
+      "TriageRun": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "cheap_model": {
+            "type": "string",
+            "title": "Cheap Model"
+          },
+          "strong_model": {
+            "type": "string",
+            "title": "Strong Model"
+          },
+          "budget_usd": {
+            "type": "number",
+            "title": "Budget Usd"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "grouped_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grouped At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "cheap_model",
+          "strong_model",
+          "budget_usd",
+          "cost_usd",
+          "status",
+          "grouped_at",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "TriageRun"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VerdictOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "triage_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Triage Run Id"
+          },
+          "finding_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Id"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "true_positive",
+              "false_positive",
+              "unsure"
+            ],
+            "title": "Verdict"
+          },
+          "reasoning": {
+            "type": "string",
+            "title": "Reasoning"
+          },
+          "cited_lines": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Cited Lines"
+          },
+          "injection_suspected": {
+            "type": "boolean",
+            "title": "Injection Suspected"
+          },
+          "injection_lines": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Injection Lines"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version"
+          },
+          "cvss_v4_vector": {
+            "type": "string",
+            "title": "Cvss V4 Vector"
+          },
+          "cvss_v4_score": {
+            "type": "number",
+            "title": "Cvss V4 Score"
+          },
+          "cvss_v4_level": {
+            "type": "string",
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Cvss V4 Level"
+          },
+          "cvss_v4_justifications": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Cvss V4 Justifications"
+          },
+          "cvss_v31_vector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss V31 Vector"
+          },
+          "cvss_v31_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss V31 Score"
+          },
+          "cvss_v31_level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss V31 Level"
+          },
+          "cvss_v31_justifications": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss V31 Justifications"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "call_count": {
+            "type": "integer",
+            "title": "Call Count",
+            "description": "the LLM calls behind the verdict"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd",
+            "description": "what those calls cost"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "triage_run_id",
+          "finding_id",
+          "group_id",
+          "verdict",
+          "reasoning",
+          "cited_lines",
+          "injection_suspected",
+          "injection_lines",
+          "model_version",
+          "cvss_v4_vector",
+          "cvss_v4_score",
+          "cvss_v4_level",
+          "cvss_v4_justifications",
+          "cvss_v31_vector",
+          "cvss_v31_score",
+          "cvss_v31_level",
+          "cvss_v31_justifications",
+          "created_at",
+          "call_count",
+          "cost_usd"
+        ],
+        "title": "VerdictOut"
+      }
+    },
+    "securitySchemes": {
+      "token": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "security": [
+    {
+      "token": []
+    }
+  ]
+}

@@ -1,7 +1,8 @@
-# Serves the built React app and forwards /api to the back end
-# (docs/architecture.md, service web). Only requests for localhost or
+# Serves the built React app and forwards /api to the back end with the API
+# token (docs/architecture.md, service web). Only requests for localhost or
 # 127.0.0.1 are answered, so another site can't reach the API through
-# DNS rebinding.
+# DNS rebinding. nginx fills in the token from SIEVE_API_TOKEN when
+# the container starts, so the token never gets into the image.
 
 server {
     listen 8080 default_server;
@@ -24,6 +25,7 @@ server {
         rewrite ^/api/(.*)$ /$1 break;
         proxy_pass $api;
         proxy_set_header Host localhost;
+        proxy_set_header Authorization "Bearer ${SIEVE_API_TOKEN}";
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_read_timeout 60s;
     }

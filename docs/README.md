@@ -19,6 +19,6 @@ These documents turn the design in the proposal (Section 2.1, Tables 1 to 3) int
 | [ci.md](ci.md) | the CI workflow that runs on every pull request | #16 |
 | [evaluation.md](evaluation.md) | the datasets and target applications with their pinned commits, the expected results, the neutral copies of the Benchmarks and the metric scripts | #23 |
 
-The REST API specification is not written by hand: FastAPI generates it from the code in T2.3, and it is served at http://localhost:8000/docs.
+The REST API specification is not written by hand: FastAPI generates it from the code, and [openapi.json](openapi.json) is a copy of it. After changing an endpoint, run `python -m app.api.openapi` in `backend/` and commit the new file. A test fails while the copy differs from the code. The API also serves the specification at http://localhost:8000/docs, but like every other request, that needs the API token.
 
 How we write commits, issues and pull requests is in [CONTRIBUTING.md](../CONTRIBUTING.md), and how to set up and start the environment is in [README.md](../README.md).
