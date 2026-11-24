@@ -57,14 +57,14 @@ def reply(**changes) -> str:
 
 
 def make_context(
-    finding_ids=("finding-1",), states=None, cwes=("CWE-89",), code=None
+    finding_ids=("finding-1",), states=None, cwes=("CWE-89",), code=None, locations=None
 ) -> FindingContext:
     return FindingContext(
         finding_ids=finding_ids,
         states=states if states is not None else {fid: "approved" for fid in finding_ids},
         rules=(RuleHit("semgrep", "python.sqli", "Detected a formatted SQL query."),),
         cwes=cwes,
-        locations=(Location("app/views.py", 52, 59),),
+        locations=locations or (Location("app/views.py", 52, 59),),
         code=code or (CodeBlock("app/views.py", 52, 59, f"# {PLANTED}\ncursor.execute(q % name)"),),
         reasoning="The user name reaches cursor.execute without parameters.",
         cited_lines=(Location("app/views.py", 58, 59),),
@@ -441,6 +441,53 @@ def test_f5_test_3_a_group_report_waits_for_every_member_and_leaves_out_a_reject
 
     store.set_state("f3", "rejected")
     assert service.export(report_id, exported_by="ayse")
+
+
+WRONG = Location("app/WRONG.py", 99, 99)
+GROUP = ("f1", "f2", "f3")
+
+
+def group_drafted(tmp_path, replies):
+    """A report of three findings, drafted and approved. The store also knows the first two
+    alone, which is what is left once the third is rejected."""
+    whole = make_context(finding_ids=GROUP, locations=(Location("app/views.py", 52, 59), WRONG))
+    two = make_context(finding_ids=GROUP[:2], states=whole.states)
+    service, store, provider, _ = make_service(tmp_path, [whole, two], replies=replies)
+    report_id = service.draft(GROUP).report_id
+    service.approve_text(report_id, 1, "ayse")
+    return service, store, provider, report_id
+
+
+def test_export_refuses_text_that_still_lists_a_member_rejected_since_the_draft(tmp_path):
+    service, store, _, report_id = group_drafted(tmp_path, [reply()])
+    store.set_state("f3", "rejected")
+
+    with pytest.raises(NotApproved, match="ask for a new draft") as error:
+        service.export(report_id, exported_by="ayse")
+
+    assert error.value.reasons == [
+        "location app/WRONG.py:99 is not in an approved finding, ask for a new draft"
+    ]
+    assert not (tmp_path / "exports").exists()
+    assert store.get_report(report_id).status == "draft"
+
+
+def test_export_refuses_text_whose_severity_was_edited_since_the_draft(tmp_path):
+    service, store, *_, report_id = drafted(tmp_path)
+    service.approve_text(report_id, 1, "ayse")
+    high = Severity("CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:H/VI:L/VA:N/SC:N/SI:N/SA:N", 7.5, "high")
+    store.change_finding("finding-1", severity=high)
+
+    with pytest.raises(NotApproved) as error:
+        service.export(report_id, exported_by="ayse")
+
+    assert error.value.reasons == [
+        "severity is High 7.5 now and the text has Critical 9.3, ask for a new draft"
+    ]
+    assert not (tmp_path / "exports").exists()
+    service.redraft(report_id)
+    service.approve_text(report_id, 2, "ayse")
+    assert "Severity: High (CVSS 4.0 score 7.5)" in service.export(report_id, exported_by="ayse")
 
 
 def test_an_exported_report_is_final(tmp_path):
