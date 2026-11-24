@@ -122,7 +122,11 @@ Bandit 1.9.4's SARIF writer has two bugs in the region. Its JSON output has the 
 - `endLine` is the second line of the flagged range, not the last. On PyGoat, 21 results span more than two lines, and their end line is cut short. `endColumn` still belongs to the real last line.
 - The snippet is a single line, taken from the code that Bandit prints around the line it reports, starting one line above it. When the flagged code starts further up, as for a key in a dictionary that spans several lines, Bandit takes it with a negative index, which wraps around to the last line it printed. On PyGoat, 14 snippets are not the code on `startLine`. For example, both passwords in the dictionary on lines 10 to 14 of `dockerized_labs/dependency_attack_lab/app.py` are reported at lines 10 to 11, with `class MaliciousDependency:` from line 17 as the snippet.
 
-The adapter keeps the lines as Bandit reports them, since SARIF has no other line to take, but it never uses Bandit's snippet: it reads the flagged lines from the checkout. Two such findings in one dictionary have the same flagged lines, so they are marked ambiguous and are never hidden by an earlier review.
+The region can also miss the line Bandit reports. For a string, such as a key in a dictionary, the region starts at the first line of the code around it, the whole dictionary, while Bandit's line and columns belong to the string. On PyGoat, 18 results have a region that starts above Bandit's line, and for 14 of them the region doesn't reach that line at all. SARIF has no field for Bandit's line, but `contextRegion` starts one line above it, so the adapter takes Bandit's line from `contextRegion.startLine + 1`. When that isn't the region's start line, the location is that line alone, with Bandit's columns. The two passwords above get lines 12 and 13. Otherwise the region stays as it is, so 3 results on PyGoat, of B301 and B603, still end at their second line.
+
+On PyGoat this gives every one of the 130 results the line and columns of Bandit's JSON output. For a call flagged because of one of its arguments, such as `shell=True` for B602, Bandit's line is the argument's line while its columns are the start and end of the whole call, in its JSON output as well. A result on line 1 or 2 has `contextRegion` from line 1 in both cases, so the adapter can't tell which. It keeps the region, which still holds Bandit's line there, and the finding can start one line above it.
+
+The adapter never uses Bandit's snippet: it reads the flagged lines from the checkout.
 
 ## Fingerprint
 

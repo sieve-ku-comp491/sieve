@@ -204,6 +204,7 @@ classDiagram
   class BanditAdapter {
     +tool: str
     #confidence(rule: dict, result: dict) str
+    #region(physical: dict) dict
     #snippet(region: dict) str
   }
   class SpotBugsAdapter {
@@ -292,7 +293,7 @@ classDiagram
 A tool's adapter overrides only what its tool does differently:
 
 - `SemgrepAdapter.confidence()` reads the `HIGH CONFIDENCE`, `MEDIUM CONFIDENCE` and `LOW CONFIDENCE` rule tags, and `tool_fingerprint()` returns nothing, because Semgrep without a login writes `requires login` instead of a fingerprint.
-- `BanditAdapter.confidence()` reads each result's `issue_confidence` property, and `snippet()` returns nothing, so the snippet is read from the checkout, because Bandit's own snippet can come from the wrong line (docs/finding-format.md).
+- `BanditAdapter.confidence()` reads each result's `issue_confidence` property. `region()` moves the location to the line Bandit reports when the SARIF region starts above it, and `snippet()` returns nothing, so the snippet is read from the checkout, because Bandit's own snippet can come from the wrong line (docs/finding-format.md).
 - `SpotBugsAdapter.normalize_path()` also tries the source folders the Java build step listed, because SpotBugs writes paths relative to a source folder when it doesn't know the folder.
 - `EslintAdapter.cwes()` maps the rules of eslint-plugin-security to CWEs with the table in docs/finding-format.md, because the plug-in gives none.
 - `GitleaksAdapter.cwes()` returns `CWE-798`, and `mask()` replaces every flagged line with `REDACTED`. In other adapters `mask()` returns the lines unchanged.
