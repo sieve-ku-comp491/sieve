@@ -5,8 +5,11 @@ The expected values were worked out by hand from spotbugs-webgoat.sarif and the 
 files in adapter_fixture/webgoat: the file is the source folder from originalUriBaseIds
 (file:/src/src/main/java/) without /src/, plus the result's uri; the CWE is the rule's
 relationship to the CWE taxonomy; the snippet is the flagged line of the file. The
-fingerprints and context hashes were computed with hashlib from the formula in
-docs/finding-format.md, on the lines read from the fixture files, not with the adapter.
+fingerprints and context hashes come from a separate script that doesn't import Sieve: it
+holds the normalize, fingerprint and context_hash functions from docs/finding-format.md,
+takes startLine and endLine (startLine when there is none) from each result, reads those lines
+from the fixture files, and numbers the results with the same rule, file and normalized lines
+in line order. Such results are the ambiguous ones.
 """
 
 import copy
@@ -149,6 +152,94 @@ def test_rule_cwe_lines_and_severity_of_each_result(result):
         (True, "UNSAFE_HASH_EQUALS", 74, 74, ["CWE-203"], "warning"),
         (True, "UNSAFE_HASH_EQUALS", 76, 76, ["CWE-203"], "warning"),
         (True, "WEAK_MESSAGE_DIGEST_MD5", 39, 39, ["CWE-328"], "warning"),
+    ]
+
+
+def test_fingerprint_and_context_hash_of_each_result(result):
+    rows = sorted(
+        (
+            f.location.file == HASHING,
+            f.location.start_line,
+            f.rule_id,
+            f.fingerprint,
+            f.fingerprint_ambiguous,
+            f.context_hash,
+        )
+        for f in result.findings
+    )
+    assert rows == [
+        (
+            False,
+            44,
+            "SQL_INJECTION_JDBC",
+            "v1:856a9ba1308c17148e127fa627c7f891",
+            False,
+            "c1:f2dfcf6f2312237357b79a1d5a72ff63",
+        ),
+        (
+            False,
+            44,
+            "SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING",
+            "v1:e96d23913ef8dca8ce351ae3ed79fdd8",
+            False,
+            "c1:f2dfcf6f2312237357b79a1d5a72ff63",
+        ),
+        (
+            True,
+            34,
+            "SPRING_CSRF_UNRESTRICTED_REQUEST_MAPPING",
+            "v1:3444fd21fd03da93c821ad1a4eb46eb4",
+            False,
+            "c1:1bb89c97033620756ea3d234de142ec7",
+        ),
+        (
+            True,
+            37,
+            "PREDICTABLE_RANDOM",
+            "v1:30a0d6efb2fde6d06c5fa8d3cb496682",
+            True,
+            "c1:3911069c06503f6b1ad9dd922f4b24dd",
+        ),
+        (
+            True,
+            39,
+            "WEAK_MESSAGE_DIGEST_MD5",
+            "v1:4166b2a60ae699ca087beefc713bf2eb",
+            False,
+            "c1:ec717a4f268925830397f28892729c55",
+        ),
+        (
+            True,
+            53,
+            "SPRING_CSRF_UNRESTRICTED_REQUEST_MAPPING",
+            "v1:5a63e63d6cd42587dcd802c8cf28d22a",
+            False,
+            "c1:cfe9078e331bf9af9f1a6dc741b41067",
+        ),
+        (
+            True,
+            55,
+            "PREDICTABLE_RANDOM",
+            "v1:4e6e8f95905df09d5feee5a560a0f01d",
+            True,
+            "c1:7d7a0cd76052c840d58a01875bb8675b",
+        ),
+        (
+            True,
+            74,
+            "UNSAFE_HASH_EQUALS",
+            "v1:d52940447145ee2beb3f371cbca0644b",
+            False,
+            "c1:84708f7051a1d99ed5ec64592914d6a7",
+        ),
+        (
+            True,
+            76,
+            "UNSAFE_HASH_EQUALS",
+            "v1:8633341b66944cfb18b4f89ba7be7be1",
+            False,
+            "c1:329e222cd34eff39bbb40f6cac5a9275",
+        ),
     ]
 
 
