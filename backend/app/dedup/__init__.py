@@ -2,6 +2,7 @@
 
 from app.dedup.functions import FunctionLookup, FunctionSpan, NoFunctionLookup
 from app.dedup.groups import Group, GroupingError, GroupingStep, ScanFinding, group_findings
+from app.dedup.llm import LLMStep
 from app.dedup.matching import Matched, match_earlier_findings
 from app.dedup.rules import NEARBY, NEARBY_LINES, SAME_FUNCTION, RuleStep, close
 from app.dedup.similarity import ASK_FROM, GROUP_AT, SimilarityStep, TextScorer
@@ -18,6 +19,7 @@ __all__ = [
     "Group",
     "GroupingError",
     "GroupingStep",
+    "LLMStep",
     "Matched",
     "NoFunctionLookup",
     "RuleStep",
