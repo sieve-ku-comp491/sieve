@@ -151,6 +151,14 @@ def test_the_prompt_names_no_project_and_no_cve(tmp_path):
     assert "CVE-" not in text and "github.com" not in text
 
 
+def test_the_prompt_names_where_references_come_from_and_what_cited_lines_are(tmp_path):
+    service, _, provider, _ = make_service(tmp_path, replies=[reply()])
+    service.draft(FINDING)
+    system = provider.requests[0].messages[0].content
+    assert "OWASP Cheat Sheet Series" in system and "official documentation" in system
+    assert '"cited_lines"' in system
+
+
 @pytest.mark.parametrize(
     "answer",
     [
