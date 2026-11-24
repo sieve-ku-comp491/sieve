@@ -59,6 +59,10 @@ networks:
     # A fixed name, so the worker can attach build containers to it (SIEVE_BUILD_NETWORK).
     name: sieve-build
     internal: true
+    # No address of the host on the bridge. Otherwise the gateway address is the host's, and a
+    # build could connect to any service on the host that listens on all addresses.
+    driver_opts:
+      com.docker.network.bridge.inhibit_ipv4: "true"
 
 volumes:
   db-data:

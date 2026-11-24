@@ -168,7 +168,7 @@ Scans and triage runs take minutes, so the API only records a job and returns it
 | `frontend` | `web`, `api` | yes, Docker's default | the browser reaches `web`, and `web` forwards to `api` |
 | `backend` | `api`, `worker`, `db`, `mock-platform` | no (`internal: true`) | the database can't be reached from outside the project and can't reach out |
 | `egress` | `worker`, `maven-proxy` | yes | clones of public repositories, calls to the LLM APIs, and Maven downloads through the proxy |
-| `sieve-build` | `maven-proxy`, and one build container at a time | no (`internal: true`) | the build container can reach only the proxy. We tested on Docker Desktop that a container on an internal network can reach neither the internet nor the host's published ports, while one on an ordinary network can reach Sieve's API port through `host.docker.internal`. |
+| `sieve-build` | `maven-proxy`, and one build container at a time | no (`internal: true`, and no host address on the bridge) | the build container can reach only the proxy. We tested on Docker Desktop that a container on an internal network can reach neither the internet nor the host's published ports, while one on an ordinary network can reach Sieve's API port through `host.docker.internal`. |
 | none | every analyzer container | no | `--network none` (docs/interfaces.md) |
 
 `sieve-build` gets the fixed name `sieve-build` with Compose's `name:` key, so the worker can attach build containers to it.
