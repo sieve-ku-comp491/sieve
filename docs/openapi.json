@@ -522,6 +522,126 @@
           }
         }
       }
+    },
+    "/findings/{finding_id}/reviews": {
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Review",
+        "description": "Approves or rejects the finding as it is now: the AI's verdict with the latest edit, if\nthere is one. The latest review counts, so a finding can be approved after a rejection and\nthe other way round. Refused before triage and after export.",
+        "operationId": "review_findings__finding_id__reviews_post",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Finding Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSaved"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "no such finding"
+          },
+          "409": {
+            "description": "the finding's state doesn't allow it, with the reason in detail"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/findings/{finding_id}/edits": {
+      "post": {
+        "tags": [
+          "reviews"
+        ],
+        "summary": "Edit",
+        "description": "Saves the reviewer's changes next to the AI's verdict, which stays as it is. The finding\nbecomes edited until the reviewer approves or rejects it again. Refused before triage and\nafter export.",
+        "operationId": "edit_findings__finding_id__edits_post",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Finding Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EditSaved"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "no such finding"
+          },
+          "409": {
+            "description": "the finding's state doesn't allow it, with the reason in detail"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -688,6 +808,208 @@
         ],
         "title": "Code",
         "description": "Lines of a scanned file, read from the scan's checkout."
+      },
+      "EditIn": {
+        "properties": {
+          "editor": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Editor"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "true_positive",
+                  "false_positive",
+                  "unsure"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          },
+          "reasoning": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning"
+          },
+          "cvss_v4_vector": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss V4 Vector",
+            "description": "the 11 base metrics. The score and the level are computed from it."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "editor"
+        ],
+        "title": "EditIn",
+        "description": "Changes to the verdict, the reasoning or the CVSS v4.0 vector. A field left out keeps\nthe value of the latest edit, or the AI's."
+      },
+      "EditSaved": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "verdict_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Verdict Id"
+          },
+          "editor": {
+            "type": "string",
+            "title": "Editor"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "true_positive",
+                  "false_positive",
+                  "unsure"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          },
+          "reasoning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning"
+          },
+          "cvss_v4_vector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss V4 Vector"
+          },
+          "cvss_v4_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss V4 Score"
+          },
+          "cvss_v4_level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss V4 Level"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "new",
+              "grouped",
+              "triaged",
+              "edited",
+              "approved",
+              "rejected",
+              "reported"
+            ],
+            "title": "State",
+            "description": "the finding's state after the edit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "verdict_id",
+          "editor",
+          "verdict",
+          "reasoning",
+          "cvss_v4_vector",
+          "cvss_v4_score",
+          "cvss_v4_level",
+          "note",
+          "created_at",
+          "state"
+        ],
+        "title": "EditSaved"
       },
       "FindingDetail": {
         "properties": {
@@ -1810,6 +2132,146 @@
           "created_at"
         ],
         "title": "Review"
+      },
+      "ReviewIn": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Decision"
+          },
+          "reviewer": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Reviewer"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "finding_edit_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Edit Id",
+            "description": "the latest edit the reviewer saw, from latest_edit of the finding, or null if it has none. The decision is refused when another edit was saved since."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "decision",
+          "reviewer",
+          "finding_edit_id"
+        ],
+        "title": "ReviewIn",
+        "description": "An approve or a reject of one finding."
+      },
+      "ReviewSaved": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Decision"
+          },
+          "reviewer": {
+            "type": "string",
+            "title": "Reviewer"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "verdict_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict Id"
+          },
+          "finding_edit_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Edit Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "new",
+              "grouped",
+              "triaged",
+              "edited",
+              "approved",
+              "rejected",
+              "reported"
+            ],
+            "title": "State",
+            "description": "the finding's state after the decision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "decision",
+          "reviewer",
+          "comment",
+          "verdict_id",
+          "finding_edit_id",
+          "created_at",
+          "state"
+        ],
+        "title": "ReviewSaved"
       },
       "Scan": {
         "properties": {

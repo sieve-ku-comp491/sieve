@@ -6,7 +6,9 @@ carry the API token from .env as "Authorization: Bearer <token>". Only nginx and
 """
 
 import hmac
+import os
 
+from fastapi import HTTPException, Request
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -55,3 +57,35 @@ class TokenMiddleware:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         return None
+
+
+# The pages that may change data through the API: the review web app through nginx, and the
+# Vite dev server. SIEVE_UI_ORIGINS replaces the list, separated by commas.
+UI_ORIGINS = (
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+)
+
+
+def ui_origins() -> set[str]:
+    configured = os.environ.get("SIEVE_UI_ORIGINS")
+    if configured:
+        return {origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()}
+    return set(UI_ORIGINS)
+
+
+def json_from_the_ui(request: Request) -> None:
+    """For endpoints that change data. nginx adds the token to every request it forwards, so
+    the token alone doesn't stop another web page the researcher has open from sending a
+    request through nginx. A browser always sends Origin with a POST, so a request from
+    another page is refused by its Origin. The body must be JSON, which a page on another
+    origin can't send without the browser asking first, and the browser stops there because
+    the API allows no other origin. Requests without Origin, such as the CLI's, pass."""
+    origin = request.headers.get("origin")
+    if origin is not None and origin.rstrip("/") not in ui_origins():
+        raise HTTPException(403, "requests from this origin can't change data")
+    media_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
+    if media_type != "application/json":
+        raise HTTPException(415, "send the body as application/json")

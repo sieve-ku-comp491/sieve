@@ -189,3 +189,20 @@ $$;
 ```
 
 The export writes the file only when `export_refusals` returns no rows. It then sets the report to `exported`, and fills `review_id` in `report_findings` for each approved member, in the same transaction.
+
+## Saving decisions and edits through the API
+
+The review screen and the CLI change a finding's state through two endpoints (backend/app/api/reviews.py, fields in docs/openapi.json):
+
+| Endpoint | Saves | State after |
+|---|---|---|
+| `POST /findings/{id}/reviews` with `decision` `approve` or `reject` | a row of `reviews` with the reviewer, the comment, and the verdict and edit it decided on | `approved` or `rejected` |
+| `POST /findings/{id}/edits` | a row of `finding_edits` next to the AI's verdict | `edited` |
+
+- Both are refused with 409 while the finding is `new` or `grouped`, because it has no verdict to decide on, and once it is `reported`.
+- A decision names the latest edit the reviewer saw (`finding_edit_id`, null if none). If another edit was saved since, it is refused with 409, so nobody approves text they haven't read.
+- An edit can change the verdict, the reasoning and the CVSS v4.0 vector, with a note. A field it leaves out keeps the value of the previous edit, so the latest edit always holds every change, which is what the queue and the report draft read. The score and level are computed from the vector (backend/app/cvss.py), and a vector with anything other than the 11 base metrics is refused with 422.
+- Each save locks the finding's row, so two saves for the same finding can't both pass their checks against the same state.
+- Both need a JSON body (415 otherwise) and refuse a request whose `Origin` is not the review web app (403), because nginx adds the API token to every request it forwards, including one sent by another web page. The allowed origins are `http://localhost:8080` and `http://127.0.0.1:8080`, and the Vite dev server on port 5173. `SIEVE_UI_ORIGINS` replaces them. A request without `Origin`, such as the CLI's, passes.
+
+A duplicate group has one verdict, and each member gets its own reviews and edits against it. Approve all on the review screen saves one approval per member that isn't rejected.
