@@ -19,11 +19,11 @@ with the formulas printed in docs/finding-format.md, not with the adapter.
 `eslint-juice-shop.sarif` is real output of the ESLint plug-in (ESLint 10.14.0,
 eslint-plugin-security 4.2.1) on OWASP Juice Shop v20.3.0, commit
 f189f521266f42c6bd05884468292000cee852ed, cut down to the 9 results in the six files under
-`juice-shop/`. The whole run had 1,540 results in 657 files. The driver and its 7 rules are
-complete, so each `ruleIndex` is right. `artifacts` keeps only the six files, so the `index` in
-each `artifactLocation` still points into the run's full list of 657 files, and `invocations`,
-the formatter's 39 parse errors from the deliberately incomplete files in
-`data/static/codefixes/`, is left out. The results themselves were not edited.
+`juice-shop/`. The whole run had 1,540 results in 657 files, 39 of which don't parse, the
+deliberately incomplete files in `data/static/codefixes/`. The driver and its 7 rules are
+complete, so each `ruleIndex` is right. `artifacts` is the run's full list of 657 file URIs,
+one per line, so the `index` in each `artifactLocation` is right too. `invocations`, the
+formatter's 39 parse errors, is left out. The results themselves were not edited.
 
 `juice-shop/` holds those six files and Juice Shop's MIT license (`juice-shop/LICENSE`), byte
 for byte from the commit's Git objects, with LF line endings. `EffectComposer.js` is a file of
