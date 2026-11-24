@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir --no-deps --disable-pip-version-check \
       -r /opt/sieve/requirements.txt \
  && pip check
 
+COPY bandit.ini /opt/sieve/bandit.ini
 COPY --chmod=755 run.sh /opt/sieve/run.sh
 
 USER 10001:10001

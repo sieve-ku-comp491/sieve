@@ -78,6 +78,7 @@ def run_plugin(client, tmp_path, files: dict[str, str]):
     src = tmp_path / "scans" / scan.scan_id / "src"
     src.mkdir(parents=True)
     for name, text in files.items():
+        (src / name).parent.mkdir(parents=True, exist_ok=True)
         (src / name).write_text(text, newline="\n")
     store = InMemoryRunStore()
     runner = PluginRunner(DockerEngine(client), store, RunnerSettings(tmp_path, data_volume=None))
@@ -110,6 +111,26 @@ def test_bandit_plugin_writes_valid_sarif(client, tmp_path):
     }
     assert flagged == {("B608", "file:///src/app.py"), ("B608", "file:///src/hidden.py")}
     assert run.result_count == 2
+
+
+def flagged_files(tmp_path, run) -> set[str]:
+    sarif = json.loads((tmp_path / run.sarif_path).read_text(encoding="utf-8"))
+    return {
+        result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+        for result in sarif["runs"][0]["results"]
+        if result["ruleId"] == "B608"
+    }
+
+
+@pytest.mark.parametrize("folders", [["docs"], ["docs", "tests"]])
+def test_bandit_plugin_ignores_bandit_files_in_the_scanned_code(client, tmp_path, folders):
+    """Without --ini, Bandit would take skips from one .bandit file and drop every B608 result,
+    and with two .bandit files it would stop with exit code 2."""
+    files = {"app.py": VULNERABLE}
+    files |= {f"{folder}/.bandit": "[bandit]\nskips = B608\n" for folder in folders}
+    run, log = run_plugin(client, tmp_path, files)
+    assert run.status is RunStatus.SUCCEEDED, log
+    assert flagged_files(tmp_path, run) == {"file:///src/app.py"}
 
 
 def test_bandit_plugin_with_nothing_to_scan(client, tmp_path):
