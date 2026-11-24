@@ -21,6 +21,7 @@ from app.dedup import (
     ScanFinding,
     group_findings,
 )
+from app.eval.metrics import related
 
 APP = "app/views.py"
 LAB = "dockerized_labs/sql_injection_lab/app.py"
@@ -230,6 +231,33 @@ def test_the_order_of_the_findings_does_not_change_the_groups():
     ]
     forward = members(group_findings(findings, [RuleStep()]))
     assert members(group_findings(findings[::-1], [RuleStep()])) == forward == [["a", "b"]]
+
+
+@pytest.mark.parametrize(
+    ("rule", "semgrep_cwe", "eslint_cwe", "cwe_text"),
+    [
+        (
+            "detect-buffer-noassert",
+            "CWE-119",
+            ["CWE-125", "CWE-787"],
+            "CWE-119, CWE-125 and CWE-787",
+        ),
+        ("detect-disable-mustache-escape", "CWE-116", ["CWE-79"], "CWE-79 and CWE-116"),
+        ("detect-non-literal-require", "CWE-95", ["CWE-829"], "CWE-95 and CWE-829"),
+    ],
+)
+def test_semgrep_copies_of_eslint_rules_group_with_them(rule, semgrep_cwe, eslint_cwe, cwe_text):
+    """The CWEs of the Semgrep copies are from the rule files of semgrep-rules at the pinned
+    commit, the ESLint ones from the adapter's table in docs/finding-format.md."""
+    semgrep = finding("s", 12, [semgrep_cwe], file="server.js", rule=f"javascript.{rule}")
+    eslint = finding("e", 12, eslint_cwe, file="server.js", tool="eslint", rule=f"security/{rule}")
+
+    (group,) = group_findings([semgrep, eslint], [RuleStep()])
+
+    assert members([group]) == [["e", "s"]]
+    assert group.reason == f"Same file, line 12, and related CWEs ({cwe_text})"
+    # The evaluation doesn't relate them.
+    assert not any(related(semgrep_cwe, cwe) for cwe in eslint_cwe)
 
 
 class PairStep:

@@ -2,8 +2,8 @@
 with related CWEs (requirement F3).
 
 Two findings match when they are in the same file, some CWE of one is the same as or related to
-some CWE of the other (RELATED_CWES in app.eval.metrics, the list the evaluation uses), and
-either:
+some CWE of the other (RELATED_CWES in app.eval.metrics, the list the evaluation uses, and
+COPIED_RULE_CWES below), and either:
 
 - the function lookup knows a function for both and it is the same function
   (same_function_related_cwe), or
@@ -38,6 +38,23 @@ from app.eval.metrics import related
 # Kept small, because a wrong merge costs more than a missed one: the precision target of F3 is
 # 0.9. Analyzers that flag the same call report the same line or lines of the same statement.
 NEARBY_LINES = 3
+
+# semgrep-rules has its own copies of three rules of eslint-plugin-security, tagged with other
+# CWEs than the ESLint adapter's table (docs/finding-format.md), so the same issue found by both
+# tools would not group. These pairs relate them for grouping only: RELATED_CWES also decides
+# which test cases a finding counts for in the evaluation, where they don't belong.
+COPIED_RULE_CWES = [
+    frozenset(pair)
+    for pair in (
+        # detect-buffer-noassert: Semgrep CWE-119, ESLint CWE-125 and CWE-787.
+        ("CWE-119", "CWE-125"),
+        ("CWE-119", "CWE-787"),
+        # detect-disable-mustache-escape: Semgrep CWE-116, ESLint CWE-79.
+        ("CWE-116", "CWE-79"),
+        # detect-non-literal-require: Semgrep CWE-95, ESLint CWE-829.
+        ("CWE-95", "CWE-829"),
+    )
+]
 
 SAME_FUNCTION = "same_function_related_cwe"
 NEARBY = "nearby_lines_related_cwe"
@@ -76,7 +93,7 @@ class RuleStep:
     def _match(
         self, a: ScanFinding, b: ScanFinding, functions: dict[str, FunctionSpan | None]
     ) -> bool:
-        if not any(related(x, y) for x in a.cwe for y in b.cwe):
+        if not any(_related(x, y) for x in a.cwe for y in b.cwe):
             return False
         if a.tool == b.tool and not _within(a, b, 0):
             return False
@@ -91,6 +108,10 @@ def _within(a: ScanFinding, b: ScanFinding, lines: int) -> bool:
     return a.start_line - lines <= b.end_line and b.start_line - lines <= a.end_line
 
 
+def _related(a: str, b: str) -> bool:
+    return related(a, b) or frozenset((a, b)) in COPIED_RULE_CWES
+
+
 def _rule_group(members: list[ScanFinding], function: FunctionSpan | None) -> Group:
     # Only the CWEs that relate a member to another one, not every tag the members carry.
     linked = {
@@ -98,7 +119,7 @@ def _rule_group(members: list[ScanFinding], function: FunctionSpan | None) -> Gr
         for member in members
         for cwe in member.cwe
         for other in members
-        if other is not member and any(related(cwe, theirs) for theirs in other.cwe)
+        if other is not member and any(_related(cwe, theirs) for theirs in other.cwe)
     }
     cwe_text = _join(sorted(linked, key=_cwe_number))
     if function is not None:
