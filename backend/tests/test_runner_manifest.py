@@ -91,3 +91,14 @@ def test_count_files_by_language(tmp_path):
     assert count_files(tmp_path, ["javascript", "java"]) == 2
     assert count_files(tmp_path, ["*"]) == 6
     assert count_files(tmp_path, ["go"]) == 0
+
+
+def test_count_files_leaves_out_node_modules(tmp_path):
+    (tmp_path / "node_modules" / "lib").mkdir(parents=True)
+    (tmp_path / "node_modules" / "lib" / "index.js").write_text("x\n")
+    (tmp_path / "web" / "node_modules").mkdir(parents=True)
+    (tmp_path / "web" / "node_modules" / "util.ts").write_text("x\n")
+    (tmp_path / "web" / "main.ts").write_text("x\n")
+    assert count_files(tmp_path, ["javascript"]) == 0
+    assert count_files(tmp_path, ["typescript"]) == 1
+    assert count_files(tmp_path, ["*"]) == 1

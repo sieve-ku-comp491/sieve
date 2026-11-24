@@ -1,0 +1,12 @@
+{
+  "name": "sieve-plugin-eslint",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@microsoft/eslint-formatter-sarif": "3.1.0",
+    "eslint": "10.14.0",
+    "eslint-plugin-security": "4.2.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1"
+  }
+}

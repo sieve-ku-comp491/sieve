@@ -67,19 +67,20 @@ Tools put CWE IDs in different places. The adapter accepts all of these and turn
 | Form | Used by | Example |
 |---|---|---|
 | a rule tag that starts with the ID | Semgrep | `CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')` |
-| a rule tag in CodeQL's form | CodeQL and tools that copy it | `external/cwe/cwe-089` |
+| a rule tag in CodeQL's form | CodeQL, Bandit and tools that copy it | `external/cwe/cwe-089` |
 | a relationship from the rule to the CWE taxonomy | tools that use SARIF taxonomies | `relationships[].target` with `id` `89` and `toolComponent.name` `CWE` |
 | `result.taxa` with the same target | the same tools, per result | |
 
 The list has no duplicates and is sorted by number. When a tool never gives CWEs, its adapter adds them:
 
 - The Gitleaks adapter sets `CWE-798` (hard-coded credentials) on every finding.
-- The ESLint adapter maps the 15 rules of eslint-plugin-security 4.2.1, which carry no CWE at all. This is our own mapping, checked again in T2.2:
+- The ESLint adapter maps the 15 rules of eslint-plugin-security 4.2.1, which carry no CWE at all. ESLint reports them with the prefix `security/`, such as `security/detect-child-process`. This is our own mapping:
 
 | Rule | CWE |
 |---|---|
-| `detect-bidi-characters`, `detect-invisible-characters` | CWE-1007 |
-| `detect-buffer-noassert` | CWE-119 |
+| `detect-bidi-characters` | CWE-451 |
+| `detect-invisible-characters` | CWE-1007 |
+| `detect-buffer-noassert` | CWE-125, CWE-787 |
 | `detect-child-process` | CWE-78 |
 | `detect-disable-mustache-escape` | CWE-79 |
 | `detect-eval-with-expression` | CWE-95 |
@@ -88,9 +89,15 @@ The list has no duplicates and is sorted by number. When a tool never gives CWEs
 | `detect-non-literal-fs-filename` | CWE-22 |
 | `detect-non-literal-regexp`, `detect-unsafe-regex` | CWE-1333 |
 | `detect-non-literal-require` | CWE-829 |
-| `detect-object-injection` | CWE-1321 |
+| `detect-object-injection` | CWE-915 |
 | `detect-possible-timing-attacks` | CWE-208 |
 | `detect-pseudoRandomBytes` | CWE-338 |
+
+We checked every row on 14 Nov 2026 against the rule's documentation and code in eslint-plugin-security 4.2.1 and the CWE definitions on cwe.mitre.org, and changed three:
+
+- `detect-bidi-characters` was CWE-1007, which is about homoglyphs, characters that look alike. Bidi control characters instead change the order in which an editor shows the code, so the reviewer sees different code from what runs. That is CWE-451, UI misrepresentation of critical information. The NVD gives Trojan Source (CVE-2021-42574), the attack this rule is for, CWE-94, but CWE-94 is about a program that builds code from outside input while it runs, and here the code is written that way and misleads the person reading it. `detect-invisible-characters` stays CWE-1007: its own example is two names that look the same, one with a hidden character.
+- `detect-buffer-noassert` was CWE-119, which MITRE marks as discouraged for mapping, pointing to CWE-125 and CWE-787 instead. The rule flags both the read and the write methods of `Buffer` with `noAssert`, so it gets both.
+- `detect-object-injection` was CWE-1321, prototype pollution. The rule flags every `object[expression]`, and its documentation describes overwriting any property of the object, like Ruby's mass assignment, with prototypes as one case. That is CWE-915, the parent of CWE-1321.
 
 The adapter keeps the CWEs the tool gives, even when they look wrong. Semgrep tags two of its SQL injection rules with CWE-915 and CWE-704, for example. Deduplication and the triage agent deal with that, not the adapter.
 
@@ -105,7 +112,29 @@ Suppressed results are kept. The scanned repository is not ours, so a `# nosemgr
 | Tool | Where the confidence comes from |
 |---|---|
 | Semgrep | the rule tags `HIGH CONFIDENCE`, `MEDIUM CONFIDENCE` and `LOW CONFIDENCE`. Semgrep also writes `properties.precision`, but it is `very-high` on all 378 rules of the Python rule set, so the adapter ignores it. |
+| Bandit | the result's `properties.issue_confidence` (see Bandit below) |
+| ESLint | none. The SARIF formatter writes only a `category` property on each rule, and it is `Possible Security Vulnerability` on every rule of eslint-plugin-security, so the field stays empty. |
 | Other tools | checked against real output in T2.2. Tools that don't report a confidence leave the field empty. |
+
+### Bandit
+
+We checked these against the Bandit plug-in's output on PyGoat at commit `2aa4cc1`: 130 results from 20 rules in 116 files.
+
+- `tool_severity` comes from the result's `level`, which Bandit 1.9.4 sets from the issue's severity: `error` for HIGH and `note` for LOW. For MEDIUM it leaves `level` out, because `warning` is the SARIF default, so the adapter's default gives `warning`.
+- `cwe` comes from the rule tag in CodeQL's form, such as `external/cwe/cwe-89`. Every rule that fired on PyGoat has one. For an issue without a CWE, which none of Bandit's own rules has, Bandit would write `external/cwe/cwe-None`, and the list stays empty.
+- `tool_confidence` comes from the result's `properties.issue_confidence`, HIGH, MEDIUM or LOW. Bandit also writes `precision` on the rule, but it is the confidence of the rule's first result in the run, not a property of the rule, so the adapter ignores it.
+- Bandit writes no fingerprints, no suppressions, no rule descriptions and no code flows. Paths are `file:///src/...` URIs.
+
+Bandit 1.9.4's SARIF writer has two bugs in the region. Its JSON output has the right lines.
+
+- `endLine` is the second line of the flagged range, not the last. On PyGoat, 21 results span more than two lines, and their end line is cut short. `endColumn` still belongs to the real last line.
+- The snippet is a single line, taken from the code that Bandit prints around the line it reports, starting one line above it. When the flagged code starts further up, as for a key in a dictionary that spans several lines, Bandit takes it with a negative index, which wraps around to the last line it printed. On PyGoat, 14 snippets are not the code on `startLine`. For example, both passwords in the dictionary on lines 10 to 14 of `dockerized_labs/dependency_attack_lab/app.py` are reported at lines 10 to 11, with `class MaliciousDependency:` from line 17 as the snippet.
+
+The region can also miss the line Bandit reports. For a string, such as a key in a dictionary, the region starts at the first line of the code around it, the whole dictionary, while Bandit's line and columns belong to the string. On PyGoat, 18 results have a region that starts above Bandit's line, and for 14 of them the region doesn't reach that line at all. SARIF has no field for Bandit's line, but `contextRegion` starts one line above it, so the adapter takes Bandit's line from `contextRegion.startLine + 1`. When that isn't the region's start line, the location is that line alone, with Bandit's columns. The two passwords above get lines 12 and 13. Otherwise the region stays as it is, so 3 results on PyGoat, of B301 and B603, still end at their second line.
+
+On PyGoat this gives every one of the 130 results the line and columns of Bandit's JSON output. For a call flagged because of one of its arguments, such as `shell=True` for B602, Bandit's line is the argument's line while its columns are the start and end of the whole call, in its JSON output as well. A result on line 1 or 2 has `contextRegion` from line 1 in both cases, so the adapter can't tell which. It keeps the region, which still holds Bandit's line there, and the finding can start one line above it.
+
+The adapter never uses Bandit's snippet: it reads the flagged lines from the checkout.
 
 ## Fingerprint
 

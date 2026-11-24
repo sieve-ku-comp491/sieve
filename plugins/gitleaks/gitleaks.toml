@@ -1,0 +1,4 @@
+# The plug-in's own Gitleaks configuration: the built-in rules and nothing else. Passing it with
+# --config stops Gitleaks from reading a .gitleaks.toml in the scanned folder.
+[extend]
+useDefault = true

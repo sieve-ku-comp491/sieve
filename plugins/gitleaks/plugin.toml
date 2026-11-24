@@ -1,0 +1,9 @@
+name = "gitleaks"
+image = "sieve-plugin-gitleaks:8.30.1"
+languages = ["*"]
+adapter = "gitleaks"
+timeout_seconds = 600
+
+[versions]
+tool = "8.30.1"
+rules = "gitleaks 8.30.1 built-in rules"

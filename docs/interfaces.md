@@ -19,7 +19,7 @@ Each plug-in has its own directory in the repository:
       Dockerfile     installs the tool and its rules at pinned versions
       run.sh         the entry point: runs the tool, writes the SARIF file, maps exit codes
 
-The adapter that turns the plug-in's SARIF into findings lives in the back end (T2.2), and the manifest names it.
+The adapter that turns the plug-in's SARIF into findings lives in the back end (T2.2), and the manifest names it. The adapter named `x` is the class in `backend/app/adapters/x.py` whose `tool` is `x`, so a new adapter adds only its own module and tests.
 
 ### Manifest
 
@@ -98,7 +98,7 @@ We tested these flags with Semgrep 1.183.0 on PyGoat: the scan works with no net
 
 ### Suppression in the scanned code
 
-Each plug-in turns off the ways the scanned code can switch off its own findings, where the tool allows it: Semgrep runs with `--disable-nosem`, Bandit with `--ignore-nosec`, and ESLint with `--no-inline-config` and our own configuration file. When a tool has no such option, the adapter still keeps the suppressed results and marks them (docs/finding-format.md).
+Each plug-in turns off the ways the scanned code can switch off its own findings, where the tool allows it: Semgrep runs with `--disable-nosem`, Bandit with `--ignore-nosec`, ESLint with `--no-inline-config` and our own configuration file, and Gitleaks with `--ignore-gitleaks-allow`. When a tool has no such option, the adapter still keeps the suppressed results and marks them (docs/finding-format.md).
 
 We tested this with Semgrep 1.183.0. A `# nosemgrep` comment removed the finding from Semgrep's JSON output and marked it as suppressed in SARIF. With `--disable-nosem` it was reported normally. A `.semgrepignore` file in /src made Semgrep skip the file it named, even with that flag, which is why the export leaves such files out.
 
@@ -157,7 +157,7 @@ A scan that scans nothing reports success with no findings, which looks exactly 
 
 Other files the plug-in writes to /out are kept with the run for debugging, but nothing in Sieve reads them.
 
-The Gitleaks plug-in runs Gitleaks with `--redact`, so its SARIF file doesn't contain the secret values. The adapter also masks the lines Gitleaks flagged (docs/finding-format.md).
+The Gitleaks plug-in runs Gitleaks with `--redact`, so its SARIF file doesn't contain the secret values. The adapter also masks the lines Gitleaks flagged (docs/finding-format.md). The plug-in passes `--config` with its own file, which holds only `[extend]` and `useDefault = true`: without `--config`, Gitleaks 8.30.1 takes its rules and allowlists from a `.gitleaks.toml` in the folder it scans. Gitleaks always obeys a `.gitleaksignore` in that folder, and no flag turns it off, so the plug-in exits with 1 when /src has one, and the run fails with `exit_code`. We tested both with a fake key: a `.gitleaks.toml` that allowed every path, or a `.gitleaksignore` that listed the finding, hid it without these checks.
 
 ### Exit codes
 
@@ -186,6 +186,8 @@ A plug-in run goes through `pending`, then `building` for plug-ins with a build 
 | `failed` | the image is missing, Docker can't be reached, or the container can't be created or started | `runner_error` |
 | `failed` | the worker stopped during the run. Set when the worker starts again. | `interrupted` |
 | `timed_out` | the run reached its time limit. The runner kills and removes the container. | |
+
+The runner counts the files in the plug-in's languages itself. It leaves out files under folders named `node_modules`, which ESLint and Semgrep skip by default, so a checkout whose only JavaScript is in `node_modules` ends as `skipped` for the ESLint plug-in, not `failed`.
 
 A plug-in that tries to reach the network can't: its container has only a loopback interface, so every connection fails at once. The runner's test plug-in for this case tries to connect, then exits with 1, so its run ends as `failed` with `exit_code`. The test also checks that a listener on the host received nothing.
 

@@ -16,13 +16,20 @@ EXTENSIONS = {
 }
 
 
+# ESLint and Semgrep skip these folders by default, so a checkout whose only JavaScript is in
+# node_modules has nothing for them to scan.
+SKIPPED_FOLDERS = {"node_modules"}
+
+
 def count_files(checkout: Path, languages: Iterable[str]) -> int:
-    """Regular files in the checkout in these languages, or all regular files for ["*"]."""
+    """Regular files in the checkout in these languages, or all regular files for ["*"], outside
+    the SKIPPED_FOLDERS."""
     languages = set(languages)
     every_file = "*" in languages
     suffixes = set().union(*(EXTENSIONS.get(language, set()) for language in languages))
     count = 0
-    for folder, _, names in os.walk(checkout):
+    for folder, folders, names in os.walk(checkout):
+        folders[:] = [name for name in folders if name not in SKIPPED_FOLDERS]
         for name in names:
             path = Path(folder, name)
             if path.is_symlink() or not path.is_file():

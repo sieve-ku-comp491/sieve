@@ -297,6 +297,15 @@ def test_exit_3_fails_when_the_checkout_has_files_in_the_languages(data_dir):
     assert (run.status, run.reason) == (RunStatus.FAILED, Reason.NOTHING_SCANNED)
 
 
+def test_exit_3_is_skipped_when_the_languages_are_only_in_node_modules(data_dir):
+    library = data_dir / "scans" / SCAN.scan_id / "src" / "node_modules" / "lib"
+    library.mkdir(parents=True)
+    (library / "index.js").write_text("module.exports = 1\n")
+    engine = FakeEngine(ContainerResult(exit_code=3))
+    run = run_one(make_runner(data_dir, engine), plugin(languages=("javascript",)))
+    assert (run.status, run.reason) == (RunStatus.SKIPPED, None)
+
+
 def test_exit_3_fails_for_a_plugin_that_scans_every_file(data_dir):
     engine = FakeEngine(ContainerResult(exit_code=3))
     run = run_one(make_runner(data_dir, engine), plugin(languages=("*",)))
