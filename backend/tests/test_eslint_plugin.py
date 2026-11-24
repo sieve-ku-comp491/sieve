@@ -18,6 +18,7 @@ from app.runner import (
     InMemoryRunStore,
     PluginManifest,
     PluginRunner,
+    Reason,
     RunnerSettings,
     RunStatus,
     SarifValidator,
@@ -109,3 +110,23 @@ def test_eslint_plugin_writes_valid_sarif(client, tmp_path):
     assert ("security/detect-non-literal-fs-filename", "lib/read.ts", 4, "CWE-22") in found
     assert ("security/detect-eval-with-expression", "src/App.js", 2, "CWE-95") in found
     assert result.dropped == {}
+
+
+def test_eslint_plugin_fails_when_no_file_parses(client, tmp_path):
+    plugin = PluginManifest.load(MANIFEST)
+    scan = ScanTarget(scan_id=str(uuid.uuid4()), repo_url="https://example.com/app")
+    src = tmp_path / "scans" / scan.scan_id / "src"
+    src.mkdir(parents=True)
+    (src / "broken.js").write_text("function (\n", newline="\n")
+
+    store = InMemoryRunStore()
+    runner = PluginRunner(DockerEngine(client), store, RunnerSettings(tmp_path, data_volume=None))
+    run = runner.run(scan, plugin, store.create_run(scan.scan_id, plugin))
+
+    log = (tmp_path / run.log_path).read_text(encoding="utf-8")
+    # ESLint exits with 0, but a file it can't parse isn't scanned (docs/interfaces.md, Results).
+    assert run.exit_code == 0, log
+    assert run.files_scanned == 0
+    assert run.status is RunStatus.FAILED
+    assert run.reason is Reason.NOTHING_SCANNED
+    assert "could not parse broken.js:1" in log

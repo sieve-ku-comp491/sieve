@@ -36,15 +36,16 @@ async function main() {
     cwd: src,
     rulesMeta: eslint.getRulesMetaForResults(results),
   });
+  // A file that can't be parsed has no results and isn't counted as scanned, so a repository
+  // where nothing parses ends as nothing_scanned. The formatter puts the parse error under
+  // invocations, and the log names the file.
+  const unparsed = results.filter((result) => result.messages.some((m) => m.fatal));
   fs.writeFileSync(path.join(out, 'results.sarif'), sarif);
   fs.writeFileSync(
     path.join(out, 'scan-info.json'),
-    JSON.stringify({ files_scanned: results.length }),
+    JSON.stringify({ files_scanned: results.length - unparsed.length }),
   );
 
-  // A file that can't be parsed is counted as scanned but has no results. The formatter puts
-  // the parse error under invocations, and the log names the file.
-  const unparsed = results.filter((result) => result.messages.some((m) => m.fatal));
   for (const result of unparsed) {
     const error = result.messages.find((m) => m.fatal);
     const file = path.relative(src, result.filePath);
