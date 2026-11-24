@@ -102,6 +102,8 @@ Each plug-in turns off the ways the scanned code can switch off its own findings
 
 We tested this with Semgrep 1.183.0. A `# nosemgrep` comment removed the finding from Semgrep's JSON output and marked it as suppressed in SARIF. With `--disable-nosem` it was reported normally. A `.semgrepignore` file in /src made Semgrep skip the file it named, even with that flag, which is why the export leaves such files out.
 
+SpotBugs is the one tool where in-source suppression works: the scanned code can hide a SpotBugs finding with `@SuppressFBWarnings`. SpotBugs drops such results before it writes SARIF and has no option to keep them, and `-omitVisitors NoteSuppressedWarnings` doesn't stop it, so the adapter never sees them and can't mark them. Semgrep's Java rules still scan the same code.
+
 ### Build step
 
 SpotBugs analyzes compiled classes, so the Java plug-in builds the project first, in its own container, before the scan container starts. The runner starts it like this:
