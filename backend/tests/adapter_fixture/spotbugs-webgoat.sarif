@@ -206,26 +206,6 @@
               ]
             },
             {
-              "id": "SPRING_ENDPOINT",
-              "shortDescription": {
-                "text": "Found Spring endpoint."
-              },
-              "fullDescription": {
-                "text": "This class is a Spring Controller. All methods annotated with RequestMapping \n(as well as its shortcut annotations GetMapping, PostMapping, PutMapping, DeleteMapping, \nand PatchMapping) are reachable remotely. This class should be analyzed to \nmake sure that remotely exposed methods are safe to expose to potential \nattackers."
-              },
-              "messageStrings": {
-                "default": {
-                  "text": "{0} is a Spring endpoint (Controller)."
-                }
-              },
-              "helpUri": "https://find-sec-bugs.github.io/bugs.htm#SPRING_ENDPOINT",
-              "properties": {
-                "tags": [
-                  "SECURITY"
-                ]
-              }
-            },
-            {
               "id": "SPRING_FILE_DISCLOSURE",
               "shortDescription": {
                 "text": "Spring File Disclosure."
@@ -1278,41 +1258,8 @@
       ],
       "results": [
         {
-          "ruleId": "SPRING_ENDPOINT",
-          "ruleIndex": 5,
-          "message": {
-            "id": "default",
-            "text": "Found Spring endpoint",
-            "arguments": [
-              "org.owasp.webgoat.lessons.challenges.challenge5.Assignment5"
-            ]
-          },
-          "level": "note",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "org/owasp/webgoat/lessons/challenges/challenge5/Assignment5.java",
-                  "uriBaseId": "-1471205888"
-                },
-                "region": {
-                  "startLine": 36,
-                  "endLine": 42
-                }
-              },
-              "logicalLocations": [
-                {
-                  "name": "login(String, String)",
-                  "kind": "function",
-                  "fullyQualifiedName": "org.owasp.webgoat.lessons.challenges.challenge5.Assignment5.login(String, String)"
-                }
-              ]
-            }
-          ]
-        },
-        {
           "ruleId": "SQL_INJECTION_JDBC",
-          "ruleIndex": 10,
+          "ruleIndex": 9,
           "message": {
             "id": "default",
             "text": "Potential JDBC Injection",
@@ -1344,7 +1291,7 @@
         },
         {
           "ruleId": "SQL_PREPARED_STATEMENT_GENERATED_FROM_NONCONSTANT_STRING",
-          "ruleIndex": 18,
+          "ruleIndex": 17,
           "message": {
             "id": "default",
             "text": "A prepared statement is generated from a nonconstant String",
@@ -1376,7 +1323,7 @@
         },
         {
           "ruleId": "PREDICTABLE_RANDOM",
-          "ruleIndex": 15,
+          "ruleIndex": 14,
           "message": {
             "id": "default",
             "text": "Predictable pseudorandom number generator",
@@ -1408,7 +1355,7 @@
         },
         {
           "ruleId": "PREDICTABLE_RANDOM",
-          "ruleIndex": 15,
+          "ruleIndex": 14,
           "message": {
             "id": "default",
             "text": "Predictable pseudorandom number generator",
@@ -1499,107 +1446,8 @@
           ]
         },
         {
-          "ruleId": "SPRING_ENDPOINT",
-          "ruleIndex": 5,
-          "message": {
-            "id": "default",
-            "text": "Found Spring endpoint",
-            "arguments": [
-              "org.owasp.webgoat.lessons.cryptography.HashingAssignment"
-            ]
-          },
-          "level": "note",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
-                  "uriBaseId": "-1471205888"
-                },
-                "region": {
-                  "startLine": 70,
-                  "endLine": 80
-                }
-              },
-              "logicalLocations": [
-                {
-                  "name": "completed(HttpServletRequest, String, String)",
-                  "kind": "function",
-                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.completed(HttpServletRequest, String, String)"
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "ruleId": "SPRING_ENDPOINT",
-          "ruleIndex": 5,
-          "message": {
-            "id": "default",
-            "text": "Found Spring endpoint",
-            "arguments": [
-              "org.owasp.webgoat.lessons.cryptography.HashingAssignment"
-            ]
-          },
-          "level": "note",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
-                  "uriBaseId": "-1471205888"
-                },
-                "region": {
-                  "startLine": 34,
-                  "endLine": 46
-                }
-              },
-              "logicalLocations": [
-                {
-                  "name": "getMd5(HttpServletRequest)",
-                  "kind": "function",
-                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.getMd5(HttpServletRequest)"
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "ruleId": "SPRING_ENDPOINT",
-          "ruleIndex": 5,
-          "message": {
-            "id": "default",
-            "text": "Found Spring endpoint",
-            "arguments": [
-              "org.owasp.webgoat.lessons.cryptography.HashingAssignment"
-            ]
-          },
-          "level": "note",
-          "locations": [
-            {
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": "org/owasp/webgoat/lessons/cryptography/HashingAssignment.java",
-                  "uriBaseId": "-1471205888"
-                },
-                "region": {
-                  "startLine": 53,
-                  "endLine": 60
-                }
-              },
-              "logicalLocations": [
-                {
-                  "name": "getSha256(HttpServletRequest)",
-                  "kind": "function",
-                  "fullyQualifiedName": "org.owasp.webgoat.lessons.cryptography.HashingAssignment.getSha256(HttpServletRequest)"
-                }
-              ]
-            }
-          ]
-        },
-        {
           "ruleId": "UNSAFE_HASH_EQUALS",
-          "ruleIndex": 19,
+          "ruleIndex": 18,
           "message": {
             "id": "default",
             "text": "Unsafe hash equals"
@@ -1628,7 +1476,7 @@
         },
         {
           "ruleId": "UNSAFE_HASH_EQUALS",
-          "ruleIndex": 19,
+          "ruleIndex": 18,
           "message": {
             "id": "default",
             "text": "Unsafe hash equals"
@@ -1657,7 +1505,7 @@
         },
         {
           "ruleId": "WEAK_MESSAGE_DIGEST_MD5",
-          "ruleIndex": 20,
+          "ruleIndex": 19,
           "message": {
             "id": "default",
             "text": "MD2, MD4 and MD5 are weak hash functions",

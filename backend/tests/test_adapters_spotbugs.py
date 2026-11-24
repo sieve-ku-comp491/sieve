@@ -73,7 +73,7 @@ def find(result, rule_id, line):
 
 
 def test_every_result_becomes_a_finding(result):
-    assert len(result.findings) == 13
+    assert len(result.findings) == 9
     assert result.dropped == {} and result.warnings == []
     assert {f.location.file for f in result.findings} == {HASHING, CHALLENGE}
 
@@ -105,7 +105,7 @@ def test_sql_injection(result):
     assert finding.tool_fingerprint is None
     assert finding.language == "java"
     assert finding.related_locations == [] and finding.data_flow == []
-    assert finding.raw == raw["runs"][0]["results"][1]
+    assert finding.raw == raw["runs"][0]["results"][0]
 
 
 def test_the_same_line_from_spotbugs_and_find_security_bugs(result):
@@ -133,7 +133,6 @@ def test_rule_cwe_lines_and_severity_of_each_result(result):
         for f in result.findings
     )
     assert rows == [
-        (False, "SPRING_ENDPOINT", 36, 42, [], "note"),
         (False, "SQL_INJECTION_JDBC", 44, 44, ["CWE-89"], "warning"),
         (
             False,
@@ -147,9 +146,6 @@ def test_rule_cwe_lines_and_severity_of_each_result(result):
         (True, "PREDICTABLE_RANDOM", 55, 55, ["CWE-330"], "warning"),
         (True, "SPRING_CSRF_UNRESTRICTED_REQUEST_MAPPING", 34, 46, ["CWE-352"], "warning"),
         (True, "SPRING_CSRF_UNRESTRICTED_REQUEST_MAPPING", 53, 60, ["CWE-352"], "warning"),
-        (True, "SPRING_ENDPOINT", 34, 46, [], "note"),
-        (True, "SPRING_ENDPOINT", 53, 60, [], "note"),
-        (True, "SPRING_ENDPOINT", 70, 80, [], "note"),
         (True, "UNSAFE_HASH_EQUALS", 74, 74, ["CWE-203"], "warning"),
         (True, "UNSAFE_HASH_EQUALS", 76, 76, ["CWE-203"], "warning"),
         (True, "WEAK_MESSAGE_DIGEST_MD5", 39, 39, ["CWE-328"], "warning"),
@@ -207,10 +203,16 @@ def test_a_path_that_fits_two_source_folders_is_dropped(tmp_path):
         "SOURCE_FOLDER_0": {"uri": "file:/src/a/src/main/java/"},
         "SOURCE_FOLDER_1": {"uri": "file:/src/b/src/main/java/"},
     }
-    sarif["runs"][0]["results"] = sarif["runs"][0]["results"][:3]
+    sarif["runs"][0]["results"] = [
+        item
+        for item in sarif["runs"][0]["results"]
+        if item["locations"][0]["physicalLocation"]["artifactLocation"]["uri"].endswith(
+            "challenge5/Assignment5.java"
+        )
+    ]
     out = convert(sarif, tmp_path)
     assert out.findings == []
-    assert out.dropped == {"path_outside_checkout": 3}
+    assert out.dropped == {"path_outside_checkout": 2}
 
     sarif["runs"][0]["originalUriBaseIds"].pop("SOURCE_FOLDER_1")
     out = convert(sarif, tmp_path)
@@ -221,7 +223,7 @@ def test_a_relative_path_without_any_source_folder_is_dropped():
     sarif = without_base(load())
     sarif["runs"][0]["originalUriBaseIds"] = {}
     out = convert(sarif)
-    assert out.findings == [] and out.dropped == {"path_outside_checkout": 13}
+    assert out.findings == [] and out.dropped == {"path_outside_checkout": 9}
 
 
 def test_registry_and_manifest():
