@@ -37,8 +37,8 @@ hash in docs/finding-format.md, not to the adapter.
 `gitleaks-pygoat.sarif` is real output of the Gitleaks plug-in (Gitleaks 8.30.1, run with
 `--redact`) on PyGoat at the same commit, cut down to the 5 results in
 `dockerized_labs/auth_failure_lab/app.py` and `dockerized_labs/dependency_attack_lab/app.py` and
-the one rule they use, and indented for reading. Every snippet in it is `REDACTED`. `pygoat/`
-holds both files from PyGoat byte for byte.
+the one rule they use, and indented for reading. Every snippet in it is `REDACTED`. Both files
+are in `pygoat/`, byte for byte.
 
 `fake-key/settings.py` holds a key made at random for the test, which belongs to no account.
 `gitleaks-fake-key.sarif` is the Gitleaks plug-in's real output on that folder, cut down the same
