@@ -206,6 +206,36 @@ def test_an_answer_that_isnt_a_complete_report_is_refused_and_nothing_is_saved(
     assert store.report_for(FINDING) is None
 
 
+def test_a_retry_after_an_unusable_answer_is_a_new_request(tmp_path):
+    # The client caches every complete answer, the unusable ones too.
+    service, store, provider, _ = make_service(
+        tmp_path, replies=["I can't help with that.", "not JSON either", reply()]
+    )
+    with pytest.raises(ReportDraftError):
+        service.draft(FINDING)
+    with pytest.raises(ReportDraftError):
+        service.draft(FINDING)
+
+    report = service.draft(FINDING)
+
+    assert report.title == DRAFT["title"]
+    # One paid call for each draft(): the answers known to be unusable come from the cache.
+    assert len(provider.requests) == 3
+    first, second, third = (request.messages[-1].content for request in provider.requests)
+    assert '"retry"' not in first and '"retry": 1' in second and '"retry": 2' in third
+
+
+def test_a_redraft_after_an_unusable_answer_is_a_new_request(tmp_path):
+    service, _, provider, _, report_id = drafted(
+        tmp_path, replies=[reply(), "I can't help with that.", reply(title="A new title")]
+    )
+    with pytest.raises(ReportDraftError):
+        service.redraft(report_id)
+
+    assert service.redraft(report_id).title == "A new title"
+    assert '"retry": 1' in provider.requests[-1].messages[-1].content
+
+
 @pytest.mark.parametrize("stop", [StopReason.MAX_TOKENS, StopReason.REFUSAL])
 def test_a_cut_off_or_refused_answer_is_not_a_draft(tmp_path, stop):
     service, store, provider, _ = make_service(tmp_path)

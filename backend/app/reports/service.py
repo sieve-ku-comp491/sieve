@@ -212,19 +212,33 @@ class ReportService:
     def _ask(
         self, context: FindingContext, attempt: int, previous: ReportText | None
     ) -> ReportText:
-        response = self.client.ask(
-            load_template(TEMPLATE),
-            prompt_values(context, attempt, previous),
-            context.code,
-            model=self.model,
-            max_tokens=self.max_tokens,
-        )
-        if response.stop_reason != StopReason.COMPLETE:
-            raise ReportDraftError(f"the model's answer ended with {response.stop_reason.value}")
-        if response.call_id is None:
-            # Every AI decision must link to its logged call (requirement N3).
-            raise ReportDraftError("the model's call was not logged, so its text can't be kept")
-        return parse_draft(response.text, context, response.call_id)
+        """The model's text for this request. LLMClient caches every complete answer, an
+        unusable one too, so an answer from the cache that isn't a report is asked for again
+        with the next retry number. Each call to _ask sends at most one request to the model,
+        and the retry it reaches doesn't depend on anything but the cache, so it holds after a
+        restart too."""
+        retry = 0
+        while True:
+            response = self.client.ask(
+                load_template(TEMPLATE),
+                prompt_values(context, attempt, previous, retry),
+                context.code,
+                model=self.model,
+                max_tokens=self.max_tokens,
+            )
+            if response.stop_reason != StopReason.COMPLETE:
+                raise ReportDraftError(
+                    f"the model's answer ended with {response.stop_reason.value}"
+                )
+            if response.call_id is None:
+                # Every AI decision must link to its logged call (requirement N3).
+                raise ReportDraftError("the model's call was not logged, so its text can't be kept")
+            try:
+                return parse_draft(response.text, context, response.call_id)
+            except ReportDraftError:
+                if not response.cached:
+                    raise
+                retry += 1
 
 
 def _out_of_date(text: ReportText, members: FindingContext) -> list[str]:
