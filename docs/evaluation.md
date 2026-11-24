@@ -262,6 +262,7 @@ The mapping and the metric are done and tested on a small example. The numbers a
 - Recent CVEs, chosen after the pilot run of T6.2, see above.
 - The labeled duplicate groups and the labeled Juice Shop sample, made by hand in T6.3. The dedup metric reads the groups as they are. The Juice Shop sample is labeled per finding, with many findings in one file, while the false-positive check judges whole files, so it needs a per-finding mode, added with T6.3.
 - The numbers of the severity baseline, which need the analyzers to run on the CVEs' projects, see the baseline run.
-- The pilot triage, the budget per finding that it sets, and the choice of the two models. They need the draft prompt, the candidate models and an API key.
+- The pilot triage run and the budget per finding that it sets. The draft prompt and the two models, deepseek-flash and gpt-6-luna, are on #64, and #79 adds gpt-6-luna to the model catalog, so only the run itself is left.
+- The change in docs/requirements.md from T6.1 to T6.2 for when the recent CVEs are chosen, see above.
 - How a scan reaches the neutral copies, see above.
 - The target applications have no expected results of their own: they are scanned for duplicates, reports and the PoC check.
