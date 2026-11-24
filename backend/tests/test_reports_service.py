@@ -578,6 +578,21 @@ def test_the_cwe_entries_a_report_needs_are_those_of_its_approved_members(tmp_pa
     assert "79.html" not in service.export(report_id, exported_by="ayse")
 
 
+def test_f6_test_1_export_refuses_text_without_the_cwe_entry_of_a_cwe_added_since(tmp_path):
+    service, store, *_, report_id = drafted(tmp_path)
+    service.approve_text(report_id, 1, "ayse")
+    store.change_finding("finding-1", cwes=("CWE-20", "CWE-89"))
+
+    with pytest.raises(ReportInvalid) as error:
+        service.export(report_id, exported_by="ayse")
+
+    assert error.value.problems == [
+        "references don't include https://cwe.mitre.org/data/definitions/20.html"
+    ]
+    assert not (tmp_path / "exports").exists()
+    assert store.get_report(report_id).status == "draft"
+
+
 def test_an_exported_report_is_final(tmp_path):
     service, _, provider, _, report_id = drafted(tmp_path)
     service.approve_text(report_id, 1, "ayse")
