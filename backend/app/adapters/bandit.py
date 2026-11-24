@@ -18,6 +18,26 @@ class BanditAdapter(BaseSarifAdapter):
         value = (result.get("properties") or {}).get("issue_confidence")
         return CONFIDENCES.get(value.upper()) if isinstance(value, str) else None
 
+    def region(self, physical: dict) -> dict:
+        """The line Bandit reports, the one in its JSON output, with its columns. The SARIF
+        region can start further up: for a key in a dictionary, at the dictionary's first line.
+        SARIF doesn't give Bandit's line, but contextRegion starts one line above it, so when
+        that line isn't the region's start line, the location is that line alone.
+
+        When contextRegion starts at line 1, Bandit's line is 1 or 2 and the two can't be told
+        apart, so the region stays as it is. It still holds Bandit's line, since it starts at
+        line 1 or 2 and SARIF's endLine is the code's second line."""
+        region = super().region(physical)
+        context = physical.get("contextRegion")
+        context_start = context.get("startLine") if isinstance(context, dict) else None
+        start = region.get("startLine")
+        if type(context_start) is not int or type(start) is not int or context_start < 2:
+            return region
+        line = context_start + 1
+        if line == start:
+            return region
+        return {**region, "startLine": line, "endLine": line}
+
     def snippet(self, region: dict) -> str | None:
         """Bandit 1.9.4's snippet is only the first flagged line, and when the flagged code
         starts more than one line above the line Bandit reports, such as a key in a dictionary,
