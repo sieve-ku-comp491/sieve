@@ -192,6 +192,9 @@ def test_a_finding_without_a_cwe_needs_no_cwe_entry(tmp_path):
         (reply(steps_to_reproduce=[]), "steps_to_reproduce has no step"),
         (reply(steps_to_reproduce=["Open it.", "  "]), "empty step"),
         (reply(impact="```\nAll of it."), "impact has a code fence"),
+        # PostgreSQL refuses a NUL, and only after the paid call if nothing checks it first.
+        (reply(title="SQL injection\x00" + "x" * 50_000), "title is longer than 200"),
+        (reply(title="SQL injection\x00"), "title has a control character"),
         (reply(references=[]), None),  # the CWE entry is added, so this is still complete
     ],
 )
@@ -344,6 +347,13 @@ def test_an_edit_that_changes_nothing_saves_nothing_and_keeps_the_approval(tmp_p
         ({"summary": "It runs:\n```python\ncursor.execute(q)"}, "summary has a code fence"),
         ({"fix": "```\na\n```\n~~~\nb"}, "fix has a code fence that isn't closed"),
         ({"steps_to_reproduce": ["Open it.", "```\nadmin' --"]}, "step 2 has a code fence"),
+        ({"summary": "x" * 10_001}, "summary is longer than 10000 characters"),
+        ({"steps_to_reproduce": ["Open it."] * 31}, "steps_to_reproduce has more than 30"),
+        ({"steps_to_reproduce": ["Open it.", "y" * 2_001]}, "step 2 is longer than 2000"),
+        ({"references": [CWE_89] + [f"{OWASP}#{n}" for n in range(30)]}, "more than 30"),
+        ({"references": [CWE_89, OWASP + "x" * 2_000]}, "is longer than 2000"),
+        ({"fix": "Use\x00 parameters."}, "fix has a control character"),
+        ({"steps_to_reproduce": ["Open\x1b[2J it."]}, "step 1 has a control character"),
     ],
 )
 def test_an_edit_that_leaves_the_report_incomplete_is_refused(tmp_path, fields, why):
@@ -351,6 +361,12 @@ def test_an_edit_that_leaves_the_report_incomplete_is_refused(tmp_path, fields, 
     with pytest.raises(ReportInvalid, match=why):
         service.edit(report_id, fields, "ayse")
     assert len(service.versions(report_id)) == 1
+
+
+def test_tabs_and_line_breaks_are_allowed_and_a_title_of_200_characters_is(tmp_path):
+    service, _, _, _, report_id = drafted(tmp_path)
+    fields = {"title": "t" * 200, "fix": "Use parameters:\r\n\tcursor.execute(q, (name,))"}
+    assert service.edit(report_id, fields, "ayse").version == 2
 
 
 def test_a_closed_code_fence_is_kept(tmp_path):

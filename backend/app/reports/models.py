@@ -15,11 +15,18 @@ CWE_URL = "https://cwe.mitre.org/data/definitions/{number}.html"
 CWE_ID = re.compile(r"^CWE-(\d+)$")
 URL = re.compile(r"^https?://\S+$")
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+# Every character below U+0020 except tab and line breaks, and DEL. PostgreSQL refuses NUL.
+CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 LEVELS = {"none", "low", "medium", "high", "critical"}
 
 # The parts of a report that the AI drafts and the reviewer can edit.
 TEXT_FIELDS = ("title", "summary", "impact", "steps_to_reproduce", "fix", "references")
 LIST_FIELDS = {"steps_to_reproduce", "references"}
+
+# The longest a part can be, in characters, and the most steps and references a report has.
+MAX_LENGTH = {"title": 200, "summary": 10_000, "impact": 10_000, "fix": 10_000}
+MAX_ITEM_LENGTH = 2_000
+MAX_ITEMS = 30
 
 
 class ReportError(Exception):
@@ -203,11 +210,26 @@ def cwe_references(cwes: tuple[str, ...]) -> tuple[str, ...]:
 
 def problems(text: ReportText, cwes: tuple[str, ...] = ()) -> list[str]:
     """Why a text is not a complete report: every part present and not empty, every reference a
-    URL, and the CWE entry of each of the finding's CWEs among the references (F6, test 1)."""
+    URL, the CWE entry of each of the finding's CWEs among the references (F6, test 1), no part
+    longer than its limit, no control character, and no code fence left open."""
     found = []
-    for name in ("title", "summary", "impact", "fix"):
-        if not getattr(text, name).strip():
+    for name, limit in MAX_LENGTH.items():
+        value = getattr(text, name)
+        if not value.strip():
             found.append(f"{name} is empty")
+        if len(value) > limit:
+            found.append(f"{name} is longer than {limit} characters")
+        if CONTROL.search(value):
+            found.append(f"{name} has a control character")
+    for name, label in (("steps_to_reproduce", "step"), ("references", "reference")):
+        items = getattr(text, name)
+        if len(items) > MAX_ITEMS:
+            found.append(f"{name} has more than {MAX_ITEMS} entries")
+        for number, item in enumerate(items, 1):
+            if len(item) > MAX_ITEM_LENGTH:
+                found.append(f"{label} {number} is longer than {MAX_ITEM_LENGTH} characters")
+            if CONTROL.search(item):
+                found.append(f"{label} {number} has a control character")
     if not text.steps_to_reproduce:
         found.append("steps_to_reproduce has no step")
     elif any(not step.strip() for step in text.steps_to_reproduce):
