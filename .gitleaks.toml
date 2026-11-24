@@ -1,0 +1,14 @@
+# Gitleaks reads this file when CI scans the repository's history (docs/ci.md). It keeps the
+# built-in rules and allows only the adapter test files that hold secrets on purpose: a key
+# made at random for the Gitleaks test, and PyGoat's own hard-coded passwords, kept byte for
+# byte for the Bandit and Gitleaks tests.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Adapter test data (backend/tests/adapter_fixture/README.md)"
+paths = [
+  '''^backend/tests/adapter_fixture/fake-key/settings\.py$''',
+  '''^backend/tests/adapter_fixture/pygoat/dockerized_labs/auth_failure_lab/app\.py$''',
+  '''^backend/tests/adapter_fixture/pygoat/dockerized_labs/dependency_attack_lab/app\.py$''',
+]

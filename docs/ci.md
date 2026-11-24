@@ -11,6 +11,8 @@
 
 The Gitleaks job uses the Gitleaks CLI, because gitleaks-action needs a license key for repositories owned by an organization.
 
+Gitleaks reads `.gitleaks.toml` in the repository root. It keeps the built-in rules and allows only the adapter test files that hold secrets on purpose, each by its full path (backend/tests/adapter_fixture/README.md). A file added to that list is skipped in every commit of the history, so list single files, never folders. The job fetches every branch, so a test file with a secret on any open branch fails every pull request until it is listed here. A single line in a test can be allowed with a `gitleaks:allow` comment instead.
+
 ## Speed
 
 pip and npm downloads are cached between runs (the `cache` option of actions/setup-python and actions/setup-node), each job installs only what it needs, and a new push to a branch cancels the run still going for the previous one. The longest job is the back end, and on the current code each job needs well under a minute of work, so the workflow should finish in one to two minutes, under the 5 minutes of issue #16. Check the time on the first pull request. GitHub bills each job separately and rounds it up to a whole minute, so one run costs about four of the free plan's 2,000 minutes a month for private repositories, about 500 runs.
