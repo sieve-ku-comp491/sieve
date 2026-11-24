@@ -13,5 +13,5 @@ themselves were not edited. The expected values in `test_adapters_bandit.py` wer
 file and the two source files by hand, and the fingerprints and context hashes were computed
 with the formulas printed in docs/finding-format.md, not with the adapter.
 
-`pygoat/` holds those two files from PyGoat at the same commit, under PyGoat's MIT license
+`pygoat/` holds the PyGoat files these tests read, at the same commit, under PyGoat's MIT license
 (`pygoat/LICENSE.md`), so the adapter can read the flagged lines the way it reads a checkout.
