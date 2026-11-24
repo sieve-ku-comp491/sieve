@@ -7,7 +7,9 @@ doesn't change them (docs/database.md, findings).
 For each new finding, among the findings with the same fingerprint in earlier scans of the same
 repo_url:
 
-- matched_finding_id is the one of the latest scan.
+- matched_finding_id is the one of the latest scan. A scan has at most one finding with a
+  fingerprint, since (scan_id, fingerprint) is unique and the occurrence number keeps identical
+  results apart (docs/database.md, findings), so the latest scan names exactly one.
 - carried_review_id is the latest review of any of them.
 - hidden is true only when all the rules of docs/finding-format.md, "When a finding is hidden",
   hold for the finding that review belongs to: its context hash is the new finding's and isn't
