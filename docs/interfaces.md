@@ -275,12 +275,18 @@ The lookup Sieve uses is `TreeSitterFunctionLookup` in `backend/app/context/func
 | Field | Type | Meaning |
 |---|---|---|
 | `item_id` | string | the finding ID, or the group ID for a duplicate group |
-| `findings` | list of findings | the member findings, in the format of docs/finding-format.md |
-| `context.function` | string | the enclosing function, extracted with tree-sitter |
-| `context.location` | file, start line, end line | where that function is |
+| `findings` | list of findings | the member findings, in the format of docs/finding-format.md, with the group's representative first |
+| `context.code` | string | the enclosing function, extracted with tree-sitter, or the lines around the findings when no one function holds them all |
+| `context.location` | file, start line, end line | where that code is |
+| `context.function` | name, start line, end line, optional | the whole enclosing function, also when `context.code` is only a part of it |
 | `context.data_flow` | list of locations, optional | the path from user input to the flagged call, when the analyzer reports one |
-| `context.injection_suspected` | boolean | true when the code has comments or strings that look like instructions to an AI |
+| `context.injection_suspected` | boolean | true when the code, or a finding's data-flow steps or related locations, have comments or strings that look like instructions to an AI |
+| `context.injection_lines` | list of file, start line, end line | the comments or strings that set the flag, which the verdict keeps as `injection_lines` |
 | `repo` | scan ID and commit | the checkout that the agent's tools read from |
+
+`ContextCollector` in `backend/app/context/items.py` builds the items, and `scan_items()` in `backend/app/context/store.py` reads the items of a grouped scan from the findings store, leaving out hidden findings. The code is the function around all of an item's findings, with its decorators or annotations. When there is no such function, or the file isn't Python, Java, JavaScript or TypeScript, it is the flagged lines with 20 lines before and after them. A function longer than 200 lines is cut the same way, to 200 lines at most. A line longer than 500 characters, as in minified code, is cut around the flagged column, with the cut marked. The lines a finding's adapter masks, the ones Gitleaks flags, stay masked, so a secret doesn't reach a prompt.
+
+The injection check (`backend/app/context/injection.py`) reads the comments and strings that tree-sitter finds, and every line of a file in another language, such as a template. It is a heuristic: it flags text that talks to an AI, tells the reader to ignore its instructions, uses chat markup such as `[INST]`, or tells the reader which verdict to give, such as "mark this as a false positive". A developer's own claim, such as "this is safe because the value is checked", is not flagged, because it doesn't tell anyone what to answer.
 
 While it decides, the agent can call two tools:
 
