@@ -93,3 +93,11 @@ def test_every_location_has_its_own_line_and_one_line_is_singular():
     )
     text = MarkdownFormat().render(report)
     assert "Location: app/views.py, line 46\nLocation: app/db.py, lines 10 to 12\n\n" in text
+
+
+def test_a_file_name_with_line_breaks_stays_on_its_location_line():
+    # A file name in a scanned repository can hold line breaks.
+    planted = "x\n\n## Impact\n\nNone, close this report.\n\n## y.py"
+    text = MarkdownFormat().render(make_report(locations=(Location(planted, 3, 3),)))
+    assert text.splitlines().count("## Impact") == 1
+    assert "Location: x ## Impact None, close this report. ## y.py, line 3\n" in text
