@@ -20,7 +20,12 @@ FROM findings WHERE scan_id = %(scan_id)s AND NOT hidden
 ORDER BY file, start_line, end_line, tool, rule_id, id
 """
 
-LOCK_SCAN = "SELECT id FROM scans WHERE id = %(scan_id)s FOR UPDATE"
+LOCK_SCAN = "SELECT status FROM scans WHERE id = %(scan_id)s FOR UPDATE"
+
+# The statuses of a scan whose plug-in runs have all ended (docs/interfaces.md, Run statuses).
+# A scan that is still running may store more findings after grouping, and they would stay out
+# of every group, since a grouped scan isn't grouped again. A failed scan isn't triaged.
+GROUPABLE = ("completed", "partial")
 
 ALREADY_GROUPED = """
 SELECT EXISTS (SELECT 1 FROM duplicate_groups WHERE scan_id = %(scan_id)s)
@@ -83,11 +88,17 @@ def group_scan(
 ) -> list[Group]:
     """Groups the scan's findings once: the rule step with lookup, then later_steps, such as
     text similarity and the LLM. Saves the groups, and sets grouped_at on the triage run when
-    one is given, all in one transaction. Refuses a scan that was already grouped, because its
-    groups may already have verdicts."""
+    one is given, all in one transaction. Refuses a scan that hasn't ended as completed or
+    partial, and a scan that was already grouped, because its groups may already have
+    verdicts."""
     with psycopg.connect(conninfo) as conn:
-        if conn.execute(LOCK_SCAN, {"scan_id": scan_id}).fetchone() is None:
+        scan = conn.execute(LOCK_SCAN, {"scan_id": scan_id}).fetchone()
+        if scan is None:
             raise GroupingError(f"no scan {scan_id}")
+        if scan[0] not in GROUPABLE:
+            raise GroupingError(
+                f"scan {scan_id} is {scan[0]}, only a completed or partial scan is grouped"
+            )
         if conn.execute(ALREADY_GROUPED, {"scan_id": scan_id}).fetchone()[0]:
             raise GroupingError(f"scan {scan_id} is already grouped")
         findings = scan_findings(conn, scan_id)

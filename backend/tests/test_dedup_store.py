@@ -128,6 +128,27 @@ def test_a_scan_with_a_grouped_triage_run_is_not_grouped_again(database):
         group_scan(database, scan_id, triage_run_id=triage_run(database, scan_id))
 
 
+@pytest.mark.parametrize("status", ["running", "failed"])
+def test_a_scan_that_did_not_complete_is_not_grouped(database, status):
+    """While a scan runs, a plug-in run may still be storing findings, which would stay out of
+    every group."""
+    scan_id = store_scan(database, {"semgrep": [(5, ["CWE-89"]), (5, ["CWE-89"])]}, status=status)
+    with pytest.raises(GroupingError, match=f"is {status}, only a completed or partial"):
+        group_scan(database, scan_id)
+    with psycopg.connect(database) as conn:
+        count = conn.execute(
+            "SELECT count(*) FROM duplicate_groups WHERE scan_id = %s", (scan_id,)
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_a_partial_scan_is_grouped(database):
+    scan_id = store_scan(
+        database, {"semgrep": [(5, ["CWE-89"]), (5, ["CWE-89"])]}, status="partial"
+    )
+    assert len(group_scan(database, scan_id)) == 1
+
+
 def test_the_groups_as_the_csv_of_the_dedup_metric(database, pygoat, tmp_path, capsys):
     """Without the lookup the same four SQL injection findings are grouped by nearby lines.
     Labeled, all six are one group: 15 pairs, of which Sieve merged 6, all correct."""
@@ -165,10 +186,13 @@ def test_the_groups_as_the_csv_of_the_dedup_metric(database, pygoat, tmp_path, c
     }
 
 
-def store_scan(database, runs: dict[str, list[tuple[int, list[str]]]], repo=None) -> str:
+def store_scan(
+    database, runs: dict[str, list[tuple[int, list[str]]]], repo=None, status="completed"
+) -> str:
     """One scan with a run of each tool, and one finding in VIEWS for each (line, CWEs)."""
     store = PostgresRunStore(database)
     scan_id = store.create_scan(repo or f"https://example.test/{uuid.uuid4().hex}", COMMIT)
+    store.update_scan(scan_id, "running")
     for tool, findings in runs.items():
         run = store.create_run(scan_id, PluginManifest(tool, "image", ("python",), tool, "1", "r"))
         run.status = RunStatus.SUCCEEDED
@@ -192,6 +216,8 @@ def store_scan(database, runs: dict[str, list[tuple[int, list[str]]]], repo=None
             ]
         )
         store.save_findings(run, result)
+    if status != "running":
+        store.update_scan(scan_id, status)
     return scan_id
 
 
