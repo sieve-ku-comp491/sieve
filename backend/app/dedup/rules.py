@@ -95,12 +95,25 @@ class RuleStep:
     ) -> bool:
         if not any(_related(x, y) for x in a.cwe for y in b.cwe):
             return False
-        if a.tool == b.tool and not _within(a, b, 0):
-            return False
-        fa, fb = functions[a.finding_id], functions[b.finding_id]
-        if fa is not None or fb is not None:
-            return fa == fb
-        return _within(a, b, self._nearby)
+        return close(a, b, functions[a.finding_id], functions[b.finding_id], self._nearby)
+
+
+def close(
+    a: ScanFinding,
+    b: ScanFinding,
+    function_a: FunctionSpan | None,
+    function_b: FunctionSpan | None,
+    nearby_lines: int = NEARBY_LINES,
+) -> bool:
+    """Whether a and b are close enough in the code to be one issue, as the rules count it:
+    findings of one tool only when their lines overlap, others in the same function, or, when no
+    function is known for either, at most nearby_lines apart. The text-similarity and LLM steps
+    use the same test."""
+    if a.tool == b.tool and not _within(a, b, 0):
+        return False
+    if function_a is not None or function_b is not None:
+        return function_a == function_b
+    return _within(a, b, nearby_lines)
 
 
 def _within(a: ScanFinding, b: ScanFinding, lines: int) -> bool:
