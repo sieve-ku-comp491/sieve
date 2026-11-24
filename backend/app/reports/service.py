@@ -158,7 +158,9 @@ class ReportService:
         try:
             with temporary.open("x", encoding="utf-8", newline="\n") as file:
                 file.write(content)
-            self.store.mark_exported(report_id, text.version, str(path), exported_by, self.now())
+            self.store.mark_exported(
+                report_id, text.version, str(path), exported_by, self.now(), report_format.name
+            )
             os.replace(temporary, path)
         except BaseException:
             temporary.unlink(missing_ok=True)

@@ -191,6 +191,7 @@ class PostgresReportStore:
             exported_text_version=exported_version,
             export_path=row["export_path"],
             exported_by=row["exported_by"],
+            format=row["format"],
         )
 
     def current_text(self, report_id: str) -> ReportText:
@@ -250,7 +251,13 @@ class PostgresReportStore:
             ]
 
     def mark_exported(
-        self, report_id: str, version: int, path: str, exported_by: str, at: datetime
+        self,
+        report_id: str,
+        version: int,
+        path: str,
+        exported_by: str,
+        at: datetime,
+        format: str = "markdown",
     ) -> None:
         """Sets the report to exported, in one transaction that first checks the export again,
         so a decision made since the service checked can't slip through. The report keeps the
@@ -296,11 +303,11 @@ class PostgresReportStore:
             )
             conn.execute(
                 """UPDATE reports SET status = 'exported', exported_at = %s, export_path = %s,
-                          exported_by = %s,
+                          exported_by = %s, format = %s,
                           exported_text_id = (SELECT id FROM report_texts
                                               WHERE report_id = %s AND version = %s)
                    WHERE id = %s""",
-                (at, path, exported_by, report_id, version, report_id),
+                (at, path, exported_by, format, report_id, version, report_id),
             )
 
     # Helpers ----------------------------------------------------------------------------------
@@ -308,8 +315,8 @@ class PostgresReportStore:
     def _report_row(self, conn: psycopg.Connection, report_id: str, lock: bool = False) -> dict:
         try:
             row = conn.execute(
-                "SELECT finding_id::text, group_id::text, status, exported_at, exported_text_id,"
-                " export_path, exported_by FROM reports WHERE id = %s"
+                "SELECT finding_id::text, group_id::text, status, format, exported_at,"
+                " exported_text_id, export_path, exported_by FROM reports WHERE id = %s"
                 + (" FOR UPDATE" if lock else ""),
                 (report_id,),
             ).fetchone()

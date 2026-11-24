@@ -631,13 +631,14 @@ def test_a_second_format_needs_no_change_to_the_service(tmp_path):
         def render(self, report):
             return f"{report.title}\n"
 
-    service, *_ = make_service(tmp_path, replies=[reply()], formats={"plain": Plain()})
+    service, store, *_ = make_service(tmp_path, replies=[reply()], formats={"plain": Plain()})
     report_id = service.draft(FINDING).report_id
     service.approve_text(report_id, 1, "ayse")
     assert service.export(report_id, exported_by="ayse", format="plain") == (
         "SQL injection in the login form\n"
     )
     assert (tmp_path / "exports" / f"{report_id}.txt").exists()
+    assert store.get_report(report_id).format == "plain"
 
 
 def test_the_data_block_of_the_prompt_is_the_one_the_client_makes(tmp_path):

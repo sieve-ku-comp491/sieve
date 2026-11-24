@@ -25,6 +25,7 @@ class StoredReport:
     exported_text_version: int | None = None
     export_path: str | None = None
     exported_by: str | None = None
+    format: str = "markdown"  # the format it was exported in
 
 
 class ReportStore(Protocol):
@@ -58,9 +59,15 @@ class ReportStore(Protocol):
         docs/finding-states.md)."""
 
     def mark_exported(
-        self, report_id: str, version: int, path: str, exported_by: str, at: datetime
+        self,
+        report_id: str,
+        version: int,
+        path: str,
+        exported_by: str,
+        at: datetime,
+        format: str = "markdown",
     ) -> None:
-        """Sets the report to exported, with the version that was exported."""
+        """Sets the report to exported, with the version and the format that were exported."""
 
 
 class InMemoryReportStore:
@@ -150,7 +157,13 @@ class InMemoryReportStore:
         return reasons
 
     def mark_exported(
-        self, report_id: str, version: int, path: str, exported_by: str, at: datetime
+        self,
+        report_id: str,
+        version: int,
+        path: str,
+        exported_by: str,
+        at: datetime,
+        format: str = "markdown",
     ) -> None:
         # Checks again, as the Postgres store does in the same transaction.
         reasons = self.export_refusals(report_id)
@@ -164,4 +177,5 @@ class InMemoryReportStore:
             exported_text_version=version,
             export_path=path,
             exported_by=exported_by,
+            format=format,
         )

@@ -23,6 +23,7 @@ from app.llm.client import LLMClient
 from app.llm.fake import FakeProvider
 from app.llm.postgres import PostgresCallStore
 from app.reports import (
+    MarkdownFormat,
     NotApproved,
     ReportError,
     ReportExported,
@@ -142,7 +143,7 @@ def group(database, scan, *finding_ids) -> str:
     return group_id
 
 
-def make_service(database, tmp_path, replies):
+def make_service(database, tmp_path, replies, formats=None):
     calls = PostgresCallStore(database)
     client = LLMClient(
         providers={"fake": FakeProvider(replies=replies)},
@@ -170,7 +171,13 @@ def make_service(database, tmp_path, replies):
     )
     store = PostgresReportStore(database)
     service = ReportService(
-        store, client, tmp_path / "exports", model="fake-model", max_tokens=1000, now=lambda: NOW
+        store,
+        client,
+        tmp_path / "exports",
+        formats=formats,
+        model="fake-model",
+        max_tokens=1000,
+        now=lambda: NOW,
     )
     return service, store
 
@@ -619,3 +626,30 @@ def test_approving_a_text_waits_for_the_report_row(database, tmp_path, approved)
 
     assert approval.finish() is None
     assert store.current_text(report_id).approved_by == "ayse"
+
+
+def test_the_report_keeps_the_name_of_the_format_it_was_exported_in(database, tmp_path, approved):
+    class Plain:
+        name = "plain"
+        file_extension = ".txt"
+
+        def render(self, report):
+            return f"{report.title}\n"
+
+    finding_id, _ = approved
+    service, store = make_service(
+        database, tmp_path, [reply()], formats={"markdown": MarkdownFormat(), "plain": Plain()}
+    )
+    report_id = service.draft((finding_id,)).report_id
+    with psycopg.connect(database) as conn:
+        (before,) = conn.execute(
+            "SELECT format FROM reports WHERE id = %s", (report_id,)
+        ).fetchone()
+    service.approve_text(report_id, 1, "ayse")
+
+    service.export(report_id, exported_by="ayse", format="plain")
+
+    with psycopg.connect(database) as conn:
+        (after,) = conn.execute("SELECT format FROM reports WHERE id = %s", (report_id,)).fetchone()
+    assert (before, after) == ("markdown", "plain")
+    assert store.get_report(report_id).format == "plain"
