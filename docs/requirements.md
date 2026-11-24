@@ -66,7 +66,7 @@ Acceptance tests:
 
 1. A Semgrep finding and a Bandit finding on the same line of the same function, one tagged CWE-78 and the other CWE-77, end up in one group. Two findings from the same rule in different functions do not.
 2. Every group records how it was formed: the rule that matched, the similarity score, or the LLM call that decided it.
-3. Scanning the same commit of PyGoat twice adds nothing to the review queue, and every finding from the second scan is matched to one from the first.
+3. Scanning the same commit of PyGoat a second time, after every finding of the first scan is reviewed, adds nothing to the review queue, and every finding from the second scan is matched to one from the first.
 4. Evaluation: precision and recall of merges on the hand-labeled duplicate groups of PyGoat, WebGoat and Juice Shop, against DefectDojo's rule-based deduplication as the baseline. Target: at least 90% precision.
 
 Built in T3.2. Verified in T3.2 (tests 1 to 3) and T6.4 (test 4).

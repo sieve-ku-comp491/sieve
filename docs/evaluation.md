@@ -117,7 +117,7 @@ Related CWEs are in `RELATED_CWES` in `backend/app/eval/metrics.py`, for example
 
     python -m app.eval metrics dedup --labeled <groups.csv> --predicted <groups.csv>
 
-Both files have `finding_id` and `group`, with an empty group for a finding on its own. Merges are counted over pairs of findings: precision is the share of the pairs Sieve merged that the labels also merge, and recall the share of labeled pairs that Sieve merged. Target precision at least 0.9. The labeled groups come from T6.3, and DefectDojo's rule-based deduplication is the baseline.
+Both files have `finding_id` and `group`, with an empty group for a finding on its own. `python -m app.dedup csv <scan ID> --out groups.csv` writes Sieve's groups of a scan in this form. Merges are counted over pairs of findings: precision is the share of the pairs Sieve merged that the labels also merge, and recall the share of labeled pairs that Sieve merged. Target precision at least 0.9. The labeled groups come from T6.3, and DefectDojo's rule-based deduplication is the baseline.
 
 ### Severity (requirement F4, test 4)
 
