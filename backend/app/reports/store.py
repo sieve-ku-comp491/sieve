@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Protocol
 
-from app.reports.models import FindingContext, ReportText, UnknownReport
+from app.reports.models import FindingContext, NotApproved, ReportText, UnknownReport
 
 UNDECIDED = ("new", "grouped", "triaged", "edited")
 
@@ -152,6 +152,10 @@ class InMemoryReportStore:
     def mark_exported(
         self, report_id: str, version: int, path: str, exported_by: str, at: datetime
     ) -> None:
+        # Checks again, as the Postgres store does in the same transaction.
+        reasons = self.export_refusals(report_id)
+        if reasons:
+            raise NotApproved(reasons)
         report = self.get_report(report_id)
         self._reports[report_id] = replace(
             report,
