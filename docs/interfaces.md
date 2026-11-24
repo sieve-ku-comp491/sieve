@@ -187,6 +187,8 @@ A plug-in run goes through `pending`, then `building` for plug-ins with a build 
 | `failed` | the worker stopped during the run. Set when the worker starts again. | `interrupted` |
 | `timed_out` | the run reached its time limit. The runner kills and removes the container. | |
 
+The runner counts the files in the plug-in's languages itself. It leaves out files under folders named `node_modules`, which ESLint and Semgrep skip by default, so a checkout whose only JavaScript is in `node_modules` ends as `skipped` for the ESLint plug-in, not `failed`.
+
 A plug-in that tries to reach the network can't: its container has only a loopback interface, so every connection fails at once. The runner's test plug-in for this case tries to connect, then exits with 1, so its run ends as `failed` with `exit_code`. The test also checks that a listener on the host received nothing.
 
 One plug-in failing doesn't stop the others. When all of a scan's plug-in runs have ended, the scan gets the first of these statuses that applies:
