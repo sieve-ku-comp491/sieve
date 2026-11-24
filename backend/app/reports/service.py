@@ -16,12 +16,14 @@ from app.reports.models import (
     LIST_FIELDS,
     TEXT_FIELDS,
     FindingContext,
+    Location,
     NotApproved,
     Report,
     ReportDraftError,
     ReportExported,
     ReportInvalid,
     ReportText,
+    Severity,
     StaleVersion,
     UnknownFormat,
     problems,
@@ -122,7 +124,9 @@ class ReportService:
 
     def export(self, report_id: str, exported_by: str, format: str = "markdown") -> str:
         """The report's file text, written to exports_dir. Raises NotApproved, with every reason,
-        unless every finding is decided with an approval and the current text is approved, and
+        unless every finding is decided with an approval and the current text is approved.
+        Raises NotApproved also when the text's severity or locations no longer match the
+        approved findings, because only a new draft can bring them up to date. Raises
         ReportInvalid if the text is not a complete report (F5, F6)."""
         try:
             report_format = self.formats[format]
@@ -133,7 +137,11 @@ class ReportService:
             raise NotApproved(refusals)
         stored = self.store.get_report(report_id)
         text = self.store.current_text(report_id)
-        found = problems(text, self.store.finding_context(stored.finding_ids).cwes)
+        members = self._approved_members(stored.finding_ids)
+        refusals = _out_of_date(text, members)
+        if refusals:
+            raise NotApproved(refusals)
+        found = problems(text, members.cwes)
         if found:
             raise ReportInvalid(found)
         content = report_format.render(Report.of(report_id, stored.finding_ids, text, "draft"))
@@ -180,6 +188,18 @@ class ReportService:
         if reasons:
             raise NotApproved(reasons)
 
+    def _approved_members(self, finding_ids: tuple[str, ...]) -> FindingContext:
+        """The context of the findings whose latest review approves them, which is what the
+        report's text has to match. A member rejected since the draft is left out (F5, test 3).
+        Raises NotApproved when no finding is approved."""
+        context = self.store.finding_context(finding_ids)
+        approved = tuple(fid for fid in finding_ids if context.states.get(fid) == "approved")
+        if approved == tuple(finding_ids):
+            return context
+        if not approved:
+            self._require_approved(context)
+        return self.store.finding_context(approved)
+
     def _ask(
         self, context: FindingContext, attempt: int, previous: ReportText | None
     ) -> ReportText:
@@ -196,6 +216,34 @@ class ReportService:
             # Every AI decision must link to its logged call (requirement N3).
             raise ReportDraftError("the model's call was not logged, so its text can't be kept")
         return parse_draft(response.text, context, response.call_id)
+
+
+def _out_of_date(text: ReportText, members: FindingContext) -> list[str]:
+    """Why the text no longer fits its approved findings. A text copies the severity and the
+    locations when it is drafted, and an edit can't change them, so each reason asks for a new
+    draft."""
+    reasons = []
+    was, now = text.severity, members.severity
+    if was != now:
+        if (was.level, was.score) == (now.level, now.score):
+            reasons.append(f"severity vector is {now.vector} now and the text has {was.vector}")
+        else:
+            reasons.append(f"severity is {_level(now)} now and the text has {_level(was)}")
+    for location in text.locations:
+        if location not in members.locations:
+            reasons.append(f"location {_place(location)} is not in an approved finding")
+    for location in members.locations:
+        if location not in text.locations:
+            reasons.append(f"location {_place(location)} of an approved finding is not in the text")
+    return [f"{reason}, ask for a new draft" for reason in reasons]
+
+
+def _level(severity: Severity) -> str:
+    return f"{severity.level.capitalize()} {severity.score:.1f}"
+
+
+def _place(location: Location) -> str:
+    return f"{location.file}:{location.as_text()}"
 
 
 def _right_type(name: str, value: object) -> bool:

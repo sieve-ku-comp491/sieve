@@ -78,6 +78,13 @@ class InMemoryReportStore:
             if finding_id in context.states:
                 context.states[finding_id] = state
 
+    def change_finding(self, finding_id: str, **fields: object) -> None:
+        """Changes what every finding set with this finding says, such as its severity, as a
+        reviewer's edit of the finding would."""
+        for ids, context in self._contexts.items():
+            if finding_id in ids:
+                self._contexts[ids] = replace(context, **fields)
+
     def finding_context(self, finding_ids: tuple[str, ...]) -> FindingContext:
         try:
             return self._contexts[tuple(finding_ids)]
