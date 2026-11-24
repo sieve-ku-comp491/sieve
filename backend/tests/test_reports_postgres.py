@@ -6,6 +6,8 @@ SIEVE_TEST_DATABASE_URL, like the other store tests.
 """
 
 import json
+import threading
+import time
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -20,7 +22,13 @@ from app.llm.catalog import Catalog, ModelInfo, Price
 from app.llm.client import LLMClient
 from app.llm.fake import FakeProvider
 from app.llm.postgres import PostgresCallStore
-from app.reports import NotApproved, ReportError, ReportService, UnknownReport
+from app.reports import (
+    NotApproved,
+    ReportError,
+    ReportService,
+    StaleVersion,
+    UnknownReport,
+)
 from app.reports.postgres import PostgresReportStore
 from app.store import load_sarif
 
@@ -164,6 +172,51 @@ def make_service(database, tmp_path, replies):
         store, client, tmp_path / "exports", model="fake-model", max_tokens=1000, now=lambda: NOW
     )
     return service, store
+
+
+class InBackground:
+    """Runs one call in a thread, so a test can see it wait for a lock."""
+
+    def __init__(self, call):
+        self.error = None
+        self.thread = threading.Thread(target=self._run, args=(call,))
+        self.thread.start()
+
+    def _run(self, call):
+        try:
+            call()
+        except BaseException as error:
+            self.error = error
+
+    def waits_for_a_lock(self, database, seconds=5.0) -> bool:
+        """True once a connection of the test database waits for a lock, False if the call
+        finished first."""
+        deadline = time.monotonic() + seconds
+        with psycopg.connect(database, autocommit=True) as conn:
+            while self.thread.is_alive() and time.monotonic() < deadline:
+                (waiting,) = conn.execute(
+                    "SELECT count(*) FROM pg_stat_activity"
+                    " WHERE wait_event_type = 'Lock' AND datname = current_database()"
+                ).fetchone()
+                if waiting:
+                    return True
+                time.sleep(0.02)
+        return False
+
+    def finish(self):
+        self.thread.join(10)
+        assert not self.thread.is_alive()
+        return self.error
+
+
+def covered_findings(database, report_id) -> list[str]:
+    with psycopg.connect(database) as conn:
+        return [
+            row[0]
+            for row in conn.execute(
+                "SELECT finding_id::text FROM report_findings WHERE report_id = %s", (report_id,)
+            )
+        ]
 
 
 @pytest.fixture
@@ -448,3 +501,58 @@ def test_a_member_rejected_after_the_draft_is_left_out_of_the_new_draft_and_the_
             ).fetchall()
         )
     assert covered == {first: reviews[first], second: reviews[second]}
+
+
+def test_an_export_waits_for_a_review_that_is_being_written(database, tmp_path, approved):
+    finding_id, _ = approved
+    service, store = make_service(database, tmp_path, [reply()])
+    report_id = service.draft((finding_id,)).report_id
+    service.approve_text(report_id, 1, "ayse")
+
+    with psycopg.connect(database) as other:
+        other.execute(
+            "INSERT INTO reviews (finding_id, decision, reviewer) VALUES (%s, 'reject', 'ayse')",
+            (finding_id,),
+        )
+        export = InBackground(
+            lambda: store.mark_exported(report_id, 1, str(tmp_path / "x.md"), "ayse", NOW)
+        )
+        assert export.waits_for_a_lock(database), "the export didn't wait for the review"
+        other.commit()
+
+    # The review is seen once the export goes on, so the report keeps its finding and stays a
+    # draft instead of being exported with no finding (F5, test 1).
+    assert isinstance(export.finish(), NotApproved)
+    assert service.get(report_id).status == "draft"
+    assert covered_findings(database, report_id) == [finding_id]
+
+
+def test_an_export_that_would_cover_no_finding_is_refused(
+    database, tmp_path, approved, monkeypatch
+):
+    finding_id, _ = approved
+    service, store = make_service(database, tmp_path, [reply()])
+    report_id = service.draft((finding_id,)).report_id
+    service.approve_text(report_id, 1, "ayse")
+    monkeypatch.setattr(store, "_approved_members", lambda conn, report: [])
+
+    with pytest.raises(NotApproved, match="no approved finding"):
+        store.mark_exported(report_id, 1, str(tmp_path / "x.md"), "ayse", NOW)
+
+    assert service.get(report_id).status == "draft"
+    assert covered_findings(database, report_id) == [finding_id]
+
+
+def test_the_store_exports_only_the_newest_text(database, tmp_path, approved):
+    finding_id, _ = approved
+    service, store = make_service(database, tmp_path, [reply()])
+    report_id = service.draft((finding_id,)).report_id
+    service.approve_text(report_id, 1, "ayse")
+    service.edit(report_id, {"fix": "Use parameters."}, "ayse")
+    service.approve_text(report_id, 2, "ayse")
+
+    # A service that read version 1 before the edit was saved asks to export it.
+    with pytest.raises(StaleVersion):
+        store.mark_exported(report_id, 1, str(tmp_path / "x.md"), "ayse", NOW)
+
+    assert service.get(report_id).status == "draft"

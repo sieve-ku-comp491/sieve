@@ -20,6 +20,7 @@ from app.reports.models import (
     ReportText,
     RuleHit,
     Severity,
+    StaleVersion,
     UnknownReport,
 )
 from app.reports.store import StoredReport
@@ -239,31 +240,44 @@ class PostgresReportStore:
         """Sets the report to exported, in one transaction that first checks the export again,
         so a decision made since the service checked can't slip through. The report keeps the
         approved members of its group, each linked to the review that approved it (F5, tests 3
-        and 4)."""
+        and 4).
+
+        The transaction locks the report and its findings before it checks. A review or an edit
+        that is being written waits for the export, or the export waits for it and then sees it,
+        so a finding rejected at the same time can't leave a report that is exported with no
+        finding. Raises StaleVersion when the version is not the newest text."""
         with self._connect() as conn:
             row = self._report_row(conn, report_id, lock=True)
+            conn.execute(
+                """SELECT id FROM findings
+                   WHERE id = %(finding)s::uuid OR group_id = %(group)s::uuid
+                   ORDER BY id FOR UPDATE""",
+                {"finding": row["finding_id"], "group": row["group_id"]},
+            )
             reasons = [
                 r["reason"]
                 for r in conn.execute("SELECT reason FROM export_refusals(%s)", (report_id,))
             ]
             if reasons:
                 raise NotApproved(reasons)
-            members = """SELECT finding_id, counting_review_id FROM finding_states
-                         WHERE state = 'approved'
-                           AND ((%(group)s::uuid IS NOT NULL AND group_id = %(group)s::uuid)
-                                OR finding_id = %(finding)s::uuid)"""
-            keys = {"group": row["group_id"], "finding": row["finding_id"], "report": report_id}
+            newest = self._newest_version(conn, report_id)
+            if version != newest:
+                raise StaleVersion(f"version {version} is not the newest, which is {newest}")
+            members = self._approved_members(conn, row)
+            if not members:
+                raise NotApproved(["no approved finding in the report"])
+            keep = [member["finding_id"] for member in members]
             conn.execute(
-                f"""DELETE FROM report_findings WHERE report_id = %(report)s
-                    AND finding_id NOT IN (SELECT finding_id FROM ({members}) m)""",
-                keys,
+                """DELETE FROM report_findings WHERE report_id = %s
+                   AND NOT finding_id = ANY(%s::uuid[])""",
+                (report_id, keep),
             )
-            conn.execute(
-                f"""INSERT INTO report_findings (report_id, finding_id, review_id)
-                    SELECT %(report)s, finding_id, counting_review_id FROM ({members}) m
-                    ON CONFLICT (report_id, finding_id)
-                    DO UPDATE SET review_id = excluded.review_id""",
-                keys,
+            conn.cursor().executemany(
+                """INSERT INTO report_findings (report_id, finding_id, review_id)
+                   VALUES (%s, %s, %s)
+                   ON CONFLICT (report_id, finding_id)
+                   DO UPDATE SET review_id = excluded.review_id""",
+                [(report_id, m["finding_id"], m["counting_review_id"]) for m in members],
             )
             conn.execute(
                 """UPDATE reports SET status = 'exported', exported_at = %s, export_path = %s,
@@ -289,6 +303,22 @@ class PostgresReportStore:
         if row is None:
             raise UnknownReport(report_id)
         return row
+
+    def _newest_version(self, conn: psycopg.Connection, report_id: str) -> int:
+        return conn.execute(
+            "SELECT max(version) AS newest FROM report_texts WHERE report_id = %s", (report_id,)
+        ).fetchone()["newest"]
+
+    def _approved_members(self, conn: psycopg.Connection, report: dict) -> list[dict]:
+        """The findings of the report's item whose latest review approves them, with that
+        review."""
+        return conn.execute(
+            """SELECT finding_id::text, counting_review_id::text FROM finding_states
+               WHERE state = 'approved'
+                 AND ((%(group)s::uuid IS NOT NULL AND group_id = %(group)s::uuid)
+                      OR finding_id = %(finding)s::uuid)""",
+            {"group": report["group_id"], "finding": report["finding_id"]},
+        ).fetchall()
 
     def _group_of(self, conn: psycopg.Connection, ids: tuple[str, ...]) -> str | None:
         rows = conn.execute(
