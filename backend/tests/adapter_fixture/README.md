@@ -33,3 +33,21 @@ The expected values in `test_adapters_eslint.py` were worked out by hand: rule, 
 and level read from the SARIF file, CWEs from the table in docs/finding-format.md, and the
 flagged lines read from the files and fed to the reference code for the fingerprint and context
 hash in docs/finding-format.md, not to the adapter.
+
+`gitleaks-pygoat.sarif` is real output of the Gitleaks plug-in (Gitleaks 8.30.1, run with
+`--redact`) on PyGoat at the same commit, cut down to the 5 results in
+`dockerized_labs/auth_failure_lab/app.py` and `dockerized_labs/dependency_attack_lab/app.py` and
+the one rule they use, and indented for reading. Every snippet in it is `REDACTED`. Both files
+are in `pygoat/`, byte for byte.
+
+`fake-key/settings.py` holds a key made at random for the test, which belongs to no account.
+`gitleaks-fake-key.sarif` is the Gitleaks plug-in's real output on that folder, cut down the same
+way.
+
+The files with secrets in them are listed in `.gitleaks.toml` at the repository root, so the
+secret scan in CI still finds nothing. The SARIF files contain no secret and aren't listed.
+
+The fingerprints and context hashes in `test_adapters_gitleaks.py` were computed with the code in
+docs/finding-format.md, not with the adapter: rule, file and lines read from the SARIF file, every
+flagged line replaced by `REDACTED`, and the occurrence counted by line among the results with the
+same rule and file.

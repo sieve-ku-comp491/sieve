@@ -98,7 +98,7 @@ We tested these flags with Semgrep 1.183.0 on PyGoat: the scan works with no net
 
 ### Suppression in the scanned code
 
-Each plug-in turns off the ways the scanned code can switch off its own findings, where the tool allows it: Semgrep runs with `--disable-nosem`, Bandit with `--ignore-nosec`, and ESLint with `--no-inline-config` and our own configuration file. When a tool has no such option, the adapter still keeps the suppressed results and marks them (docs/finding-format.md).
+Each plug-in turns off the ways the scanned code can switch off its own findings, where the tool allows it: Semgrep runs with `--disable-nosem`, Bandit with `--ignore-nosec`, ESLint with `--no-inline-config` and our own configuration file, and Gitleaks with `--ignore-gitleaks-allow`. When a tool has no such option, the adapter still keeps the suppressed results and marks them (docs/finding-format.md).
 
 We tested this with Semgrep 1.183.0. A `# nosemgrep` comment removed the finding from Semgrep's JSON output and marked it as suppressed in SARIF. With `--disable-nosem` it was reported normally. A `.semgrepignore` file in /src made Semgrep skip the file it named, even with that flag, which is why the export leaves such files out.
 
@@ -157,7 +157,7 @@ A scan that scans nothing reports success with no findings, which looks exactly 
 
 Other files the plug-in writes to /out are kept with the run for debugging, but nothing in Sieve reads them.
 
-The Gitleaks plug-in runs Gitleaks with `--redact`, so its SARIF file doesn't contain the secret values. The adapter also masks the lines Gitleaks flagged (docs/finding-format.md).
+The Gitleaks plug-in runs Gitleaks with `--redact`, so its SARIF file doesn't contain the secret values. The adapter also masks the lines Gitleaks flagged (docs/finding-format.md). The plug-in passes `--config` with its own file, which holds only `[extend]` and `useDefault = true`: without `--config`, Gitleaks 8.30.1 takes its rules and allowlists from a `.gitleaks.toml` in the folder it scans. Gitleaks always obeys a `.gitleaksignore` in that folder, and no flag turns it off, so the plug-in exits with 1 when /src has one, and the run fails with `exit_code`. We tested both with a fake key: a `.gitleaks.toml` that allowed every path, or a `.gitleaksignore` that listed the finding, hid it without these checks.
 
 ### Exit codes
 
