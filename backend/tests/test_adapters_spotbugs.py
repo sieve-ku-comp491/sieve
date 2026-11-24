@@ -385,14 +385,18 @@ def build_network(client):
     """An internal network with maven-proxy on it, as docker-compose.yml sets it up."""
     image, _ = client.images.build(path=str(REPO / "maven-proxy"), rm=True)
     suffix = uuid.uuid4().hex[:8]
-    build = client.networks.create(f"sieve-test-spotbugs-build-{suffix}", internal=True)
+    build = client.networks.create(
+        f"sieve-test-spotbugs-build-{suffix}",
+        internal=True,
+        options={"com.docker.network.bridge.inhibit_ipv4": "true"},
+    )
     egress = client.networks.create(f"sieve-test-spotbugs-egress-{suffix}")
     proxy = client.containers.create(
         image.id,
         name=f"sieve-test-spotbugs-proxy-{suffix}",
         network=egress.name,
         read_only=True,
-        tmpfs={"/tmp": ""},
+        tmpfs={"/tmp": "", "/var/log/squid": "", "/var/spool/squid": ""},
         cap_drop=["ALL"],
         security_opt=["no-new-privileges"],
     )
@@ -405,7 +409,7 @@ def build_network(client):
             time.sleep(0.2)
         yield build.name
     finally:
-        proxy.remove(force=True)
+        proxy.remove(force=True, v=True)
         build.remove()
         egress.remove()
 
