@@ -191,6 +191,7 @@ classDiagram
     #tool_score(rule: dict) float
     #confidence(rule: dict, result: dict) str
     #tool_fingerprint(result: dict) str
+    #region(physical: dict) dict
     #snippet(region: dict) str
     #keep(result: dict) bool
     #mask(lines: list~str~, location: Location) list~str~

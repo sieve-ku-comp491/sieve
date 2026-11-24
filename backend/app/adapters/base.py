@@ -157,6 +157,10 @@ class BaseSarifAdapter:
         """Kept only by adapters that know their tool's fingerprint is stable."""
         return None
 
+    def region(self, physical: dict) -> dict:
+        """The region of a physical location that its lines and columns are read from."""
+        return _dict(physical.get("region"))
+
     def snippet(self, region: dict) -> str | None:
         """The tool's own snippet of a region. Without one, the snippet is read from the
         checkout."""
@@ -248,7 +252,7 @@ class BaseSarifAdapter:
                 path = decoded
         if path is None or not reader.is_file(path):
             return "path_outside_checkout"
-        region = _dict(physical.get("region"))
+        region = self.region(physical)
         start = region.get("startLine")
         if type(start) is not int or not 1 <= start <= MAX_LINE:
             return "no_line"
