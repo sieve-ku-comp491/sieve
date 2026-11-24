@@ -191,6 +191,7 @@ def test_a_finding_without_a_cwe_needs_no_cwe_entry(tmp_path):
         (reply(summary="   "), "summary is empty"),
         (reply(steps_to_reproduce=[]), "steps_to_reproduce has no step"),
         (reply(steps_to_reproduce=["Open it.", "  "]), "empty step"),
+        (reply(impact="```\nAll of it."), "impact has a code fence"),
         (reply(references=[]), None),  # the CWE entry is added, so this is still complete
     ],
 )
@@ -339,6 +340,10 @@ def test_an_edit_that_changes_nothing_saves_nothing_and_keeps_the_approval(tmp_p
         ({"severity": "high"}, "severity can't be edited"),
         ({"title": 5}, "title has the wrong type"),
         ({"steps_to_reproduce": "open"}, "steps_to_reproduce has the wrong type"),
+        # An open fence would turn every later section into code.
+        ({"summary": "It runs:\n```python\ncursor.execute(q)"}, "summary has a code fence"),
+        ({"fix": "```\na\n```\n~~~\nb"}, "fix has a code fence that isn't closed"),
+        ({"steps_to_reproduce": ["Open it.", "```\nadmin' --"]}, "step 2 has a code fence"),
     ],
 )
 def test_an_edit_that_leaves_the_report_incomplete_is_refused(tmp_path, fields, why):
@@ -346,6 +351,12 @@ def test_an_edit_that_leaves_the_report_incomplete_is_refused(tmp_path, fields, 
     with pytest.raises(ReportInvalid, match=why):
         service.edit(report_id, fields, "ayse")
     assert len(service.versions(report_id)) == 1
+
+
+def test_a_closed_code_fence_is_kept(tmp_path):
+    service, _, _, _, report_id = drafted(tmp_path)
+    fix = "Use parameters:\n\n```python\ncursor.execute(q, (name,))\n```"
+    assert service.edit(report_id, {"fix": fix}, "ayse").fix == fix
 
 
 def test_a_redraft_is_a_new_version_that_carries_the_earlier_text_and_isnt_answered_from_cache(

@@ -14,6 +14,7 @@ from app.llm.types import CodeBlock
 CWE_URL = "https://cwe.mitre.org/data/definitions/{number}.html"
 CWE_ID = re.compile(r"^CWE-(\d+)$")
 URL = re.compile(r"^https?://\S+$")
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 LEVELS = {"none", "low", "medium", "high", "critical"}
 
 # The parts of a report that the AI drafts and the reviewer can edit.
@@ -211,6 +212,12 @@ def problems(text: ReportText, cwes: tuple[str, ...] = ()) -> list[str]:
         found.append("steps_to_reproduce has no step")
     elif any(not step.strip() for step in text.steps_to_reproduce):
         found.append("steps_to_reproduce has an empty step")
+    for name in ("summary", "impact", "fix"):
+        if _open_fence(getattr(text, name)):
+            found.append(f"{name} has a code fence that isn't closed")
+    for number, step in enumerate(text.steps_to_reproduce, 1):
+        if _open_fence(step):
+            found.append(f"step {number} has a code fence that isn't closed")
     if not text.references:
         found.append("references has no entry")
     for reference in text.references:
@@ -224,3 +231,22 @@ def problems(text: ReportText, cwes: tuple[str, ...] = ()) -> list[str]:
     if not text.locations:
         found.append("locations is empty")
     return found
+
+
+def _open_fence(text: str) -> bool:
+    """Whether a Markdown code fence in the text is left open, which would turn every later
+    section of the report into code. A fence closes with the same character, at least as many
+    times, and nothing after it."""
+    opened = None
+    for line in text.splitlines():
+        match = FENCE.match(line)
+        if match is None:
+            continue
+        fence = match.group(1)
+        if opened is None:
+            opened = fence
+        elif (
+            fence[0] == opened[0] and len(fence) >= len(opened) and not line[match.end() :].strip()
+        ):
+            opened = None
+    return opened is not None
