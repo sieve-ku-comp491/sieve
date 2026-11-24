@@ -4,7 +4,9 @@ The function lookup is a fake that knows the functions listed in each test, unti
 tree-sitter lookup of T3.3 is there. The PyGoat case uses the six SQL injection results of
 tests/adapter_fixture, with rules, lines and CWEs read from semgrep-pygoat.sarif, and the
 function lab() at lines 42 to 71 of dockerized_labs/sql_injection_lab/app.py, from its
-@app.route decorator to its last line.
+@app.route decorator to its last line. The same-tool cases use Semgrep results of the full
+PyGoat run at commit 2aa4cc1 (docs/finding-format.md): rules, lines and CWEs read from its SARIF
+file, and the lines checked in the PyGoat source.
 """
 
 import pytest
@@ -85,13 +87,61 @@ def test_one_rule_in_two_functions_is_not_grouped_even_on_close_lines():
     assert group_findings([a, b], [RuleStep(LOOKUP)]) == []
 
 
-def test_findings_far_apart_in_one_function_are_grouped():
+def test_findings_of_two_tools_far_apart_in_one_function_are_grouped():
     lookup = FakeLookup({APP: [FunctionSpan("handler", 1, 80)]})
     groups = group_findings(
-        [finding("a", 5, ["CWE-89"]), finding("b", 70, ["CWE-89"])], [RuleStep(lookup)]
+        [finding("a", 5, ["CWE-89"]), finding("b", 70, ["CWE-89"], tool="bandit")],
+        [RuleStep(lookup)],
     )
     assert members(groups) == [["a", "b"]]
     assert groups[0].rule == SAME_FUNCTION
+
+
+def test_findings_of_one_tool_in_one_function_are_grouped_only_when_their_lines_overlap():
+    lookup = FakeLookup({APP: [FunctionSpan("handler", 1, 80)]})
+    findings = [
+        finding("a", 5, ["CWE-89"], rule="formatted-sql-query"),
+        finding("b", 5, ["CWE-89"], rule="sqlalchemy-execute-raw-query"),
+        finding("c", 6, ["CWE-89"], rule="formatted-sql-query"),
+    ]
+    assert members(group_findings(findings, [RuleStep(lookup)])) == [["a", "b"]]
+
+
+def test_two_semgrep_rules_on_two_settings_a_line_apart_are_not_grouped():
+    """dockerized_labs/sde/app.py sets SECRET_KEY on line 6 and DEBUG on line 7, outside any
+    function. Semgrep tags both rules CWE-489, but they are two settings to check."""
+    file = "dockerized_labs/sde/app.py"
+    findings = [
+        finding("k", 6, ["CWE-489"], file=file, rule="avoid_hardcoded_config_SECRET_KEY"),
+        finding("d", 7, ["CWE-489"], file=file, rule="avoid_hardcoded_config_DEBUG"),
+    ]
+    assert group_findings(findings, [RuleStep()]) == []
+
+
+def test_one_rule_on_several_forms_is_not_grouped():
+    """django-no-csrf-token on the four forms of dockerized_labs/ssrf_lab/templates/lab1.html,
+    each three lines after the one before."""
+    file = "dockerized_labs/ssrf_lab/templates/lab1.html"
+    forms = [
+        finding(str(start), start, ["CWE-352"], file=file, end=start + 3, rule="no-csrf-token")
+        for start in (16, 20, 24, 28)
+    ]
+    assert group_findings(forms, [RuleStep()]) == []
+
+
+def test_four_semgrep_rules_on_one_call_are_one_group():
+    """The subprocess.Popen call on lines 29 to 31 of dockerized_labs/command_injection_lab/app.py:
+    two rules report the whole call, two report line 30, all tagged CWE-78."""
+    file = "dockerized_labs/command_injection_lab/app.py"
+    findings = [
+        finding("1", 29, ["CWE-78"], file=file, end=31, rule="subprocess-injection"),
+        finding("2", 29, ["CWE-78"], file=file, end=31, rule="dangerous-subprocess-use-audit"),
+        finding("3", 30, ["CWE-78"], file=file, rule="dangerous-subprocess-use"),
+        finding("4", 30, ["CWE-78"], file=file, rule="subprocess-shell-true"),
+    ]
+    (group,) = group_findings(findings, [RuleStep()])
+    assert members([group]) == [["1", "2", "3", "4"]]
+    assert group.reason == "Same file, lines 29 to 31, and related CWEs (CWE-78)"
 
 
 def test_a_finding_outside_any_function_is_not_grouped_with_one_inside():
@@ -119,7 +169,7 @@ def test_a_group_grows_only_with_findings_that_match_every_member():
     with d instead of joining a and b."""
     findings = [
         finding("a", 10, ["CWE-79"]),
-        finding("b", 13, ["CWE-79"]),
+        finding("b", 13, ["CWE-79"], tool="bandit"),
         finding("c", 16, ["CWE-79"]),
         finding("d", 16, ["CWE-79"], tool="bandit"),
     ]
@@ -175,7 +225,7 @@ def test_the_six_sql_injection_results_of_pygoat():
 def test_the_order_of_the_findings_does_not_change_the_groups():
     findings = [
         finding("a", 10, ["CWE-79"]),
-        finding("b", 13, ["CWE-79"]),
+        finding("b", 13, ["CWE-79"], tool="bandit"),
         finding("c", 16, ["CWE-79"]),
     ]
     forward = members(group_findings(findings, [RuleStep()]))

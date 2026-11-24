@@ -15,6 +15,13 @@ When it knows a function for one and not for the other, or two different functio
 match, however close their lines are. A finding without a CWE matches nothing here and is left
 to the later steps.
 
+Two findings of the same tool match only when their lines overlap, on top of the rules above. A
+tool reports each place it matched as its own result, so two of its results whose lines don't
+overlap are two places, such as one rule on two forms of a template, or two rules on a DEBUG and
+a SECRET_KEY setting a few lines apart. Two rules of one tool on the same call still match. The
+nearby lines and the same function are for findings of different tools, which often disagree on
+the line.
+
 A finding joins a group only if it matches every member, not just one, so a chain of findings a
 few lines apart each can't grow into one long group. Findings are taken in order of file, line,
 tool and rule, so the result doesn't depend on the order they were stored in.
@@ -71,12 +78,17 @@ class RuleStep:
     ) -> bool:
         if not any(related(x, y) for x in a.cwe for y in b.cwe):
             return False
+        if a.tool == b.tool and not _within(a, b, 0):
+            return False
         fa, fb = functions[a.finding_id], functions[b.finding_id]
         if fa is not None or fb is not None:
             return fa == fb
-        return (
-            a.start_line - self._nearby <= b.end_line and b.start_line - self._nearby <= a.end_line
-        )
+        return _within(a, b, self._nearby)
+
+
+def _within(a: ScanFinding, b: ScanFinding, lines: int) -> bool:
+    """True when the line ranges of a and b overlap or are at most lines apart."""
+    return a.start_line - lines <= b.end_line and b.start_line - lines <= a.end_line
 
 
 def _rule_group(members: list[ScanFinding], function: FunctionSpan | None) -> Group:
