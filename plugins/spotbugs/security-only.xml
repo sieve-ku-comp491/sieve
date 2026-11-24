@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Only bugs in the SECURITY category are reported: the Find Security Bugs patterns and the
      few SpotBugs patterns in that category. The same filter as include.xml in Find Security
-     Bugs' own command-line package. -->
+     Bugs' own command-line package, except for SPRING_ENDPOINT, "Found Spring endpoint". It
+     lists every Spring controller method with no CWE, rather than a bug, and it was 236 of
+     the 455 results on WebGoat v2026.5. -->
 <FindBugsFilter>
   <Match>
     <Bug category="SECURITY"/>
+    <Not>
+      <Bug pattern="SPRING_ENDPOINT"/>
+    </Not>
   </Match>
 </FindBugsFilter>
