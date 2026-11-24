@@ -5,9 +5,11 @@ report only when a person approved both the findings and the current text. The c
 in the service, so no client can skip them, including the CLI and the evaluation harness.
 """
 
+import os
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from app.llm import LLMClient, StopReason, load_template
 from app.reports.draft import TEMPLATE, parse_draft, prompt_values
@@ -149,12 +151,17 @@ class ReportService:
         content = report_format.render(Report.of(report_id, stored.finding_ids, text, "draft"))
         path = self.exports_dir / f"{report_id}{report_format.file_extension}"
         self.exports_dir.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8", newline="\n")
+        # The file gets its name only after the store marks the report. The store checks again
+        # as it marks, and when it refuses, for example because another export got there first,
+        # only this export's own temporary file is removed.
+        temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
         try:
+            with temporary.open("x", encoding="utf-8", newline="\n") as file:
+                file.write(content)
             self.store.mark_exported(report_id, text.version, str(path), exported_by, self.now())
-        except Exception:
-            # The store checks again as it marks the report. A file it refused must not stay.
-            path.unlink(missing_ok=True)
+            os.replace(temporary, path)
+        except BaseException:
+            temporary.unlink(missing_ok=True)
             raise
         return content
 

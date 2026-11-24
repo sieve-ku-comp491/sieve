@@ -581,3 +581,24 @@ def test_a_file_the_store_refuses_at_export_is_removed(tmp_path):
         service.export(report_id, exported_by="ayse")
     assert list((tmp_path / "exports").iterdir()) == []
     assert store.get_report(report_id).status == "draft"
+
+
+def test_a_second_export_at_the_same_time_leaves_the_first_ones_file(tmp_path):
+    # B checks first, A exports while B is writing, and the store then refuses B.
+    service, store, _, _, report_id = drafted(tmp_path)
+    service.approve_text(report_id, 1, "ayse")
+    mark = store.mark_exported
+
+    def a_exports_first(*args):
+        store.mark_exported = mark
+        service.export(report_id, exported_by="a")
+        mark(*args)
+
+    store.mark_exported = a_exports_first
+    with pytest.raises(NotApproved, match="already exported"):
+        service.export(report_id, exported_by="b")
+
+    path = tmp_path / "exports" / f"{report_id}.md"
+    assert list((tmp_path / "exports").iterdir()) == [path]
+    assert path.read_text().startswith("# SQL injection in the login form")
+    assert store.get_report(report_id).exported_by == "a"
