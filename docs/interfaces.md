@@ -61,7 +61,7 @@ tool = "4.10.5"
 rules = "find-sec-bugs 1.14.0"
 
 [build]
-image = "sieve-plugin-spotbugs-build:jdk25-<maven version>"
+image = "sieve-plugin-spotbugs-build:jdk25-3.9.16"
 ```
 
 ### What the scan container gets
@@ -118,9 +118,8 @@ SpotBugs analyzes compiled classes, so the Java plug-in builds the project first
 The build image's entry point:
 
 1. copies /src to /build/work, because Maven writes into the project folder
-2. runs `mvn -B -DskipTests package` in /build/work, with the image's Maven settings and `/cache/m2` as Maven's local repository
-3. runs `mvn dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory=/build/deps`, which copies the libraries the app is compiled against, including `provided` ones such as the servlet API
-4. writes `/build/java-build.json` with the app's own class folders (`target/classes` of each module) and source folders (`src/main/java` of each module), as paths relative to the repository root
+2. runs Maven 3.9.16 once in /build/work, with the image's Maven settings and `/cache/m2` as Maven's local repository: `mvn -B -DskipTests package org.apache.maven.plugins:maven-dependency-plugin:3.11.0:copy-dependencies -DincludeScope=compile -DoutputDirectory=/build/deps`. `package` builds the app, and `copy-dependencies` copies the libraries it is compiled against, including `provided` ones such as the servlet API. Both run in one Maven run because in a project with several modules, a module can depend on another module of the same project, and Maven finds that module only when it was packaged earlier in the same run.
+3. writes `/build/java-build.json` with the app's own class folders (`target/classes` of each module) and source folders (`src/main/java` of each module), as paths relative to the repository root
 
 If Maven exits with anything but 0, the run fails with the reason `build_failed`, and Semgrep still covers the Java code.
 
