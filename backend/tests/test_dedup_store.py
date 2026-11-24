@@ -344,4 +344,7 @@ def test_the_command_line_groups_a_scan_and_writes_the_csv(database, pygoat, tmp
     assert dedup_main(["group", pygoat]) == 1
     assert dedup_main(["csv", pygoat, "--out", str(out)]) == 0
     rows = list(csv.DictReader(io.StringIO(out.read_text(encoding="utf-8"))))
-    assert len(rows) == 9 and sum(1 for row in rows if row["group"]) == 4
+    # The four CWE-89 results by the rules, and the two copies of tainted-sql-string, tagged
+    # CWE-915 and CWE-704, by text similarity.
+    assert len(rows) == 9 and sum(1 for row in rows if row["group"]) == 6
+    assert len({row["group"] for row in rows if row["group"]}) == 2
