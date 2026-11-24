@@ -25,6 +25,7 @@ from app.llm.postgres import PostgresCallStore
 from app.reports import (
     NotApproved,
     ReportError,
+    ReportExported,
     ReportService,
     StaleVersion,
     UnknownReport,
@@ -556,3 +557,23 @@ def test_the_store_exports_only_the_newest_text(database, tmp_path, approved):
         store.mark_exported(report_id, 1, str(tmp_path / "x.md"), "ayse", NOW)
 
     assert service.get(report_id).status == "draft"
+
+
+def exported_report(database, tmp_path, finding_id):
+    service, store = make_service(database, tmp_path, [reply()])
+    report_id = service.draft((finding_id,)).report_id
+    service.approve_text(report_id, 1, "ayse")
+    service.export(report_id, exported_by="ayse")
+    return service, store, report_id
+
+
+def test_the_store_adds_no_text_to_an_exported_report(database, tmp_path, approved):
+    finding_id, _ = approved
+    service, store, report_id = exported_report(database, tmp_path, finding_id)
+    text = store.current_text(report_id)
+
+    # A draft whose model call began before the export asks to be saved after it.
+    with pytest.raises(ReportExported):
+        store.add_text(report_id, text)
+
+    assert [t.version for t in store.texts(report_id)] == [1]

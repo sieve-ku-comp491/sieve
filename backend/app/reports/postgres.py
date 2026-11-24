@@ -17,6 +17,7 @@ from app.reports.models import (
     Location,
     NotApproved,
     ReportError,
+    ReportExported,
     ReportText,
     RuleHit,
     Severity,
@@ -205,8 +206,12 @@ class PostgresReportStore:
         return [_text(row) for row in rows]
 
     def add_text(self, report_id: str, text: ReportText) -> ReportText:
+        """Saves text as the next version. Raises ReportExported, checked under the lock of the
+        report row, when an export committed while the model was answering."""
         with self._connect() as conn:
-            self._report_row(conn, report_id, lock=True)
+            row = self._report_row(conn, report_id, lock=True)
+            if row["status"] == "exported":
+                raise ReportExported(f"report {report_id} was exported and can't change")
             version = conn.execute(
                 "SELECT max(version) + 1 AS next FROM report_texts WHERE report_id = %s",
                 (report_id,),
