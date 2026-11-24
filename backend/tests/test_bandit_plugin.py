@@ -133,6 +133,26 @@ def test_bandit_plugin_ignores_bandit_files_in_the_scanned_code(client, tmp_path
     assert flagged_files(tmp_path, run) == {"file:///src/app.py"}
 
 
+def test_bandit_plugin_scans_folders_that_bandit_excludes_by_default(client, tmp_path):
+    """Bandit's default excludes match any path that contains them, so CVS would skip
+    CVSScore/ and .git would skip .github/. The plug-in excludes only the .git folder."""
+    run, log = run_plugin(
+        client,
+        tmp_path,
+        {
+            "CVSScore/app.py": VULNERABLE,
+            ".github/scripts/app.py": VULNERABLE,
+            ".git/hooks/app.py": VULNERABLE,
+        },
+    )
+    assert run.status is RunStatus.SUCCEEDED, log
+    assert run.files_scanned == 2
+    assert flagged_files(tmp_path, run) == {
+        "file:///src/CVSScore/app.py",
+        "file:///src/.github/scripts/app.py",
+    }
+
+
 def test_bandit_plugin_with_nothing_to_scan(client, tmp_path):
     run, log = run_plugin(client, tmp_path, {"README.md": "# no Python here\n"})
     assert run.status is RunStatus.SKIPPED, log
