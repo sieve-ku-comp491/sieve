@@ -72,5 +72,6 @@ class ContainerEngine(Protocol):
         ...
 
     def network_is_internal(self, name: str) -> bool:
-        """Whether the network has no route out. Raises EngineError when it doesn't exist."""
+        """Whether the network has no route out and no address of the host on it. Raises
+        EngineError when it doesn't exist."""
         ...

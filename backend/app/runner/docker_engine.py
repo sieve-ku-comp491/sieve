@@ -50,7 +50,15 @@ class DockerEngine(ContainerEngine):
             raise EngineError(f"the network {name} doesn't exist") from None
         except (docker.errors.DockerException, requests.exceptions.RequestException) as error:
             raise EngineError(f"can't reach the Docker Engine: {error}") from None
-        return bool(network.attrs.get("Internal")) and network.attrs.get("Driver") == "bridge"
+        attrs = network.attrs
+        # Without inhibit_ipv4 the bridge's gateway address belongs to the host, and a container on
+        # the network can connect through it to services on the host (docs/interfaces.md).
+        return (
+            bool(attrs.get("Internal"))
+            and attrs.get("Driver") == "bridge"
+            and (attrs.get("Options") or {}).get("com.docker.network.bridge.inhibit_ipv4") == "true"
+            and not attrs.get("EnableIPv6")
+        )
 
     def remove_labeled(self, label: str, value: str) -> None:
         containers = self._client.containers.list(all=True, filters={"label": f"{label}={value}"})

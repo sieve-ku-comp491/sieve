@@ -61,7 +61,7 @@ tool = "4.10.5"
 rules = "find-sec-bugs 1.14.0"
 
 [build]
-image = "sieve-plugin-spotbugs-build:jdk25-<maven version>"
+image = "sieve-plugin-spotbugs-build:jdk25-3.9.16"
 ```
 
 ### What the scan container gets
@@ -102,6 +102,8 @@ Each plug-in turns off the ways the scanned code can switch off its own findings
 
 We tested this with Semgrep 1.183.0. A `# nosemgrep` comment removed the finding from Semgrep's JSON output and marked it as suppressed in SARIF. With `--disable-nosem` it was reported normally. A `.semgrepignore` file in /src made Semgrep skip the file it named, even with that flag, which is why the export leaves such files out.
 
+SpotBugs is the one tool where in-source suppression works: the scanned code can hide a SpotBugs finding with `@SuppressFBWarnings`. SpotBugs drops such results before it writes SARIF and has no option to keep them, and `-omitVisitors NoteSuppressedWarnings` doesn't stop it, so the adapter never sees them and can't mark them. Semgrep's Java rules still scan the same code.
+
 ### Build step
 
 SpotBugs analyzes compiled classes, so the Java plug-in builds the project first, in its own container, before the scan container starts. The runner starts it like this:
@@ -118,13 +120,12 @@ SpotBugs analyzes compiled classes, so the Java plug-in builds the project first
 The build image's entry point:
 
 1. copies /src to /build/work, because Maven writes into the project folder
-2. runs `mvn -B -DskipTests package` in /build/work, with the image's Maven settings and `/cache/m2` as Maven's local repository
-3. runs `mvn dependency:copy-dependencies -DincludeScope=compile -DoutputDirectory=/build/deps`, which copies the libraries the app is compiled against, including `provided` ones such as the servlet API
-4. writes `/build/java-build.json` with the app's own class folders (`target/classes` of each module) and source folders (`src/main/java` of each module), as paths relative to the repository root
+2. runs Maven 3.9.16 once in /build/work, with the image's Maven settings and `/cache/m2` as Maven's local repository: `mvn -B -DskipTests package org.apache.maven.plugins:maven-dependency-plugin:3.11.0:copy-dependencies -DincludeScope=compile -DoutputDirectory=/build/deps`. `package` builds the app, and `copy-dependencies` copies the libraries it is compiled against, including `provided` ones such as the servlet API. Both run in one Maven run because in a project with several modules, a module can depend on another module of the same project, and Maven finds that module only when it was packaged earlier in the same run.
+3. writes `/build/java-build.json` with the app's own class folders (`target/classes` of each module) and source folders (`src/main/java` of each module), as paths relative to the repository root
 
 If Maven exits with anything but 0, the run fails with the reason `build_failed`, and Semgrep still covers the Java code.
 
-The scan container then gets /build read-only. Its entry point runs SpotBugs with Find Security Bugs on the class folders listed in `java-build.json` only, with the libraries in /build/deps as `-auxclasspath` and the source folders under /src as `-sourcepath`. Scanning all of /build/work would also analyze every library: in a test with a small Spring app, 2,438 of 2,456 results came from library code. With the source folders under /src, SpotBugs writes file paths the adapter can map (docs/finding-format.md). `files_scanned` is the number of class files analyzed.
+The scan container then gets /build read-only. Its entry point runs SpotBugs with Find Security Bugs on the class folders listed in `java-build.json` only, with the libraries in /build/deps as `-auxclasspath` and the source folders under /src as `-sourcepath`. Scanning all of /build/work would also analyze every library: in a test with a small Spring app, 2,438 of 2,456 results came from library code. With the source folders under /src, SpotBugs writes file paths the adapter can map (docs/finding-format.md). `files_scanned` is the number of class files analyzed. It reports the `SECURITY` category without `SPRING_ENDPOINT`, which lists Spring endpoints rather than bugs: 236 of the 455 results on WebGoat v2026.5.
 
 Folders and owners:
 
@@ -133,11 +134,15 @@ Folders and owners:
 
 Network:
 
-- `sieve-build` is an internal Docker network, with no route out. The build container's only neighbour on it is `maven-proxy`, a small forward proxy that is also on the `egress` network and allows connections only to Maven Central (`repo.maven.apache.org`, port 443).
+- `sieve-build` is an internal Docker network, with no route out. Compose creates it with `com.docker.network.bridge.inhibit_ipv4`, so its bridge has no address of the host. On an internal network without that option, the gateway address belongs to the host, and we saw a container on it connect to a listener in the engine's host network namespace through that address, on Docker Desktop with Engine 29.8 and on the Ubuntu runner in CI. On Linux that is the researcher's machine. The runner refuses to start a build on a network that isn't internal or whose bridge has an address. The build container's only neighbour on it is `maven-proxy`, a small forward proxy that is also on the `egress` network and allows only tunnels to Maven Central's host name (`repo.maven.apache.org`, port 443).
+- `maven-proxy` is Squid 6.14, from Canonical's `ubuntu/squid` image for Ubuntu 24.04, pinned by digest in `maven-proxy/Dockerfile`. The image's tag says 6.6, the version Ubuntu 24.04 started with, but `squid -v` in it prints 6.14. Its configuration, `maven-proxy/squid.conf`, allows one thing: a `CONNECT` tunnel to `repo.maven.apache.org` on port 443. It refuses every other host, every other port, a host given as an IP address and plain HTTP requests, with 403, before it opens any connection. We chose Squid because its access rules can match the method, the host name and the port together, and because a maintained image of it exists that we only configure, not build. Squid matches the host name of the `CONNECT` request. It can't see inside the TLS connection.
+- `repo.maven.apache.org` is served by Cloudflare, so a build can open the tunnel and then send another TLS server name, and reach any site hosted on Cloudflare. Through the tunnel, `curl --connect-to www.cloudflare.com:443:repo.maven.apache.org:443 https://www.cloudflare.com/` got 200 with www.cloudflare.com's own certificate. We accept this: a build only gets public code (requirement F2), and Maven Central already serves whatever anyone publishes to it. Checking the TLS server name with Squid's SslBump peek and splice would close it, but that needs a Squid built with OpenSSL, and Ubuntu's is built with GnuTLS.
+- The proxy keeps no cache and writes no files. It runs as Squid's `proxy` user with a read-only root, no capabilities and `no-new-privileges`, and logs each request to its container's output. The two folders the image declares as volumes, `/var/log/squid` and `/var/spool/squid`, are tmpfs mounts, so a start leaves no anonymous volumes.
 - The build image's Maven settings send every download through a mirror of Maven Central and through that proxy, so repositories that the project's pom.xml declares are not used.
-- We tested the difference on Docker Desktop: a container on an internal network could reach neither the host's published ports, through `host.docker.internal`, nor the internet. A container on an ordinary bridge network could reach both, including Sieve's API port.
+- On Docker Desktop, a container on an ordinary bridge network could reach the internet and the host's published ports, including Sieve's API port. On `sieve-build` it reaches neither, which the test below checks.
+- `test_runner_docker.py` checks this through the runner's build step, with `maven-proxy` started the way Compose starts it. From the build container, names outside the network don't resolve, a direct connection to an outside address fails, and the proxy answers 403 to `example.com`, to `host.docker.internal`, to an IP address, to Maven Central on ports 80 and 22, and to a plain HTTP request. A `CONNECT` to `repo.maven.apache.org:443` gets 200. A second test starts a listener in the engine's host network namespace and checks that the build container can't connect to it, neither through the build network's would-be gateway address nor through the gateway address of an internal network made without `inhibit_ipv4`, while a container on that other network can. We ran both on Docker Desktop with Engine 29.8, and CI runs them on its Ubuntu runner.
 
-The trade-off: a Maven build runs code from the scanned project, such as plug-ins named in its pom.xml. That code can reach only Maven Central, its own build folder and its own repository's cache. It can't reach Sieve's API, the database, other containers, the researcher's network or other hosts, and it stops at the time limit. It could still change its own compiled classes, and so its own SpotBugs results, which affects only the scan of that same project. Requirement N4 lists the build step as its one exception to "no network".
+The trade-off: a Maven build runs code from the scanned project, such as plug-ins named in its pom.xml. That code can reach its own build folder, its own repository's cache and the tunnel to `repo.maven.apache.org`, which leads to Maven Central or, with another TLS server name, to other sites on Cloudflare. It can't reach Sieve's API, the database, other containers, the researcher's network or hosts outside Cloudflare, and it stops at the time limit. It could still change its own compiled classes, and so its own SpotBugs results, which affects only the scan of that same project. Requirement N4 lists the build step as its one exception to "no network".
 
 ### Results
 

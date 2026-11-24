@@ -85,7 +85,7 @@ flowchart LR
       api["api: FastAPI back end"]
       db[("db: PostgreSQL")]
       worker["worker: runs background jobs"]
-      proxy["maven-proxy: allows only Maven Central"]
+      proxy["maven-proxy: only CONNECT to repo.maven.apache.org:443"]
       mock[mock-platform]
     end
     docker[Host Docker Engine]
@@ -137,7 +137,7 @@ The `pgdata` volume, the Maven cache volumes, the scope file and the `./exports`
 | `web` | the React app, built at image build time and served by nginx. nginx forwards `/api` to `api` and adds the API token. It answers only requests whose `Host` is `localhost` or `127.0.0.1`. | 8080, bound to 127.0.0.1 | `frontend` | the API token from `.env` |
 | `api` | the FastAPI back end: the REST API, the scope check, the review workflow and the Markdown export. It reads and writes the database, puts long tasks in the job queue, and reads checkouts to show cited code on the review screen. | 8000, bound to 127.0.0.1 | `frontend`, `backend` | `./exports` on the host, the scope file and `sieve-data` read-only, and the API token from `.env` |
 | `worker` | the same image as `api`, started with a different command. It takes jobs from the queue and runs scans, triage runs and report drafts. | none | `backend`, `egress` | `sieve-data`, the Docker socket, the scope file read-only, and the LLM API keys from `.env` |
-| `maven-proxy` | a small forward proxy that allows connections only to Maven Central, for the Java build step (docs/interfaces.md) | none | `sieve-build`, `egress` | none |
+| `maven-proxy` | Squid, a forward proxy that allows only tunnels to `repo.maven.apache.org`, Maven Central's host name, for the Java build step (docs/interfaces.md). Built from `maven-proxy/`. | none | `sieve-build`, `egress` | none |
 | `db` | PostgreSQL. The version is pinned in T1.3. | none | `backend` | `pgdata` |
 | `mock-platform` (stretch) | the mock submission server (T5.4), started only with the `stretch` Compose profile | none | `backend` | none |
 
@@ -168,7 +168,7 @@ Scans and triage runs take minutes, so the API only records a job and returns it
 | `frontend` | `web`, `api` | yes, Docker's default | the browser reaches `web`, and `web` forwards to `api` |
 | `backend` | `api`, `worker`, `db`, `mock-platform` | no (`internal: true`) | the database can't be reached from outside the project and can't reach out |
 | `egress` | `worker`, `maven-proxy` | yes | clones of public repositories, calls to the LLM APIs, and Maven downloads through the proxy |
-| `sieve-build` | `maven-proxy`, and one build container at a time | no (`internal: true`) | the build container can reach only the proxy. We tested on Docker Desktop that a container on an internal network can reach neither the internet nor the host's published ports, while one on an ordinary network can reach Sieve's API port through `host.docker.internal`. |
+| `sieve-build` | `maven-proxy`, and one build container at a time | no (`internal: true`, and no host address on the bridge) | the build container can reach only the proxy. `test_runner_docker.py` checks that it reaches neither the internet nor the host through a gateway address, on Docker Desktop and on Linux in CI. |
 | none | every analyzer container | no | `--network none` (docs/interfaces.md) |
 
 `sieve-build` gets the fixed name `sieve-build` with Compose's `name:` key, so the worker can attach build containers to it.

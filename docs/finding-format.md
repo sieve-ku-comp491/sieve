@@ -105,7 +105,7 @@ The adapter keeps the CWEs the tool gives, even when they look wrong. Semgrep ta
 
 Results whose `kind` is missing or `fail` become findings. Results with another `kind`, such as `pass` or `notApplicable`, don't, and the run's log counts them.
 
-Suppressed results are kept. The scanned repository is not ours, so a `# nosemgrep` or `# nosec` comment in it must not be able to hide a finding from Sieve (requirement N4). The plug-ins turn in-source suppression off where the tool allows it (docs/interfaces.md). When the tool still reports a result as suppressed, the adapter keeps it and sets `suppressed` to true.
+Suppressed results are kept. The scanned repository is not ours, so a `# nosemgrep` or `# nosec` comment in it must not be able to hide a finding from Sieve (requirement N4). The plug-ins turn in-source suppression off where the tool allows it (docs/interfaces.md). When the tool still reports a result as suppressed, the adapter keeps it and sets `suppressed` to true. SpotBugs is the exception: it drops results marked `@SuppressFBWarnings` before it writes SARIF, so the adapter never sees them (docs/interfaces.md).
 
 ### Confidence
 

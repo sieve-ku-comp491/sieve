@@ -32,6 +32,38 @@ services:
       timeout: 3s
       retries: 10
 
+  # The forward proxy of the Java build step: tunnels to repo.maven.apache.org:443 only
+  # (docs/interfaces.md).
+  # Build containers reach it on sieve-build, which has no route out, and it reaches Maven
+  # Central through egress.
+  maven-proxy:
+    build: ./maven-proxy
+    read_only: true
+    # The image declares /var/log/squid and /var/spool/squid as volumes. As tmpfs mounts they
+    # leave no anonymous volumes behind.
+    tmpfs:
+      - /tmp
+      - /var/log/squid
+      - /var/spool/squid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - sieve-build
+      - egress
+
+networks:
+  egress:
+  sieve-build:
+    # A fixed name, so the worker can attach build containers to it (SIEVE_BUILD_NETWORK).
+    name: sieve-build
+    internal: true
+    # No address of the host on the bridge. Otherwise the gateway address is the host's, and a
+    # build could connect to any service on the host that listens on all addresses.
+    driver_opts:
+      com.docker.network.bridge.inhibit_ipv4: "true"
+
 volumes:
   db-data:
   sieve-data:

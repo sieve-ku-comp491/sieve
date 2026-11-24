@@ -249,7 +249,7 @@ class PluginRunner:
                 if not self.engine.network_is_internal(self.settings.build_network):
                     raise EngineError(
                         f"the build network {self.settings.build_network} is not an internal "
-                        "bridge network, so the build step won't run on it"
+                        "bridge network with no host address, so the build step won't run on it"
                     )
         except EngineError as error:
             self.log.append(run.run_id, f"runner error: {error}")

@@ -26,6 +26,24 @@ if [ -n "$SIEVE_BUILD" ]; then
     build) echo "built" > "$SIEVE_BUILD/built"; echo "build done"; exit 0 ;;
     build-fail) echo "the build broke" >&2; exit 1 ;;
     build-sleep) sleep 300; exit 0 ;;
+    build-network)
+      # Each line of /src/targets is a kind and a target. The answers go to network.txt.
+      while read -r kind target; do
+        case "$kind" in
+          dns) nslookup "$target" > /dev/null 2>&1 && answer=resolved || answer=failed ;;
+          direct)
+            nc -w 3 "${target%:*}" "${target##*:}" < /dev/null > /dev/null 2>&1 \
+              && answer=connected || answer=failed ;;
+          connect)
+            answer=$(printf 'CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n' "$target" "$target" \
+              | nc -w 5 maven-proxy 3128 2>/dev/null | head -n 1 | cut -d ' ' -f 2) ;;
+          get)
+            answer=$(printf 'GET %s HTTP/1.1\r\nHost: %s\r\n\r\n' "$target" "$target" \
+              | nc -w 5 maven-proxy 3128 2>/dev/null | head -n 1 | cut -d ' ' -f 2) ;;
+        esac
+        echo "$kind $target ${answer:-none}" | tee -a "$SIEVE_BUILD/network.txt"
+      done < "$SIEVE_SRC/targets"
+      exit 0 ;;
     *) echo "no build step for mode $mode" >&2; exit 1 ;;
   esac
 fi
@@ -84,9 +102,9 @@ case "$mode" in
       echo
     } > "$SIEVE_OUT/probe.txt"
     write_results 2 ;;
-  build)
+  build|build-network)
     # The scan step after the build step: /build holds the build's output, read-only.
-    [ -f /build/built ] || { echo "no build output" >&2; exit 1; }
+    [ -f /build/built ] || [ -f /build/network.txt ] || { echo "no build output" >&2; exit 1; }
     touch /build/new 2>/dev/null && { echo "/build is writable" >&2; exit 1; }
     write_results 2 ;;
   *)
