@@ -1,0 +1,9 @@
+name = "bandit"
+image = "sieve-plugin-bandit:1.9.4"
+languages = ["python"]
+adapter = "bandit"
+timeout_seconds = 600
+
+[versions]
+tool = "1.9.4"
+rules = "bandit 1.9.4"
