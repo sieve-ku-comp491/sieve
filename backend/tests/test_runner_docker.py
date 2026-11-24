@@ -3,6 +3,8 @@
 Skipped when Docker isn't running. CI's Ubuntu runners have Docker, so these run there.
 """
 
+import ipaddress
+import random
 import socket
 import sys
 import threading
@@ -367,7 +369,6 @@ def test_a_build_step_reaches_no_host_but_maven_central(client, data_dir, maven_
                 "dns example.com",
                 "dns repo.maven.apache.org",
                 "direct 1.1.1.1:443",
-                f"direct {host}",
                 "connect example.com:443",
                 f"connect {host}",
                 "connect 1.1.1.1:443",
@@ -386,7 +387,6 @@ def test_a_build_step_reaches_no_host_but_maven_central(client, data_dir, maven_
     assert answers["dns example.com"] == "failed"
     assert answers["dns repo.maven.apache.org"] == "failed"
     assert answers["direct 1.1.1.1:443"] == "failed"
-    assert answers[f"direct {host}"] == "failed"
     # The proxy refuses every other host, every other port and plain HTTP before it connects.
     assert answers["connect example.com:443"] == "403"
     assert answers[f"connect {host}"] == "403"
@@ -395,6 +395,75 @@ def test_a_build_step_reaches_no_host_but_maven_central(client, data_dir, maven_
     assert answers["connect repo.maven.apache.org:22"] == "403"
     assert answers["connect repo.maven.apache.org.example.com:443"] == "403"
     assert answers["get http://repo.maven.apache.org/maven2/"] == "403"
+
+
+class HostListener:
+    """Counts the TCP connections to a port in the Docker host's own network namespace, from a
+    busybox container on the host network. On Linux that is this machine. Docker Desktop runs the
+    engine in a VM, which owns the bridges' gateway addresses, so Listener wouldn't see those."""
+
+    def __init__(self, client) -> None:
+        self.port = random.randint(20000, 59999)
+        self.container = client.containers.run(
+            "busybox:1.37.0",
+            ["nc", "-lk", "-p", str(self.port), "-e", "sh", "-c", "echo hit >> /tmp/hits"],
+            name=f"sieve-test-host-listener-{uuid.uuid4().hex[:8]}",
+            network_mode="host",
+            detach=True,
+        )
+        deadline = time.monotonic() + 10
+        while f":{self.port} " not in self._run("netstat -ltn"):
+            if time.monotonic() > deadline:
+                self.close()
+                pytest.fail("the listener on the host network didn't start")
+            time.sleep(0.2)
+
+    def _run(self, command: str) -> str:
+        return self.container.exec_run(["sh", "-c", command]).output.decode()
+
+    def connections(self) -> int:
+        time.sleep(0.5)
+        return int(self._run("cat /tmp/hits 2>/dev/null | wc -l"))
+
+    def close(self) -> None:
+        self.container.remove(force=True, v=True)
+
+
+def test_a_build_step_cannot_reach_the_docker_host(client, data_dir, build_network):
+    listener = HostListener(client)
+    # An internal network as `docker network create --internal` makes it, with the host's address
+    # on its bridge.
+    plain = client.networks.create(f"sieve-test-plain-{uuid.uuid4().hex[:8]}", internal=True)
+    try:
+        plain.reload()
+        plain_gateway = plain.attrs["IPAM"]["Config"][0]["Gateway"]
+        # On a network without inhibit_ipv4, Docker gives the bridge the subnet's first address.
+        subnet = client.networks.get(build_network).attrs["IPAM"]["Config"][0]["Subnet"]
+        build_gateway = ipaddress.ip_network(subnet)[1]
+        targets = [
+            f"direct {build_gateway}:{listener.port}",
+            f"direct {plain_gateway}:{listener.port}",
+        ]
+        answers = network_answers(client, data_dir, build_network, targets)
+        assert listener.connections() == 0
+        assert answers == {target: "failed" for target in targets}
+
+        # From the plain internal network the listener is reachable through the gateway, so the
+        # listener works and the missing host address is what stops the build step.
+        try:
+            client.containers.run(
+                "busybox:1.37.0",
+                ["nc", "-w", "3", plain_gateway, str(listener.port)],
+                network=plain.name,
+                remove=True,
+            )
+        except docker.errors.ContainerError:
+            pass
+        if listener.connections() == 0:
+            pytest.skip("containers on this machine can't reach the host through a gateway address")
+    finally:
+        listener.close()
+        plain.remove()
 
 
 def test_a_build_step_reaches_maven_central_through_the_proxy(client, data_dir, maven_proxy):
