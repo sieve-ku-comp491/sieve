@@ -32,7 +32,8 @@ services:
       timeout: 3s
       retries: 10
 
-  # The forward proxy of the Java build step: HTTPS to Maven Central only (docs/interfaces.md).
+  # The forward proxy of the Java build step: tunnels to repo.maven.apache.org:443 only
+  # (docs/interfaces.md).
   # Build containers reach it on sieve-build, which has no route out, and it reaches Maven
   # Central through egress.
   maven-proxy:
