@@ -577,3 +577,45 @@ def test_the_store_adds_no_text_to_an_exported_report(database, tmp_path, approv
         store.add_text(report_id, text)
 
     assert [t.version for t in store.texts(report_id)] == [1]
+
+
+def test_the_store_changes_no_approval_of_an_exported_report(database, tmp_path, approved):
+    finding_id, _ = approved
+    service, store, report_id = exported_report(database, tmp_path, finding_id)
+    before = store.current_text(report_id)
+
+    with pytest.raises(ReportExported):
+        store.approve_text(report_id, 1, "someone else", NOW)
+
+    after = store.current_text(report_id)
+    assert (after.approved_by, after.approved_at) == (before.approved_by, before.approved_at)
+
+
+def test_the_store_approves_only_the_newest_text(database, tmp_path, approved):
+    finding_id, _ = approved
+    service, store = make_service(database, tmp_path, [reply()])
+    report_id = service.draft((finding_id,)).report_id
+    service.edit(report_id, {"fix": "Use parameters."}, "ayse")
+
+    # A reviewer who read version 1 approves it after the edit was saved.
+    with pytest.raises(StaleVersion):
+        store.approve_text(report_id, 1, "ayse", NOW)
+
+    assert [t.approved_by for t in store.texts(report_id)] == [None, None]
+    with pytest.raises(UnknownReport):
+        store.approve_text(report_id, 9, "ayse", NOW)
+
+
+def test_approving_a_text_waits_for_the_report_row(database, tmp_path, approved):
+    finding_id, _ = approved
+    service, store = make_service(database, tmp_path, [reply()])
+    report_id = service.draft((finding_id,)).report_id
+
+    with psycopg.connect(database) as other:
+        other.execute("SELECT id FROM reports WHERE id = %s FOR UPDATE", (report_id,))
+        approval = InBackground(lambda: store.approve_text(report_id, 1, "ayse", NOW))
+        assert approval.waits_for_a_lock(database), "the approval didn't wait for the report"
+        other.commit()
+
+    assert approval.finish() is None
+    assert store.current_text(report_id).approved_by == "ayse"

@@ -219,15 +219,25 @@ class PostgresReportStore:
             return self._insert_text(conn, report_id, version, text)
 
     def approve_text(self, report_id: str, version: int, approver: str, at: datetime) -> ReportText:
+        """Sets the approval of one version, under the lock of the report row. Raises
+        ReportExported when the report was exported, so an export can't have its approver
+        rewritten, and StaleVersion when a newer text was saved after the reviewer read this
+        one."""
         with self._connect() as conn:
-            row = conn.execute(
+            row = self._report_row(conn, report_id, lock=True)
+            if row["status"] == "exported":
+                raise ReportExported(f"report {report_id} was exported and can't change")
+            newest = self._newest_version(conn, report_id)
+            if version != newest:
+                if 1 <= version < newest:
+                    raise StaleVersion(f"version {version} is not the newest, which is {newest}")
+                raise UnknownReport(f"{report_id} version {version}")
+            saved = conn.execute(
                 f"""UPDATE report_texts SET approved_by = %s, approved_at = %s
                     WHERE report_id = %s AND version = %s RETURNING {TEXT_COLUMNS}""",
                 (approver, at, report_id, version),
             ).fetchone()
-        if row is None:
-            raise UnknownReport(f"{report_id} version {version}")
-        return _text(row)
+        return _text(saved)
 
     # Export -----------------------------------------------------------------------------------
 
