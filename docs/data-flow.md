@@ -38,7 +38,7 @@ flowchart TB
   clone -->|files only, no links or .git| checkout
   checkout -->|source, read-only| build
   build -->|dependency requests| proxy
-  proxy -->|HTTPS, Maven Central only| maven
+  proxy -->|HTTPS, CONNECT to repo.maven.apache.org:443 only| maven
   maven -->|dependencies| proxy
   build -->|compiled classes and libraries| analyzer
   checkout -->|source, read-only| analyzer
@@ -148,7 +148,7 @@ Prompts carry no repository name or URL and no CVE IDs or CVE descriptions, so t
 | Code is passed as data, never as instructions | the prompt templates, which put code only inside the marked data block (docs/class-diagrams.md) | T3.1 |
 | Every request to an LLM goes through one place | the provider interface is the only code that holds the API keys and calls the APIs | T3.1 |
 | Analyzers can't send anything out | `--network none` on every analyzer container. Only the Java build step has network, and it reaches only the tunnel to Maven Central's host name (docs/interfaces.md). | T2.1 |
-| Scanned code can't hide its own findings | the plug-ins turn off in-source suppression, the export drops the tools' ignore files, and the adapters keep suppressed results (docs/interfaces.md) | T2.2 |
+| Scanned code can't hide its own findings | the plug-ins turn off in-source suppression, the export drops the tools' ignore files, and the adapters keep suppressed results (docs/interfaces.md). The exception is SpotBugs, which drops results marked `@SuppressFBWarnings` before it writes SARIF, while Semgrep's Java rules still see that code. | T2.2 |
 | Nothing is exported before approval | the report service checks the finding's latest review and the approval of the report's current text before it writes a file (F5). The API requires a token, and no container that Sieve starts can reach it. | T5.2 |
 | API keys never reach the repository | `.env` is in `.gitignore`, and Gitleaks scans the full history in CI | T1.3 |
 
