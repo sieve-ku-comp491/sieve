@@ -101,6 +101,19 @@ def _grammar(name: str) -> _Grammar:
     return _grammars[name]
 
 
+@dataclass(frozen=True)
+class _Function:
+    """A function with the bytes it covers, from its first decorator to its end, so that
+    functions on one line can still be told apart."""
+
+    span: FunctionSpan
+    start_byte: int
+    end_byte: int
+
+    def contains(self, other: "_Function") -> bool:
+        return self.start_byte <= other.start_byte and other.end_byte <= self.end_byte
+
+
 class TreeSitterFunctionLookup:
     """The FunctionLookup of deduplication (app.dedup.functions) for one scan's checkout.
 
@@ -110,19 +123,38 @@ class TreeSitterFunctionLookup:
 
     def __init__(self, reader: CheckoutReader):
         self._reader = reader
-        self._functions: dict[str, list[FunctionSpan]] = {}
+        self._parsed: dict[str, list[_Function]] = {}
 
     def enclosing_function(self, file: str, line: int) -> FunctionSpan | None:
-        if file not in self._functions:
-            self._functions[file] = self.functions(file)
-        inside = [f for f in self._functions[file] if f.start_line <= line <= f.end_line]
-        # Functions nest, so the innermost one is the last to start, and of two that start on
-        # the same line, the first to end.
-        return max(inside, key=lambda f: (f.start_line, -f.end_line), default=None)
+        inside = [f for f in self._functions(file) if f.span.start_line <= line <= f.span.end_line]
+        if not inside:
+            return None
+        # Two functions are either nested or apart, so in byte order a function is innermost
+        # when the next one starts after it ends.
+        innermost = [
+            f
+            for f, after in zip(inside, [*inside[1:], None], strict=True)
+            if after is None or after.start_byte >= f.end_byte
+        ]
+        if len(innermost) == 1:
+            return innermost[0].span
+        # Functions that aren't nested in each other share the line, as in minified code, so the
+        # line can't tell which one a finding is in. The function around all of them is the
+        # closest answer, when there is one.
+        around = [f for f in inside if all(f.contains(g) for g in innermost)]
+        return around[-1].span if around else None
 
     def functions(self, file: str) -> list[FunctionSpan]:
-        """Every function of the file, in order of their first line. Empty when the file can't
-        be read or its language isn't one we parse."""
+        """Every function of the file, in the order they start. Empty when the file can't be
+        read or its language isn't one we parse."""
+        return [f.span for f in self._functions(file)]
+
+    def _functions(self, file: str) -> list[_Function]:
+        if file not in self._parsed:
+            self._parsed[file] = self._parse(file)
+        return self._parsed[file]
+
+    def _parse(self, file: str) -> list[_Function]:
         language = language_of(file)
         if language is None:
             return []
@@ -135,11 +167,11 @@ class TreeSitterFunctionLookup:
         tree = Parser(grammar.language).parse("\n".join(lines).encode("utf-8"))
         nodes = QueryCursor(grammar.query).captures(tree.root_node).get("function", [])
         return sorted(
-            {_span(node) for node in nodes}, key=lambda f: (f.start_line, -f.end_line, f.name)
+            (_function(node) for node in nodes), key=lambda f: (f.start_byte, -f.end_byte)
         )
 
 
-def _span(node: Node) -> FunctionSpan:
+def _function(node: Node) -> _Function:
     first = node
     # Python wraps a decorated function in a decorated_definition that starts at the first
     # decorator. Java's annotations and JavaScript's method decorators are inside the node.
@@ -156,7 +188,8 @@ def _span(node: Node) -> FunctionSpan:
     end_row, end_column = node.end_point[0], node.end_point[1]
     if end_column == 0 and end_row > node.start_point[0]:
         end_row -= 1
-    return FunctionSpan(_name(node), first.start_point[0] + 1, end_row + 1)
+    span = FunctionSpan(_name(node), first.start_point[0] + 1, end_row + 1)
+    return _Function(span, first.start_byte, node.end_byte)
 
 
 def _name(node: Node) -> str:

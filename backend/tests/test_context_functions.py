@@ -387,3 +387,18 @@ def test_a_comment_between_decorators_keeps_the_first_one(tmp_path):
     assert [lookup.enclosing_function("views.py", line) for line in range(9, 14)] == [title] * 5
     toggle = FunctionSpan("Panel.toggle", 2, 7)
     assert [lookup.enclosing_function("panel.ts", line) for line in range(2, 8)] == [toggle] * 6
+
+
+def test_functions_that_share_a_line_give_the_function_around_them(tmp_path):
+    """In minified code the line can't tell which of two functions on it a finding is in."""
+    source = (
+        "function a(){x()}function b(){y()}\n"
+        "(function(){function c(){x()}function d(){y()}})();\n"
+        "function outer(){return function inner(){go()}}\n"
+    )
+    lookup = lookup_for(tmp_path, {"bundle.min.js": source})
+
+    assert lookup.enclosing_function("bundle.min.js", 1) is None
+    assert lookup.enclosing_function("bundle.min.js", 2) == FunctionSpan("anonymous function", 2, 2)
+    # Nested functions on one line still give the inner one.
+    assert lookup.enclosing_function("bundle.min.js", 3) == FunctionSpan("inner", 3, 3)
