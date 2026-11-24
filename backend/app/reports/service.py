@@ -75,7 +75,7 @@ class ReportService:
         """The reviewer's change to the text. It is a new version that needs a new approval, and
         the earlier version stays. A change that leaves the text as it is saves nothing, so it
         doesn't undo an approval. Raises ReportInvalid for an unknown field or a text that is not
-        a complete report (F6)."""
+        a complete report (F6), and NotApproved when no finding of the report is approved."""
         report = self._open(report_id)
         current = self.store.current_text(report_id)
         unknown = sorted(set(fields) - set(TEXT_FIELDS))
@@ -90,7 +90,7 @@ class ReportService:
         edited = current.with_fields(**changes)
         if edited == current:
             return self.get(report_id)
-        context = self.store.finding_context(report.finding_ids)
+        context = self._approved_members(report.finding_ids)
         edited = edited.with_fields(source="reviewer_edit", author=editor, llm_call_id=None)
         found = problems(edited, context.cwes)
         if found:
@@ -99,11 +99,13 @@ class ReportService:
         return self.get(report_id)
 
     def redraft(self, report_id: str) -> Report:
-        """A new draft from the model, as the next version. The earlier text goes into the
-        request, so the answer is a new text and not the cached one. It needs a new approval."""
+        """A new draft from the model, as the next version, for the members that are approved
+        now, so it brings the severity and the locations up to date after a member is rejected
+        or the finding is edited. The earlier text goes into the request, so the answer is a new
+        text and not the cached one. It needs a new approval. Raises NotApproved when no member
+        is approved."""
         report = self._open(report_id)
-        context = self.store.finding_context(report.finding_ids)
-        self._require_approved(context)
+        context = self._approved_members(report.finding_ids)
         previous = self.store.current_text(report_id)
         text = self._ask(context, attempt=previous.version + 1, previous=previous)
         self.store.add_text(report_id, text)
