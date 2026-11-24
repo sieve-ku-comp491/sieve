@@ -39,8 +39,12 @@ services:
   maven-proxy:
     build: ./maven-proxy
     read_only: true
+    # The image declares /var/log/squid and /var/spool/squid as volumes. As tmpfs mounts they
+    # leave no anonymous volumes behind.
     tmpfs:
       - /tmp
+      - /var/log/squid
+      - /var/spool/squid
     cap_drop:
       - ALL
     security_opt:

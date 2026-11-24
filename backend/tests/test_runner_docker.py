@@ -297,7 +297,7 @@ def maven_proxy(client):
         name=f"sieve-test-maven-proxy-{suffix}",
         network=egress.name,
         read_only=True,
-        tmpfs={"/tmp": ""},
+        tmpfs={"/tmp": "", "/var/log/squid": "", "/var/spool/squid": ""},
         cap_drop=["ALL"],
         security_opt=["no-new-privileges"],
     )
@@ -311,7 +311,7 @@ def maven_proxy(client):
             time.sleep(0.2)
         yield build.name
     finally:
-        proxy.remove(force=True)
+        proxy.remove(force=True, v=True)
         build.remove()
         egress.remove()
 
