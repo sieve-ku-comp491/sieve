@@ -252,9 +252,19 @@ def test_missing_image_is_a_runner_error(client, data_dir):
     assert "build it first" in log_text(data_dir, run)
 
 
+def create_build_network(client):
+    """An internal network with no host address on its bridge, like sieve-build in
+    docker-compose.yml."""
+    return client.networks.create(
+        f"sieve-test-build-{uuid.uuid4().hex[:8]}",
+        internal=True,
+        options={"com.docker.network.bridge.inhibit_ipv4": "true"},
+    )
+
+
 @pytest.fixture
 def build_network(client):
-    network = client.networks.create(f"sieve-test-build-{uuid.uuid4().hex[:8]}", internal=True)
+    network = create_build_network(client)
     yield network.name
     network.remove()
 
@@ -284,13 +294,25 @@ def test_build_step(client, data_dir, build_network):
                     pass
 
 
+def test_a_build_network_with_a_host_address_is_refused(client, data_dir):
+    network = client.networks.create(f"sieve-test-build-{uuid.uuid4().hex[:8]}", internal=True)
+    try:
+        runner = make_runner(client, data_dir, build_network=network.name)
+        run = run_one(runner, checkout(data_dir, "build"), manifest(build=BuildStep(image=IMAGE)))
+    finally:
+        network.remove()
+    assert (run.status, run.reason) == (RunStatus.FAILED, Reason.RUNNER_ERROR)
+    assert "not an internal bridge network with no host address" in log_text(data_dir, run)
+    assert containers_of(client, run) == []
+
+
 @pytest.fixture(scope="module")
 def maven_proxy(client):
     """maven-proxy as Compose starts it: on an internal build network, where build containers
     reach it as maven-proxy, and on an ordinary network that has a route out."""
     image, _ = client.images.build(path=str(MAVEN_PROXY_DIR), tag=MAVEN_PROXY_IMAGE, rm=True)
     suffix = uuid.uuid4().hex[:8]
-    build = client.networks.create(f"sieve-test-build-{suffix}", internal=True)
+    build = create_build_network(client)
     egress = client.networks.create(f"sieve-test-egress-{suffix}")
     proxy = client.containers.create(
         image.id,
