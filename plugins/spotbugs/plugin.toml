@@ -1,0 +1,12 @@
+name = "spotbugs"
+image = "sieve-plugin-spotbugs:4.10.5-fsb1.14.0"
+languages = ["java"]
+adapter = "spotbugs"
+timeout_seconds = 1800
+
+[versions]
+tool = "4.10.5"
+rules = "find-sec-bugs 1.14.0"
+
+[build]
+image = "sieve-plugin-spotbugs-build:jdk25-3.9.16"

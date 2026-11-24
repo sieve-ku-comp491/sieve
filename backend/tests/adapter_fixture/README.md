@@ -51,3 +51,17 @@ The fingerprints and context hashes in `test_adapters_gitleaks.py` were computed
 docs/finding-format.md, not with the adapter: rule, file and lines read from the SARIF file, every
 flagged line replaced by `REDACTED`, and the occurrence counted by line among the results with the
 same rule and file.
+
+`spotbugs-webgoat.sarif` is real output of the SpotBugs plug-in (SpotBugs 4.10.5, Find Security
+Bugs 1.14.0, through the runner) on OWASP WebGoat v2026.5 at commit
+7e198f39189f33e1912f7cbb60e24e42635ca06a, cut down to the 9 results in
+`HashingAssignment.java` and `challenge5/Assignment5.java`, and indented for reading. The
+results, the rules and the rest of the run were not edited. All 35 rules stay, because the
+results point to them by `ruleIndex`. The run is from the plug-in with SPRING_ENDPOINT left
+out (`plugins/spotbugs/security-only.xml`): 219 results on WebGoat instead of 455, each of
+them the same as in the run before that change, apart from `ruleIndex`.
+
+`webgoat/` holds those two files from WebGoat at the same commit, at their paths in the
+repository, under WebGoat's GPL-2.0-or-later license (`webgoat/LICENSE.txt`). SpotBugs writes
+their paths relative to the source folder `src/main/java`, which `originalUriBaseIds` names as
+`file:/src/src/main/java/`.
