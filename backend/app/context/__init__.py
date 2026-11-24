@@ -3,6 +3,7 @@
 from app.context.functions import TreeSitterFunctionLookup, language_of
 from app.context.injection import InjectionScanner, instructions_in
 from app.context.items import CodeContext, ContextCollector, Lines, Repo, TriageItem
+from app.context.store import scan_items
 
 __all__ = [
     "CodeContext",
@@ -14,4 +15,5 @@ __all__ = [
     "TriageItem",
     "instructions_in",
     "language_of",
+    "scan_items",
 ]
