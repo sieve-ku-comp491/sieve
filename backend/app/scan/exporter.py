@@ -123,7 +123,8 @@ class CheckoutExporter:
         return sha
 
     def _resolve(self, work: Path, refs: Path, ref: str, url: str) -> str:
-        """The full hash of ref, if it is reachable from a branch or tag of the clone."""
+        """The full hash of ref, if it is reachable from a branch or tag of the clone. The error
+        leaves out Git's own output, which says nothing more and differs between Git builds."""
         not_found = (
             f"commit {ref} is not on a branch or tag of {url}"
             if FULL_HASH.fullmatch(ref)
@@ -133,20 +134,22 @@ class CheckoutExporter:
             work,
             "-C", str(refs), "rev-parse", "--verify", "--quiet", "--end-of-options",
             f"{ref}^{{commit}}",
-            failure=not_found,
+            failure=not_found, git_output=False,
         )  # fmt: skip
         sha = resolved.strip()
         containing = self._git(
             work,
             "-C", str(refs), "for-each-ref", "--count=1", "--format=%(refname)",
             f"--contains={sha}", "refs/heads", "refs/tags",
-            failure=not_found,
+            failure=not_found, git_output=False,
         )  # fmt: skip
         if not containing.strip():
             raise ExportError(not_found)
         return sha
 
-    def _git(self, work: Path, *args: str, failure: str, stdout=None) -> str:
+    def _git(
+        self, work: Path, *args: str, failure: str, stdout=None, git_output: bool = True
+    ) -> str:
         home = work / "home"
         home.mkdir(exist_ok=True)
         env = {name: os.environ[name] for name in PASSED_VARIABLES if name in os.environ}
@@ -174,7 +177,7 @@ class CheckoutExporter:
         except OSError as error:
             raise ExportError(f"{failure}: can't run git: {error}") from None
         if completed.returncode != 0:
-            detail = _last_line(completed.stderr)
+            detail = _last_line(completed.stderr) if git_output else ""
             raise ExportError(f"{failure}: {detail}" if detail else failure)
         if stdout is not None:
             return ""

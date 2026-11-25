@@ -145,15 +145,41 @@ def test_a_short_hash_resolves(origin, tmp_path):
 
 
 def test_a_commit_on_no_branch_or_tag_is_refused_even_though_the_server_serves_it(origin, tmp_path):
-    with pytest.raises(ExportError, match="is not on a branch or tag of"):
+    with pytest.raises(ExportError) as refused:
         export(origin, origin["fork_only"], tmp_path / "src")
+    url = origin["entry"].url
+    assert str(refused.value) == f"commit {origin['fork_only']} is not on a branch or tag of {url}"
     assert not (tmp_path / "src").exists()
     assert not (tmp_path / "src.git-work").exists()
 
 
+def test_the_refusal_of_a_commit_leaves_out_what_git_printed(origin, tmp_path, monkeypatch):
+    # Apple's Git 2.39.5 ends its error with this warning, and other builds print nothing.
+    run = subprocess.run
+
+    def run_like_apple_git(args, **kwargs):
+        completed = run(args, **kwargs)
+        if "rev-parse" in args and completed.returncode != 0:
+            completed.stderr += (
+                b"warning: lazy fetching disabled; some objects may not be available\n"
+            )
+        return completed
+
+    monkeypatch.setattr("app.scan.exporter.subprocess.run", run_like_apple_git)
+    with pytest.raises(ExportError) as refused:
+        export(origin, origin["fork_only"], tmp_path / "src")
+    url = origin["entry"].url
+    assert str(refused.value) == f"commit {origin['fork_only']} is not on a branch or tag of {url}"
+
+
 def test_an_unknown_ref_is_refused(origin, tmp_path):
-    with pytest.raises(ExportError, match="no-such-branch is not a branch, tag or commit"):
+    with pytest.raises(ExportError) as refused:
         export(origin, "no-such-branch", tmp_path / "src")
+    url = origin["entry"].url
+    assert (
+        str(refused.value)
+        == f"no-such-branch is not a branch, tag or commit on a branch or tag of {url}"
+    )
 
 
 def test_only_the_allowed_protocols_are_used(origin, tmp_path):
