@@ -1,7 +1,8 @@
 """python -m app.dedup group <scan ID>, or python -m app.dedup csv <scan ID> (see --help).
 
-Both connect to DATABASE_URL. group runs the rule step without a function lookup, so findings
-are grouped by the same file and nearby lines until the tree-sitter lookup of T3.3 is there.
+Both connect to DATABASE_URL. group runs the rule step and the text-similarity step without a
+function lookup, so findings are grouped by the same file and nearby lines until the tree-sitter
+lookup of T3.3 is there. The LLM step needs a triage run's budget, so it runs only in triage.
 """
 
 import argparse
@@ -10,13 +11,16 @@ import sys
 from pathlib import Path
 
 from app.dedup.groups import GroupingError
+from app.dedup.similarity import SimilarityStep
 from app.dedup.store import group_scan, write_groups_csv
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.dedup")
     commands = parser.add_subparsers(dest="command", required=True)
-    group = commands.add_parser("group", help="group a scan's duplicate findings by the rules")
+    group = commands.add_parser(
+        "group", help="group a scan's duplicate findings by the rules and by text similarity"
+    )
     group.add_argument("scan_id")
     out = commands.add_parser(
         "csv", help="write a scan's groups as the CSV of python -m app.eval metrics dedup"
@@ -31,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.command == "group":
         try:
-            groups = group_scan(conninfo, args.scan_id)
+            groups = group_scan(conninfo, args.scan_id, later_steps=[SimilarityStep()])
         except GroupingError as error:
             print(error, file=sys.stderr)
             return 1

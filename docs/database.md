@@ -411,9 +411,9 @@ One row per group of findings in one scan that describe the same issue. Each gro
 | `id` | uuid | no | primary key, the triage item's `item_id` for a group (docs/interfaces.md) |
 | `scan_id` | uuid | no | the scan, references `scans` |
 | `representative_finding_id` | uuid | yes | the finding the review screen shows first. It references `findings (id, group_id)` together with the group's own `id`, so the representative must be a member of this group. The check is deferred to the end of the transaction, because the group and its members' `group_id` are written together. |
-| `method` | text | no | `rule`, `similarity` or `llm` |
-| `rule` | text | yes | for `rule`: the rule that matched, `same_function_related_cwe` or `nearby_lines_related_cwe` (`backend/app/dedup/rules.py`) |
-| `similarity` | numeric(4,3) | yes | for `similarity`: the score that put the findings together, from 0 to 1 |
+| `method` | text | no | `rule`, `similarity` or `llm`: the last step that changed the group |
+| `rule` | text | yes | for `rule`: the rule that matched, `same_function_related_cwe` or `nearby_lines_related_cwe` (`backend/app/dedup/rules.py`). Kept when a later step adds to the group. |
+| `similarity` | numeric(4,3) | yes | for `similarity`: the text-similarity score that put the findings together, from 0 to 1. Kept when the LLM step adds to the group. |
 | `reason` | text | no | one sentence a reviewer can read, such as "Same function and related CWEs (CWE-77 and CWE-78)" |
 | `created_at` | timestamptz | no | |
 
@@ -422,6 +422,8 @@ Constraints:
 - `(id, scan_id)` is unique, and `findings (group_id, scan_id)` references it, so a group's members all come from the group's scan.
 - A check constraint requires `rule` for `method = 'rule'` and `similarity` for `method = 'similarity'`.
 - "At least two findings" and "at least one LLM call for `method = 'llm'`" can't be check constraints. The deduplication code enforces them, and writes a group and its members in one transaction.
+
+More than one step can form a group: text similarity can add a finding to a group of the rules, and the LLM step can join two groups (docs/interfaces.md, Triage API, Steps). `method` is then the last step that changed the group. `rule` stays set when the rules formed part of it, `similarity` holds the score of a text-similarity join when there was one, and `duplicate_group_llm_calls` links the group to every call behind it.
 
 We tested these keys on PostgreSQL 17: a member from another scan and a representative from outside the group are both rejected, and a valid group commits.
 

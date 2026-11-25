@@ -14,16 +14,30 @@ import csv
 import io
 import json
 import uuid
+from decimal import Decimal
 from pathlib import Path
 
 import psycopg
 import pytest
 
 from app.adapters import AdapterResult, Finding, Location
-from app.dedup import SAME_FUNCTION, FunctionSpan, Group, GroupingError, group_scan
+from app.dedup import (
+    SAME_FUNCTION,
+    FunctionSpan,
+    Group,
+    GroupingError,
+    LLMStep,
+    SimilarityStep,
+    group_scan,
+)
 from app.dedup.__main__ import main as dedup_main
 from app.dedup.store import save_groups, scan_findings, write_groups_csv
 from app.eval.__main__ import main as eval_main
+from app.llm.budget import Budget
+from app.llm.catalog import Catalog, ModelInfo, Price
+from app.llm.client import LLMClient
+from app.llm.fake import FakeProvider
+from app.llm.postgres import PostgresCallStore
 from app.runner.manifest import PluginManifest
 from app.runner.runner import RunStatus
 from app.store import PostgresRunStore, load_sarif
@@ -290,6 +304,67 @@ def test_an_llm_group_links_to_its_calls(database):
     assert method == ("llm", None)
 
 
+def test_the_llm_step_links_the_calls_it_logged(database, pygoat_findings):
+    """The LLM step inside group_scan, with the call log in llm_calls, which writes each call on
+    a connection of its own while the scan is locked. The two findings carry the rules and
+    messages of the unclear pair in test_dedup_llm.py, on one line, with CWEs the rules can't
+    relate."""
+    scan_id = store_scan(database, {"semgrep": [(30, ["CWE-89"]), (30, ["CWE-915"])]})
+    (cursor,) = [
+        f
+        for f in pygoat_findings
+        if f.rule_id.endswith("sql-injection-db-cursor-execute") and f.start_line == 46
+    ]
+    (tainted,) = [
+        f
+        for f in pygoat_findings
+        if f.rule_id.endswith("django.security.injection.tainted-sql-string")
+    ]
+    with psycopg.connect(database) as conn:
+        for fingerprint, finding in (("v1:semgrep0", cursor), ("v1:semgrep1", tainted)):
+            conn.execute(
+                "UPDATE findings SET rule_id = %s, message = %s"
+                " WHERE scan_id = %s AND fingerprint = %s",
+                (finding.rule_id, finding.message, scan_id, fingerprint),
+            )
+    price = Price(Decimal("1"), Decimal("2"), Decimal("0.1"), Decimal("1.25"))
+    store = PostgresCallStore(database)
+    client = LLMClient(
+        providers={
+            "fake": FakeProvider(
+                replies=[
+                    json.dumps({"same_issue": "unsure"}),
+                    json.dumps({"same_issue": "yes", "reason": "One query."}),
+                ]
+            )
+        },
+        catalog=Catalog({m: ModelInfo(m, "fake", price) for m in ("cheap", "strong")}, "test"),
+        budget=Budget(Decimal("1")),
+        call_log=store,
+        cache=store,
+    )
+
+    (group,) = group_scan(
+        database,
+        scan_id,
+        later_steps=[SimilarityStep(), LLMStep(client, "cheap", "strong")],
+        triage_run_id=triage_run(database, scan_id),
+    )
+
+    with psycopg.connect(database) as conn:
+        linked = conn.execute(
+            "SELECT c.model, c.template_name FROM duplicate_group_llm_calls l"
+            " JOIN llm_calls c ON c.id = l.llm_call_id WHERE l.group_id = %s"
+            " ORDER BY c.created_at",
+            (group.group_id,),
+        ).fetchall()
+        saved = conn.execute(
+            "SELECT method, reason FROM duplicate_groups WHERE id = %s", (group.group_id,)
+        ).fetchone()
+    assert linked == [("cheap", "duplicate_check"), ("strong", "duplicate_check")]
+    assert saved == ("llm", "Same file, line 30, and a model judged them one issue: One query.")
+
+
 def test_a_group_that_cannot_be_saved_leaves_the_scan_ungrouped(database):
     """The second group names a finding of another scan, so neither group is saved."""
     scan_id = store_scan(database, {"semgrep": [(5, ["CWE-89"]), (5, ["CWE-89"]), (40, [])]})
@@ -344,4 +419,7 @@ def test_the_command_line_groups_a_scan_and_writes_the_csv(database, pygoat, tmp
     assert dedup_main(["group", pygoat]) == 1
     assert dedup_main(["csv", pygoat, "--out", str(out)]) == 0
     rows = list(csv.DictReader(io.StringIO(out.read_text(encoding="utf-8"))))
-    assert len(rows) == 9 and sum(1 for row in rows if row["group"]) == 4
+    # The four CWE-89 results by the rules, and the two copies of tainted-sql-string, tagged
+    # CWE-915 and CWE-704, by text similarity.
+    assert len(rows) == 9 and sum(1 for row in rows if row["group"]) == 6
+    assert len({row["group"] for row in rows if row["group"]}) == 2
