@@ -308,6 +308,37 @@ def test_a_save_after_the_finding_was_triaged_again_is_refused(database, triaged
     assert edit(client, target, reasoning="still reachable").json()["verdict_id"] == new
 
 
+@pytest.mark.parametrize("text", [r"a\u0000b", r"a\ud800b", r"\udfff"])
+@pytest.mark.parametrize(
+    ("path", "field"),
+    [
+        ("reviews", "reviewer"),
+        ("reviews", "comment"),
+        ("edits", "editor"),
+        ("edits", "reasoning"),
+        ("edits", "note"),
+        ("edits", "cvss_v4_vector"),
+    ],
+)
+def test_text_postgresql_cant_store_is_refused(triaged, path, field, text):
+    """A NUL character or a lone surrogate can't be stored, so it is a 422, not a 500."""
+    client, _, target = triaged
+    edit_id, verdict_id = seen(client, target)
+    if path == "reviews":
+        body = {"decision": "approve", "reviewer": "Furkan"}
+    else:
+        body = {"editor": "Furkan", "verdict": "unsure"}
+    body |= {"finding_edit_id": edit_id, "verdict_id": verdict_id}
+    raw = json.dumps(body)[:-1] + f', "{field}": "{text}"}}'
+    response = client.post(
+        f"/findings/{target}/{path}",
+        content=raw,
+        headers=UI | {"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422, response.text
+    assert state(client, target) == "triaged"
+
+
 @pytest.mark.parametrize(
     ("vector", "reason"),
     [

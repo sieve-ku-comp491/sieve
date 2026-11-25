@@ -5,7 +5,14 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 State = Literal["new", "grouped", "triaged", "edited", "approved", "rejected", "reported"]
 Verdict = Literal["true_positive", "false_positive", "unsure"]
@@ -285,8 +292,27 @@ class FindingDetail(BaseModel):
     group: Group | None
 
 
-Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
-Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20000)]
+def storable(value: str) -> str:
+    """PostgreSQL text can't hold NUL, and UTF-8 can't encode a lone surrogate, so both are
+    refused here as a 422 instead of failing in the database."""
+    if "\x00" in value:
+        raise ValueError("must not contain a NUL character")
+    if any("\ud800" <= char <= "\udfff" for char in value):
+        raise ValueError("must not contain a lone surrogate")
+    return value
+
+
+Name = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
+    AfterValidator(storable),
+]
+Text = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=20000),
+    AfterValidator(storable),
+]
+Vector = Annotated[str, StringConstraints(max_length=200), AfterValidator(storable)]
 
 SEEN_EDIT = Field(
     description="the latest edit the reviewer saw, from latest_edit of the finding, or null if "
@@ -321,9 +347,8 @@ class EditIn(BaseModel):
     verdict_id: UUID | None = SEEN_VERDICT
     verdict: Verdict | None = None
     reasoning: Text | None = None
-    cvss_v4_vector: str | None = Field(
+    cvss_v4_vector: Vector | None = Field(
         default=None,
-        max_length=200,
         description="the 11 base metrics. The score and the level are computed from it.",
     )
     note: Text | None = None
