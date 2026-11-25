@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from app.eval import expected, metrics, neutral, nvd, sources
+from app.eval import expected, findings, metrics, neutral, nvd, sources
 
 DATASETS = {
     "benchmark-java": lambda root, s: expected.benchmark_java(root, s.commit),
@@ -30,6 +30,25 @@ def main(argv: list[str] | None = None) -> int:
     cves = commands.add_parser("cves", help="look up the NVD vector of each CWE-Bench-Java CVE")
     cves.add_argument("--out", type=Path, default=nvd.CVES_FILE)
 
+    tools = commands.add_parser("findings", help="turn analyzer SARIF files into a findings CSV")
+    tools.add_argument(
+        "--sarif",
+        action="append",
+        required=True,
+        metavar="TOOL=FILE",
+        help="a tool name and its SARIF file, for example semgrep=results.sarif, repeatable",
+    )
+    tools.add_argument("--strip-prefix", default="", help="remove this leading folder from paths")
+    tools.add_argument(
+        "--root",
+        action="append",
+        default=[],
+        metavar="TOOL=DIR",
+        help="the scanned folder of a tool as an absolute path, for a tool that names files by "
+        "a base folder, such as spotbugs, repeatable",
+    )
+    tools.add_argument("--out", type=Path, required=True)
+
     score = commands.add_parser("metrics", help="compute one metric and print it as JSON")
     kinds = score.add_subparsers(dest="metric", required=True)
     fp = kinds.add_parser("false-positives", help="false-positive check on a Benchmark")
@@ -40,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
     dedup.add_argument("--predicted", type=Path, required=True)
     severity = kinds.add_parser("severity", help="CVSS metrics, score error and level agreement")
     severity.add_argument("--cases", type=Path, required=True)
+    baseline = kinds.add_parser("severity-baseline", help="the analyzer's own severity as a level")
+    baseline.add_argument("--cases", type=Path, required=True)
     cost = kinds.add_parser("cost", help="API cost and time per finding")
     cost.add_argument("--findings", type=Path, required=True)
 
@@ -100,6 +121,25 @@ def run_cves(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_findings(args: argparse.Namespace) -> int:
+    roots = dict(_pair(item, "--root", "TOOL=DIR") for item in args.root)
+    every, total = [], 0
+    for item in args.sarif:
+        tool, file = _pair(item, "--sarif", "TOOL=FILE")
+        result = findings.read_sarif(tool, Path(file), args.strip_prefix, roots.get(tool, ""))
+        every.extend(result.findings)
+        total += result.without_location + result.outside_checkout
+        print(
+            f"{tool}: {len(result.findings)} findings, {result.without_location} without a "
+            f"location, {result.outside_checkout} outside the scanned folder"
+        )
+    findings.write_findings(every, args.out)
+    print(f"{len(every)} findings in {args.out}")
+    if total:
+        print(f"warning: {total} results could not be matched to a path", file=sys.stderr)
+    return 0
+
+
 def run_metrics(args: argparse.Namespace) -> int:
     if args.metric == "false-positives":
         result = metrics.false_positive_check(
@@ -111,10 +151,19 @@ def run_metrics(args: argparse.Namespace) -> int:
         )
     elif args.metric == "severity":
         result = metrics.severity_agreement(metrics.read_severity(args.cases))
+    elif args.metric == "severity-baseline":
+        result = metrics.severity_baseline(metrics.read_severity_baseline(args.cases))
     else:
         result = metrics.cost_and_time(metrics.read_costs(args.findings))
     print(json.dumps(result, indent=2))
     return 0
+
+
+def _pair(item: str, option: str, form: str) -> tuple[str, str]:
+    left, _, right = item.partition("=")
+    if not left or not right:
+        raise SystemExit(f"{option} needs {form}, got {item!r}")
+    return left, right
 
 
 def _not_fetched(chosen: list[sources.Source]) -> bool:
@@ -142,6 +191,7 @@ COMMANDS = {
     "fetch": run_fetch,
     "expected": run_expected,
     "neutral": run_neutral,
+    "findings": run_findings,
     "cves": run_cves,
     "metrics": run_metrics,
 }
