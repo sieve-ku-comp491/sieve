@@ -72,6 +72,10 @@ PATTERNS = [
         # The markup of chat prompts. Text that only mentions a system prompt, as chat apps and
         # their tests do, isn't flagged: the pattern above already flags ignoring one.
         r"<\|im_(?:start|end)\|>|<\|(?:system|user|assistant)\|>|\[/?inst\]|<</?sys>>",
+        # Text shaped like the agent's own answer, or announcing new instructions.
+        r"\bverdict[\"']?\s*[:=]\s*[\"']?(?:false[\s_-]*positives?|benign|safe"
+        r"|not[\s_-]*exploitable)\b"
+        r"|\bnew\s+instructions?\s*:|\b(?:your|following|these)\s+new\s+instructions?\b",
         # Talking to an AI.
         rf"\b(?:(?:note|message|instructions?|hint|reminder|attention|warning)\s+(?:to|for)\s+"
         rf"(?:the\s+|any\s+|all\s+|our\s+)?{AI}"
