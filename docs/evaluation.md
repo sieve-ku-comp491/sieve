@@ -28,6 +28,7 @@ From `backend/`, with the virtual environment from the README:
     python -m app.eval cves                        # look up CVSS vectors in the NVD
     python -m app.eval findings --help             # analyzer SARIF files as a findings CSV
     python -m app.eval metrics --help              # the metric scripts
+    python -m app.eval pilot --help                # the pilot triage, see below
 
 Everything the commands write goes to `eval-data/` in the repository root, which is in .gitignore, except `cves`, which rewrites the committed `backend/app/eval/cves.csv` unless `--out` names another file. Set `SIEVE_EVAL_DIR` to use another folder. `fetch` checks out each source without history, about 350 MB in all, most of it the Java Benchmark, and doesn't download a source that is already at its commit. It always leaves the folder exactly as the commit has it: after a pin changes, the files that only the old version had are removed, and files changed or added by hand are restored or removed. `expected`, `neutral` and `cves` stop and say to run `fetch` when a source isn't checked out at its pinned commit, so their output never records a commit that the files don't match. `cves` waits 6.5 seconds between NVD requests, as the NVD allows without an API key, so it takes about 13 minutes. With `NVD_API_KEY` set, it waits 0.7 seconds.
 
@@ -257,12 +258,84 @@ Table 5 of the proposal compares the severity step with "the analyzer's own seve
 
 The mapping and the metric are done and tested on a small example. The numbers are not: they need the analyzers to run on the vulnerable commit of each of the 117 CVEs of CWE-Bench-Java, which means building 117 projects. That is a separate job, and it can start from the CVE list in `cves.csv`.
 
+## Pilot triage
+
+The pilot sends 100 findings of the baseline run through LLMClient with the draft prompt `backend/app/llm/prompts/false_positive_check.md`, to measure the cost and time per finding (requirement N1, test 3) and to choose the two models of the evaluation. It has no tools and no second opinion: one call per finding, with the finding's tool, rule, CWEs, message and lines as values and the whole case file as the code, read from the neutral copy. Nothing of the case's original name or its answer reaches the model.
+
+### How it was run
+
+The analyzers ran again on the neutral copies of the baseline run, at the same commits and settings, except that SpotBugs ran in the plug-in's own scan image on the Maven build. Every analyzer gave the same true and false positives as in the baseline. Then, from backend/:
+
+    python -m app.eval pilot sample --seed 20261122 \
+        --sarif benchmark-java:semgrep=<semgrep.sarif> --sarif benchmark-java:spotbugs=<spotbugs.sarif> \
+        --sarif benchmark-python:semgrep=<semgrep.sarif> --sarif benchmark-python:bandit=<bandit.sarif>
+    python -m app.eval pilot run --model deepseek-flash --budget 0.05 --limit 10
+    python -m app.eval pilot run --model deepseek-flash --budget 0.50 --limit 100
+    python -m app.eval pilot run --model gpt-6-luna --budget 0.05 --limit 10
+    python -m app.eval pilot run --model gpt-6-luna --budget 0.40 --limit 100
+    python -m app.eval metrics cost --findings ../eval-data/pilot/<model>/results.csv
+    python -m app.eval metrics false-positives --expected ../eval-data/pilot/expected-<dataset>.csv \
+        --findings ../eval-data/pilot/<model>/results-<dataset>.csv
+
+`pilot sample` reads the SARIF files with the pipeline's adapters and keeps the findings that flag a Benchmark case, a finding in the case's file with its CWE or a related one. It takes one finding per case, and visits the CWEs of each Benchmark in turn until it has 50 findings from each. It writes `sample.csv` and the answers of the sampled cases to `eval-data/pilot/`. `pilot run` sends the first `--limit` findings of the sample to one model, skips findings it already has, and stops at its budget, so the first 10 findings of each model were checked before the other 90. `--dry-run` prints the worst-case cost of the calls and sends nothing. The calls were logged in a PostgreSQL `llm_calls` table, with `max_tokens` 4,000 and no effort, so each model thought at its default.
+
+The sample has 4 or 5 findings from each of the 11 CWEs that the analyzers flag in each Benchmark, apart from CWE-601 in Python, which has only 2 flagged cases. 65 of the 100 cases are real: 39 of the 50 in Java, because CWE-327, CWE-328, CWE-330 and CWE-614 have no false positive there, and 26 of the 50 in Python. The 100 findings come from SpotBugs (29), Semgrep (56) and Bandit (15).
+
+The calls ran on 25 Nov 2026 between 06:28 and 07:15 UTC, inside DeepSeek's peak hours, so deepseek-flash was charged its full price. Off-peak it costs half. `llm_calls` has the 200 calls with one template version, `dd1e59257403`, no cache hit and no error.
+
+### Results
+
+| | deepseek-flash | gpt-6-luna |
+|---|---|---|
+| Total cost of 100 findings | US$0.2347 | US$0.0603 |
+| Mean cost per finding | US$0.00235 | US$0.00060 |
+| Median cost, most expensive finding | US$0.00198, US$0.00542 | US$0.00052, US$0.00164 |
+| Mean time, median time, longest | 13.3 s, 8.2 s, 229 s | 7.3 s, 6.3 s, 21 s |
+| Mean tokens in, out | 1,421, 1,695 | 1,355, 872 |
+| Verdicts: true positive, false positive, unsure | 56, 31, 13 | 51, 40, 9 |
+| Replies that aren't valid JSON | 12, all cut off at 4,000 tokens | 0 |
+| Right and wrong verdicts, unsure left out | 81 and 6 | 72 and 19 |
+| Real cases called a false positive | 4 | 13 |
+
+Cost and time come from `metrics cost`. The output tokens include the models' thinking, which is most of deepseek-flash's output. Its 12 cut-off replies ran out of tokens while thinking, and they count as unsure, so only one of its 13 unsure verdicts was the model's own answer.
+
+The targets of F4 on the sample, from `metrics false-positives`, as the share of false positives removed and the share of true positives kept. Every sampled case is flagged before triage, so these two shares are what triage changes. The targets are at least 0.5 and at least 0.9.
+
+| Triage | Java removed | Java kept | Python removed | Python kept |
+|---|---|---|---|---|
+| deepseek-flash | 0.727 | 0.949 | 0.792 | 0.923 |
+| gpt-6-luna | 0.636 | 0.769 | 0.833 | 0.846 |
+| deepseek-flash, gpt-6-luna on its unsure findings | 0.727 | 0.897 | 0.875 | 0.923 |
+| gpt-6-luna, deepseek-flash on its unsure findings | 0.818 | 0.769 | 0.833 | 0.846 |
+
+The two orders are worked out from the same calls: the second model's verdict replaces the first one's where the first was unsure. deepseek-flash first sends 13 findings to gpt-6-luna and costs US$0.00245 and 14.6 s per finding. gpt-6-luna first sends 9 to deepseek-flash and costs US$0.00089 and 8.7 s per finding.
+
+The sample is small. Java has 11 cases that are not real and Python 24, so one verdict moves the share removed by 9 or 4 points, and the share kept by 2.6 or 3.8 points. The numbers rank the models, but T6.4 measures them.
+
+### The two models
+
+gpt-6-luna is the cheaper model. It costs a quarter of deepseek-flash per finding at peak price and half off-peak, it answers faster, and every reply was valid JSON. It keeps too few true positives, though: it called 13 real cases false positives, and the share kept is 0.769 on Java and 0.846 on Python, under the 0.9 target.
+
+deepseek-flash is the stronger model. It gave 81 right and 6 wrong verdicts against 72 and 19, and it is the only one that meets both targets on both Benchmarks on its own. Its weak point is the 12 replies cut off while thinking. A second opinion from gpt-6-luna on those adds about 4% to the cost but loses two Java true positives, so T3.3 should rather give deepseek-flash more room, with a higher `max_tokens` or a set effort. Its longest call took 229 s, so the triage needs a timeout per call.
+
+So the evaluation uses gpt-6-luna as the cheaper model and deepseek-flash as the stronger one, and deepseek-flash answers first. Neither needs a stronger model on its unsure findings yet.
+
+Both models get weak hashing, weak random and insecure cookie cases wrong more than the others: 12 of gpt-6-luna's 19 wrong verdicts and 3 of deepseek-flash's 6 are in CWE-327, CWE-328, CWE-330 and CWE-614. The draft prompt calls a finding a true positive when "data that an attacker can control reaches the flagged operation", which doesn't fit those CWEs, where the algorithm or the missing flag is the weakness. The prompt of T3.3 should say so.
+
+### Budget per finding (N1, test 3)
+
+The budget for the false-positive check is US$0.01 per finding, for both models. A triage run's limit is US$0.01 times the number of findings it triages.
+
+That is four times deepseek-flash's mean cost at peak price and nearly twice its most expensive finding, which leaves room for the `read_file` and `find_definition` tools of #61. Each tool call adds a turn that sends the conversation again. As an estimate, three turns of the pilot's size, with a tool result of about 1,000 tokens each, cost just under US$0.01 on deepseek-flash at peak price. gpt-6-luna stays far below the budget.
+
+For T6.4, 4,766 Java findings and 586 Python findings flag a case, 5,352 in all, so the triage of both Benchmarks has a limit of US$53.52. At the pilot's cost without tools it would spend about US$12.60 on deepseek-flash at peak price and US$3.20 on gpt-6-luna. All 13,389 findings of the two Benchmarks would have a limit of US$133.89.
+
 ## Not covered yet
 
 - Recent CVEs, chosen after the pilot run of T6.2, see above.
 - The labeled duplicate groups and the labeled Juice Shop sample, made by hand in T6.3. The dedup metric reads the groups as they are. The Juice Shop sample is labeled per finding, with many findings in one file, while the false-positive check judges whole files, so it needs a per-finding mode, added with T6.3.
 - The numbers of the severity baseline, which need the analyzers to run on the CVEs' projects, see the baseline run.
-- The pilot triage run and the budget per finding that it sets. The draft prompt and the two models, deepseek-flash and gpt-6-luna, are on #64, and #79 adds gpt-6-luna to the model catalog, so only the run itself is left.
+- The false-positive check with the tools of #61, and the changes the pilot suggests for it: more room for deepseek-flash's thinking, a timeout per call, and a prompt that fits weak hashing, weak random and insecure cookie findings. Its cost per finding has to stay within the US$0.01 budget.
 - The change in docs/requirements.md from T6.1 to T6.2 for when the recent CVEs are chosen, see above.
 - How a scan reaches the neutral copies, see above.
 - The target applications have no expected results of their own: they are scanned for duplicates, reports and the PoC check.
