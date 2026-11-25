@@ -490,6 +490,39 @@ def test_the_store_refuses_a_report_whose_finding_was_rejected_after_the_service
     assert service.get(report_id).status == "draft"
 
 
+def test_the_store_refuses_a_group_report_whose_member_was_rejected_after_the_service_checked(
+    database, tmp_path, scan
+):
+    first = finding(database, scan, CURSOR_EXECUTE, 46)
+    second = finding(database, scan, CURSOR_EXECUTE, 47)
+    third = finding(database, scan, RAW_QUERY, 57)
+    group_id = group(database, scan, first, second, third)
+    triage(database, scan, group_id=group_id)
+    for finding_id in (first, second, third):
+        review(database, finding_id)
+    service, store = make_service(database, tmp_path, [reply()])
+    report_id = service.draft((first, second, third)).report_id
+    service.approve_text(report_id, 1, "ayse")
+    # The service's out-of-date check has passed, and the third finding is rejected while the
+    # export file is written. Two members are still approved, so the report isn't empty, but
+    # the approved text still names the third one's line (F5, test 3).
+    review(database, third, "reject")
+
+    with pytest.raises(NotApproved, match=f"finding {third} is no longer approved.*new draft"):
+        store.mark_exported(report_id, 1, str(tmp_path / "x.md"), "ayse", NOW)
+
+    assert service.get(report_id).status == "draft"
+    with psycopg.connect(database) as conn:
+        drafted = {
+            row[0]
+            for row in conn.execute(
+                "SELECT finding_id::text FROM report_findings WHERE report_id = %s",
+                (report_id,),
+            )
+        }
+    assert drafted == {first, second, third}
+
+
 def test_a_member_rejected_after_the_draft_is_left_out_of_the_new_draft_and_the_export(
     database, tmp_path, scan
 ):

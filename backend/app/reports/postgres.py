@@ -340,14 +340,16 @@ class PostgresReportStore:
     ) -> None:
         """Sets the report to exported, in one transaction that first checks the export again,
         so a decision made since the service checked can't slip through. The report keeps the
-        approved members of its group, each linked to the review that approved it (F5, tests 3
-        and 4).
+        members its text was drafted from, each linked to the review that approved it (F5,
+        tests 3 and 4).
 
         The transaction locks the report and its findings before it checks. A review or an edit
         that is being written waits for the export, or the export waits for it and then sees it,
         so a finding rejected at the same time can't leave a report that is exported with no
-        finding. A member approved after the text was drafted is not in the text, so the export
-        asks for a new draft. Raises StaleVersion when the version is not the newest text."""
+        finding. The approved members have to be exactly the ones the text was drafted from: a
+        member rejected since then is still named in the text, and one approved since then
+        isn't, so either way the export asks for a new draft. Raises StaleVersion when the
+        version is not the newest text."""
         with self._connect() as conn:
             row = self._report_row(conn, report_id, lock=True)
             conn.execute(
@@ -375,21 +377,18 @@ class PostgresReportStore:
                     (report_id,),
                 )
             }
-            late = sorted(m["finding_id"] for m in members if m["finding_id"] not in drafted)
-            if late:
-                raise NotApproved(
-                    [
-                        f"finding {finding_id} was approved after the text was drafted,"
-                        " ask for a new draft"
-                        for finding_id in late
-                    ]
-                )
-            keep = [member["finding_id"] for member in members]
-            conn.execute(
-                """DELETE FROM report_findings WHERE report_id = %s
-                   AND NOT finding_id = ANY(%s::uuid[])""",
-                (report_id, keep),
-            )
+            approved = {member["finding_id"] for member in members}
+            gone = [
+                f"finding {finding_id} is no longer approved since the text was drafted,"
+                " ask for a new draft"
+                for finding_id in sorted(drafted - approved)
+            ]
+            late = [
+                f"finding {finding_id} was approved after the text was drafted, ask for a new draft"
+                for finding_id in sorted(approved - drafted)
+            ]
+            if gone or late:
+                raise NotApproved(gone + late)
             conn.cursor().executemany(
                 """INSERT INTO report_findings (report_id, finding_id, review_id)
                    VALUES (%s, %s, %s)
