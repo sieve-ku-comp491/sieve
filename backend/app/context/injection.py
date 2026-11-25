@@ -11,9 +11,16 @@ and string literals that tree-sitter finds in Python, Java, JavaScript and TypeS
 line of other files, such as templates. Line comments on consecutive lines are read as one text,
 so a sentence split over two of them is still found. A developer's own claim such as "this is
 safe because the value is checked" is not flagged, because it doesn't tell anyone what to answer.
+
+Each line is read as a person sees it: full-width letters and other compatibility forms are
+folded, and invisible format characters, such as a zero-width space or a soft hyphen, and
+Markdown's * and ` are dropped, so none of them can split a word. The phrases are English, so a
+planted comment in another language, or one with a look-alike letter from another alphabet,
+gets through.
 """
 
 import re
+import unicodedata
 from bisect import bisect_right
 from dataclasses import dataclass, field
 
@@ -92,7 +99,17 @@ PATTERNS = [
 
 
 def instructions_in(text: str) -> list[tuple[int, int]]:
-    """Where text looks like instructions to an AI, as (start, end) offsets."""
+    """Where text looks like instructions to an AI, as (start, end) offsets in the text read
+    line by line as a person sees it (_normalize)."""
+    return _matches("\n".join(_normalize(line) for line in text.split("\n")))
+
+
+def _normalize(line: str) -> str:
+    line = unicodedata.normalize("NFKC", line)
+    return "".join(c for c in line if c not in "*`" and unicodedata.category(c) != "Cf")
+
+
+def _matches(text: str) -> list[tuple[int, int]]:
     return sorted((match.start(), match.end()) for p in PATTERNS for match in p.finditer(text))
 
 
@@ -105,16 +122,16 @@ class _Text:
 
     def found(self) -> list[tuple[int, int]]:
         """The first and last line of each place that looks like instructions to an AI."""
-        joined = "\n".join(self.lines)
+        lines = [_normalize(line) for line in self.lines]
         starts = [0]
-        for line in self.lines[:-1]:
+        for line in lines[:-1]:
             starts.append(starts[-1] + len(line) + 1)
         return [
             (
                 self.rows[bisect_right(starts, start) - 1],
                 self.rows[bisect_right(starts, max(start, end - 1)) - 1],
             )
-            for start, end in instructions_in(joined)
+            for start, end in _matches("\n".join(lines))
         ]
 
 
