@@ -7,10 +7,14 @@ service and any other client refuse an export for the same reasons.
 import json
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 import psycopg
 from psycopg.rows import dict_row
 
+from app.adapters import AdapterError, AdapterRegistry
+from app.adapters import Location as AdapterLocation
+from app.checkout import CheckoutReader
 from app.llm.types import CodeBlock
 from app.reports.models import (
     FindingContext,
@@ -29,14 +33,27 @@ from app.reports.store import StoredReport
 TEXT_COLUMNS = """version, source, llm_call_id, author, title, summary, impact, steps_to_reproduce,
     fix, "references", cvss_v4_vector, cvss_v4_score, cvss_v4_level, locations, approved_by,
     approved_at, created_at"""
+# Lines of code on each side of a finding and of a cited line, as in the triage item (#61).
+AROUND = 20
 
 
 class PostgresReportStore:
     """The report store on the findings store's database. Every method opens its own
-    connection, and every change is one transaction."""
+    connection, and every change is one transaction.
 
-    def __init__(self, conninfo: str):
+    With data_dir, the folder where the worker keeps each scan's checkout in
+    scans/<scan ID>/src, a report is drafted from the lines around its findings and the verdict's
+    cited lines. Without it, or for a file that can't be read, only the flagged lines are."""
+
+    def __init__(
+        self,
+        conninfo: str,
+        data_dir: Path | None = None,
+        adapters: AdapterRegistry | None = None,
+    ):
         self.conninfo = conninfo
+        self.data_dir = data_dir
+        self.adapters = adapters if adapters is not None else AdapterRegistry()
 
     def _connect(self) -> psycopg.Connection:
         return psycopg.connect(self.conninfo, row_factory=dict_row)
@@ -52,8 +69,8 @@ class PostgresReportStore:
         ids = _normalized(finding_ids)
         with self._connect() as conn:
             findings = conn.execute(
-                """SELECT id::text, group_id::text, tool, rule_id, message, cwe, file, start_line,
-                          end_line, snippet
+                """SELECT id::text, scan_id::text, group_id::text, tool, rule_id, message, cwe,
+                          file, start_line, end_line, snippet
                    FROM findings WHERE id = ANY(%s::uuid[]) ORDER BY file, start_line, id""",
                 (list(ids),),
             ).fetchall()
@@ -87,6 +104,8 @@ class PostgresReportStore:
                    ORDER BY created_at DESC""",
                 (list(ids),),
             ).fetchall()
+            cited = tuple(_location(item) for item in verdict["cited_lines"])
+            code = self._code(conn, findings, cited)
 
         reasoning = next((e["reasoning"] for e in edits if e["reasoning"]), verdict["reasoning"])
         severity_edit = next((e for e in edits if e["cvss_v4_vector"]), None)
@@ -125,17 +144,58 @@ class PostgresReportStore:
             rules=tuple(RuleHit(row["tool"], row["rule_id"], row["message"]) for row in findings),
             cwes=tuple(cwes),
             locations=tuple(locations),
-            code=tuple(
-                CodeBlock(row["file"], row["start_line"], row["end_line"], row["snippet"])
-                for row in findings
-                if row["snippet"]
-            ),
+            code=code,
             reasoning=reasoning,
-            cited_lines=tuple(_location(item) for item in verdict["cited_lines"]),
+            cited_lines=cited,
             severity=severity,
             justifications=dict(justifications),
             injection_suspected=verdict["injection_suspected"],
         )
+
+    def _code(
+        self, conn: psycopg.Connection, findings: list[dict], cited: tuple[Location, ...]
+    ) -> tuple[CodeBlock, ...]:
+        """For each file of the findings and of the cited lines, the lines around them, read
+        from the scan's checkout. Every finding of the scan in that file is masked by its
+        adapter first, so a secret that Gitleaks found near the report's own finding stays
+        hidden. A file that can't be read, or holds a finding without an adapter, falls back to
+        the findings' stored snippets, which the adapters masked when they were made."""
+        snippets = tuple(
+            CodeBlock(row["file"], row["start_line"], row["end_line"], row["snippet"])
+            for row in findings
+            if row["snippet"]
+        )
+        if self.data_dir is None:
+            return snippets
+        scan_id = findings[0]["scan_id"]
+        spans: dict[str, list[tuple[int, int]]] = {}
+        flagged = [Location(row["file"], row["start_line"], row["end_line"]) for row in findings]
+        for item in [*flagged, *cited]:
+            spans.setdefault(item.file, []).append((item.start_line, item.end_line))
+        masked_by = conn.execute(
+            """SELECT tool, file, start_line, end_line FROM findings
+               WHERE scan_id = %s AND file = ANY(%s)""",
+            (scan_id, list(spans)),
+        ).fetchall()
+
+        reader = CheckoutReader(self.data_dir / "scans" / scan_id / "src")
+        blocks: list[CodeBlock] = []
+        for file, ranges in spans.items():
+            lines = reader.read_lines(file)
+            try:
+                for row in masked_by:
+                    if row["file"] == file and lines is not None:
+                        lines = self.adapters.get(row["tool"]).mask(
+                            lines, AdapterLocation(file, row["start_line"], row["end_line"])
+                        )
+            except AdapterError:
+                lines = None
+            if lines is None:
+                blocks.extend(block for block in snippets if block.path == file)
+                continue
+            for start, end in _around(ranges, len(lines)):
+                blocks.append(CodeBlock(file, start, end, "\n".join(lines[start - 1 : end])))
+        return tuple(blocks)
 
     # Reports and their texts ----------------------------------------------------------------
 
@@ -457,6 +517,23 @@ def _one_item(rows: list[dict]) -> str | None:
 
 def _location(item: dict) -> Location:
     return Location(item["file"], int(item["start_line"]), int(item["end_line"]))
+
+
+def _around(ranges: list[tuple[int, int]], length: int) -> list[tuple[int, int]]:
+    """The ranges with AROUND lines on each side, inside the file's length lines, and merged
+    where they overlap or touch. A range that starts past the end of the file is left out."""
+    widened = sorted(
+        (max(1, start - AROUND), min(length, end + AROUND))
+        for start, end in ranges
+        if 1 <= start <= length
+    )
+    merged: list[tuple[int, int]] = []
+    for start, end in widened:
+        if merged and start <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
 
 
 def _text(row: dict) -> ReportText:

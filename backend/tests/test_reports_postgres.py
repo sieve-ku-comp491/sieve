@@ -665,3 +665,74 @@ def test_the_report_keeps_the_name_of_the_format_it_was_exported_in(database, tm
         (after,) = conn.execute("SELECT format FROM reports WHERE id = %s", (report_id,)).fetchone()
     assert (before, after) == ("markdown", "plain")
     assert store.get_report(report_id).format == "plain"
+
+
+def test_the_draft_gets_the_lines_around_the_finding_from_the_checkout(
+    database, tmp_path, approved
+):
+    finding_id, _ = approved
+    store = PostgresReportStore(database, data_dir=tmp_path / "data")
+
+    (block,) = store.finding_context((finding_id,)).code
+
+    # Line 57 and the cited lines 52 to 57, with 20 lines on each side.
+    assert (block.path, block.start_line, block.end_line) == (LAB, 32, 77)
+    lines = block.text.split("\n")
+    assert lines[42 - 32] == "@app.route('/lab', methods=['GET', 'POST'])"
+    assert "WHERE username='{username}' AND password='{password}'" in lines[51 - 32]
+    assert lines[57 - 32].strip() == "result = c.execute(sql_query).fetchone()"
+
+
+def test_without_the_data_folder_the_draft_gets_the_flagged_lines_only(
+    database, tmp_path, approved
+):
+    finding_id, _ = approved
+
+    (block,) = PostgresReportStore(database).finding_context((finding_id,)).code
+
+    assert (block.path, block.start_line, block.end_line) == (LAB, 57, 57)
+
+
+def test_secrets_near_the_finding_stay_masked(database, tmp_path):
+    auth = "dockerized_labs/auth_failure_lab/app.py"
+    scan_id = load_sarif(
+        database,
+        tmp_path / "data",
+        MANIFEST.parent.parent / "gitleaks" / "plugin.toml",
+        FIXTURE / "gitleaks-pygoat.sarif",
+        FIXTURE / "pygoat",
+        f"https://github.com/adeyosemanputra/pygoat?test={uuid.uuid4().hex}",
+        "2aa4cc14f251e4a780e94e200aed6b36a5b15c21",
+    ).scan_id
+    with psycopg.connect(database) as conn:
+        (finding_id,) = conn.execute(
+            "SELECT id::text FROM findings WHERE scan_id = %s AND file = %s AND start_line = 53",
+            (scan_id, auth),
+        ).fetchone()
+    triage(database, scan_id, finding_id=finding_id)
+    store = PostgresReportStore(database, data_dir=tmp_path / "data")
+
+    blocks = {block.path: block for block in store.finding_context((finding_id,)).code}
+
+    block = blocks[auth]
+    assert (block.start_line, block.end_line) == (33, 73)
+    lines = block.text.split("\n")
+    original = (FIXTURE / "pygoat" / auth).read_text().split("\n")
+    # Gitleaks flags lines 53, 59, 65 and 71. The report is about line 53, and the other three
+    # are near enough to be in its code, so all four are masked.
+    for line in (53, 59, 65, 71):
+        assert lines[line - 33] == "REDACTED"
+        assert original[line - 1] not in block.text
+    assert lines[54 - 33] == original[53]
+    # The verdict cites lines of the SQL injection lab, which are read as well.
+    assert LAB in blocks
+
+
+def test_ranges_are_widened_merged_and_kept_inside_the_file():
+    from app.reports.postgres import _around
+
+    assert _around([(57, 57), (52, 57)], 78) == [(32, 77)]
+    assert _around([(70, 70)], 78) == [(50, 78)]
+    assert _around([(10, 10), (100, 100)], 200) == [(1, 30), (80, 120)]
+    assert _around([(10, 10), (51, 51)], 200) == [(1, 71)]
+    assert _around([(300, 300)], 200) == []
