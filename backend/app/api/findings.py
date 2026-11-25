@@ -15,6 +15,9 @@ from app.store.queries import FindingsReader
 router = APIRouter(prefix="/findings", tags=["findings"])
 
 CONTEXT_LINES = 10
+# The most lines the code window holds. A finding longer than that, such as a SpotBugs finding
+# on a whole class, shows from CONTEXT_LINES before its first line.
+MAX_CODE_LINES = 200
 LOCATION_FIELDS = ("file", "start_line", "end_line", "start_column", "end_column", "snippet")
 
 
@@ -36,12 +39,12 @@ def get_finding(
 
 
 def read_code(data_dir: Path, finding: dict, flagged: list[dict]) -> dict | None:
-    """The flagged lines with up to CONTEXT_LINES lines around them, from the scan's checkout in
-    the data folder. flagged holds the tool and lines of every finding of the scan in the same
-    file, and each is masked by its tool's adapter the same way as its stored snippets, so a
-    secret Gitleaks found a few lines away doesn't show either. None when the file can't be
-    read, or when one of those tools has no known adapter, since then nothing says which lines
-    must be masked."""
+    """The flagged lines with up to CONTEXT_LINES lines around them, at most MAX_CODE_LINES in
+    all, from the scan's checkout in the data folder. flagged holds the tool and lines of every
+    finding of the scan in the same file, and each is masked by its tool's adapter the same way
+    as its stored snippets, so a secret Gitleaks found a few lines away doesn't show either.
+    None when the file can't be read, or when one of those tools has no known adapter, since
+    then nothing says which lines must be masked."""
     registry = AdapterRegistry()
     try:
         adapters = [(registry.get(row["tool"]), row) for row in flagged]
@@ -56,7 +59,7 @@ def read_code(data_dir: Path, finding: dict, flagged: list[dict]) -> dict | None
             location = Location(finding["file"], row["start_line"], row["end_line"])
             lines = adapter.mask(lines, location)
     first = max(1, finding["start_line"] - CONTEXT_LINES)
-    last = min(len(lines), finding["end_line"] + CONTEXT_LINES)
+    last = min(len(lines), finding["end_line"] + CONTEXT_LINES, first + MAX_CODE_LINES - 1)
     if first > last:
         return None
     return {

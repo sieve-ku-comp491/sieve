@@ -296,3 +296,20 @@ def test_every_secret_in_the_code_window_is_masked(database, tmp_path):
         for number, text in enumerate(code["lines"], start=window[0]):
             assert text == ("REDACTED" if number in masked else source[number - 1])
         assert code["lines"][58 - window[0]] == '        "role": "user",'
+
+
+def test_the_code_window_of_a_long_finding_stops_at_200_lines(database, tmp_path):
+    """The finding at line 71 made to span lines 20 to 238, the end of the file, as a private
+    key or a finding on a whole class can. With 10 lines before and after, the window would be
+    lines 10 to 238; it stops at 209, 200 lines in all."""
+    scan_id = load_gitleaks(database, tmp_path)
+    client = make_client(database, tmp_path)
+    target = finding_id(client, scan_id, "generic-api-key", 71)
+    with psycopg.connect(database) as conn:
+        conn.execute("UPDATE findings SET start_line = 20, end_line = 238 WHERE id = %s", (target,))
+    detail = client.get(f"/findings/{target}").json()
+    assert (detail["location"]["start_line"], detail["location"]["end_line"]) == (20, 238)
+    code = detail["code"]
+    assert (code["start_line"], code["end_line"], len(code["lines"])) == (10, 209, 200)
+    assert code["lines"][:2] == ["", 'app = Flask("app")']
+    assert set(code["lines"][10:]) == {"REDACTED"}
