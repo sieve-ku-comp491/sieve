@@ -2,15 +2,20 @@
 (requirements F3 and N3).
 
 After the rule and similarity steps, the pairs of findings or groups that are close in the code
-and whose text similarity is from ASK_FROM up to GROUP_AT go to a model, the highest score
-first. The cheaper model answers first, and only an answer of unsure, or one that can't be read,
-goes to the stronger model. A pair the model calls the same issue becomes one group, which
-records every call behind the decision, so the duplicate_group_llm_calls rows link it to them.
+and whose text similarity is from ASK_FROM up to GROUP_AT go to a model, the highest score of
+the whole scan first, so the questions that a stop leaves unasked are the least likely ones.
+The cheaper model answers first, and only an answer of unsure, or one that can't be read, goes
+to the stronger model. A pair the model calls the same issue becomes one
+group, which records every call behind the decision, so the duplicate_group_llm_calls rows link
+it to them. The findings of any other pair are kept apart: no later group can hold two of them,
+so a third finding can't join what the model separated, and the same two findings are never
+asked about twice.
 
 The prompt carries what the rules saw of each finding: the analyzer, rule, CWEs, message, file
 and lines, and the flagged lines as code in the data block. The step asks at most
 max_questions pairs, and it stops asking, keeping the groups it has, when the run's budget
-can't cover the next call or the provider fails. stopped then says why.
+can't cover the next call or the provider fails. stopped then says why. Each call of group()
+handles one scan and starts both counters again.
 """
 
 import json
@@ -73,30 +78,49 @@ class LLMStep:
         self.stopped: str | None = None
 
     def group(self, findings: Sequence[ScanFinding], groups: list[Group]) -> list[Group]:
+        self.questions = 0
+        self.stopped = None
         scorer = TextScorer(findings)
-        asked: set[frozenset[str]] = set()
-        result: list[Group] = []
-        for items in items_by_file(findings, groups).values():
-            functions = functions_of(self._lookup, items)
-            while self.stopped is None and (
-                found := best_pair(items, scorer, functions, self._nearby, self._unclear, asked)
-            ):
-                if self.questions >= self._max_questions:
-                    self.stopped = f"asked the most questions per scan, {self._max_questions}"
-                    break
-                _, i, j = found
-                asked.add(items[i].key() | items[j].key())
-                self.questions += 1
-                try:
-                    answer, reason, calls = self._ask(items[i], items[j])
-                except (BudgetExceeded, ProviderError) as error:
-                    self.stopped = f"{type(error).__name__}: {error}"
-                    break
-                if answer == "yes" and calls:
-                    group = self._group(items[i], items[j], reason, calls, functions)
-                    items = merge(items, i, j, group)
-            result += [item.group for item in items if item.group is not None]
-        return result
+        files = items_by_file(findings, groups)
+        functions = {file: functions_of(self._lookup, items) for file, items in files.items()}
+        # Pairs of finding IDs that the model didn't call one issue.
+        apart: set[frozenset[str]] = set()
+        best = {
+            file: self._best(items, scorer, functions[file], apart) for file, items in files.items()
+        }
+        while (file := _highest(best)) is not None:
+            if self.questions >= self._max_questions:
+                self.stopped = f"asked the most questions per scan, {self._max_questions}"
+                break
+            _, i, j = best[file]
+            first, second = files[file][i], files[file][j]
+            self.questions += 1
+            try:
+                answer, reason, calls = self._ask(first, second)
+            except (BudgetExceeded, ProviderError) as error:
+                self.stopped = f"{type(error).__name__}: {error}"
+                break
+            if answer == "yes" and calls:
+                group = self._group(first, second, reason, calls, functions[file])
+                files[file] = merge(files[file], i, j, group)
+            else:
+                apart.update(
+                    frozenset((a.finding_id, b.finding_id))
+                    for a in first.members
+                    for b in second.members
+                )
+            # Only this file's items or kept-apart pairs changed.
+            best[file] = self._best(files[file], scorer, functions[file], apart)
+        return [item.group for items in files.values() for item in items if item.group is not None]
+
+    def _best(
+        self,
+        items: list[Item],
+        scorer: TextScorer,
+        functions: dict[str, FunctionSpan | None],
+        apart: set[frozenset[str]],
+    ) -> tuple[float, int, int] | None:
+        return best_pair(items, scorer, functions, self._nearby, self._unclear, apart)
 
     def _unclear(self, score: float) -> bool:
         return self._ask_from <= score < self._group_at
@@ -140,6 +164,16 @@ class LLMStep:
             ),
             llm_call_ids=[*(c for group in before for c in group.llm_call_ids), *calls],
         )
+
+
+def _highest(best: dict[str, tuple[float, int, int] | None]) -> str | None:
+    """The file whose best pair scores highest, the first file in order on a tie, or None when no
+    file has a pair left."""
+    chosen: str | None = None
+    for file, found in best.items():
+        if found is not None and (chosen is None or found[0] > best[chosen][0]):
+            chosen = file
+    return chosen
 
 
 def parse_answer(text: str) -> tuple[str, str | None]:

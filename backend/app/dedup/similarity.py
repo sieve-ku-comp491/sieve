@@ -16,7 +16,7 @@ the LLM step (app.dedup.llm) asks a model about those pairs.
 import math
 import re
 from collections import Counter, defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Sequence, Set
 from dataclasses import dataclass
 
 from app.dedup.functions import FunctionLookup, FunctionSpan, NoFunctionLookup
@@ -133,9 +133,6 @@ class Item:
     members: list[ScanFinding]
     group: Group | None = None
 
-    def key(self) -> frozenset[str]:
-        return frozenset(member.finding_id for member in self.members)
-
 
 def items_by_file(findings: Sequence[ScanFinding], groups: list[Group]) -> dict[str, list[Item]]:
     """The groups so far and the findings in no group, by file, in the rules' order. A group's
@@ -167,12 +164,16 @@ def pair_score(
     scorer: TextScorer,
     functions: dict[str, FunctionSpan | None],
     nearby_lines: int,
+    apart: Set[frozenset[str]] = frozenset(),
 ) -> float | None:
     """The lowest text similarity between a finding of first and one of second, or None when
-    some pair isn't close enough in the code to be one issue."""
+    some pair isn't close enough in the code to be one issue, or is in apart, the pairs of
+    finding IDs that the LLM step didn't call one issue."""
     lowest = 1.0
     for a in first.members:
         for b in second.members:
+            if frozenset((a.finding_id, b.finding_id)) in apart:
+                return None
             if not close(a, b, functions[a.finding_id], functions[b.finding_id], nearby_lines):
                 return None
             lowest = min(lowest, scorer.similarity(a, b))
@@ -185,16 +186,14 @@ def best_pair(
     functions: dict[str, FunctionSpan | None],
     nearby_lines: int,
     accept: Callable[[float], bool],
-    skip: set[frozenset[str]] = frozenset(),
+    apart: Set[frozenset[str]] = frozenset(),
 ) -> tuple[float, int, int] | None:
     """The pair of items with the highest score that accept allows, the first one in order on a
     tie, or None."""
     best: tuple[float, int, int] | None = None
     for i in range(len(items)):
         for j in range(i + 1, len(items)):
-            if (items[i].key() | items[j].key()) in skip:
-                continue
-            score = pair_score(items[i], items[j], scorer, functions, nearby_lines)
+            score = pair_score(items[i], items[j], scorer, functions, nearby_lines, apart)
             if score is not None and accept(score) and (best is None or score > best[0]):
                 best = (score, i, j)
     return best

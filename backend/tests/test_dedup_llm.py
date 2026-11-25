@@ -7,6 +7,7 @@ similarity step.
 """
 
 import json
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -17,6 +18,7 @@ from app.dedup import (
     Group,
     LLMStep,
     RuleStep,
+    ScanFinding,
     SimilarityStep,
     TextScorer,
     group_findings,
@@ -36,6 +38,32 @@ PRICE = Price(
     cache_read=Decimal("0.10"),
     cache_write=Decimal("1.25"),
 )
+# Every close pair is unclear, so a test sets the order of the questions with its texts alone.
+EVERY = {"ask_from": 0.0, "group_at": 1.01}
+
+
+def made(fid: str, file: str, tool: str, message: str) -> ScanFinding:
+    return ScanFinding(
+        finding_id=fid,
+        tool=tool,
+        rule_id=f"{fid}-rule",
+        cwe=(),
+        message=message,
+        tool_severity="warning",
+        file=file,
+        start_line=10,
+        end_line=10,
+    )
+
+
+class Judge(FakeProvider):
+    """Calls the bandit and the eslint finding two issues, and any other pair one."""
+
+    def complete(self, request):
+        content = request.messages[-1].content
+        apart = "bandit" in content and "eslint" in content and "semgrep" not in content
+        self._replies = [answer("no" if apart else "yes")]
+        return super().complete(request)
 
 
 def named(findings, rule):
@@ -107,9 +135,12 @@ def test_unsure_goes_to_the_stronger_model(unclear):
 def test_a_no_keeps_the_pair_apart(unclear):
     provider = FakeProvider(replies=[answer("no", "One builds the query, the other runs it.")])
     client, _ = make_client(provider)
+    step = LLMStep(client, "cheap", "strong")
 
-    assert LLMStep(client, "cheap", "strong").group(unclear, []) == []
+    assert step.group(unclear, []) == []
     assert [request.model for request in provider.requests] == ["cheap"]
+    # The pair is kept apart, so it isn't asked again, from the cache or otherwise.
+    assert step.questions == 1
 
 
 def test_an_answer_that_cannot_be_read_counts_as_unsure(unclear):
@@ -161,6 +192,81 @@ def test_at_most_max_questions_are_asked(unclear):
     assert step.group(unclear, []) == []
     assert provider.requests == []
     assert step.stopped == "asked the most questions per scan, 0"
+
+
+def test_a_stop_holds_in_every_file(unclear):
+    """The unclear pair in a second file: after the provider fails, nothing more is asked."""
+    copies = [replace(f, finding_id=f"{f.finding_id}-copy", file="copy/app.py") for f in unclear]
+    provider = FakeProvider(error=ProviderError("the API is down", retryable=False))
+    client, _ = make_client(provider)
+    step = LLMStep(client, "cheap", "strong")
+
+    assert step.group([*unclear, *copies], []) == []
+    assert len(provider.requests) == 1
+
+
+def test_the_highest_pair_of_the_scan_is_asked_first():
+    """With one question allowed, the pair asked is the more alike one, in the second file."""
+    sql = "SQL query built from the request"
+    findings = [
+        made("a1", "a.py", "semgrep", "alpha beta gamma"),
+        made("a2", "a.py", "bandit", "delta epsilon zeta"),
+        made("b1", "b.py", "semgrep", sql),
+        made("b2", "b.py", "bandit", sql),
+    ]
+    provider = FakeProvider(replies=[answer("yes")])
+    client, _ = make_client(provider)
+    step = LLMStep(client, "cheap", max_questions=1, **EVERY)
+
+    (group,) = step.group(findings, [])
+
+    assert sorted(m.finding_id for m in group.members) == ["b1", "b2"]
+    assert step.stopped == "asked the most questions per scan, 1"
+
+
+def test_a_third_finding_cannot_join_what_the_model_kept_apart():
+    """Three tools on one line, every pair alike. The model calls bandit and eslint two issues
+    and bandit and semgrep one, so eslint can't join their group through semgrep."""
+    sql = "SQL query built from the request"
+    findings = [made(t[0], "a.py", t, sql) for t in ("bandit", "eslint", "semgrep")]
+    client, _ = make_client(Judge())
+    step = LLMStep(client, "cheap", **EVERY)
+
+    (group,) = step.group(findings, [])
+
+    assert sorted(m.finding_id for m in group.members) == ["b", "s"]
+    assert step.questions == 2
+
+
+def test_an_llm_group_that_joins_another_keeps_every_call():
+    """Two pairs become groups, and then one group of all four, which links the calls of both
+    earlier decisions too (N3, test 1)."""
+    sql, shell = "SQL query built from the request", "Shell command run with user input"
+    findings = [
+        made("q1", "a.py", "semgrep", sql),
+        made("q2", "a.py", "bandit", sql),
+        made("c1", "a.py", "eslint", shell),
+        made("c2", "a.py", "gitleaks", shell),
+    ]
+    provider = FakeProvider(replies=[answer("yes")] * 3)
+    client, log = make_client(provider)
+
+    (group,) = LLMStep(client, "cheap", **EVERY).group(findings, [])
+
+    assert sorted(m.finding_id for m in group.members) == ["c1", "c2", "q1", "q2"]
+    assert group.method == "llm"
+    assert group.llm_call_ids == [record.id for record in log.records]
+    assert len(group.llm_call_ids) == 3
+
+
+def test_each_scan_starts_the_counters_again(unclear):
+    provider = FakeProvider(replies=[answer("no")])
+    client, _ = make_client(provider)
+    step = LLMStep(client, "cheap", max_questions=1)
+
+    for _ in range(2):
+        assert step.group(unclear, []) == []
+        assert (step.questions, step.stopped) == (1, None)
 
 
 @pytest.mark.parametrize(
