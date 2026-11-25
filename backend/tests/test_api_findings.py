@@ -3,6 +3,7 @@ loaded into the test database. The expected rules, lines and code are read from 
 SARIF file and from dockerized_labs/sql_injection_lab/app.py."""
 
 import json
+import uuid
 from pathlib import Path
 
 import psycopg
@@ -19,17 +20,20 @@ MANIFEST = PLUGINS / "semgrep" / "plugin.toml"
 LAB = "dockerized_labs/sql_injection_lab/app.py"
 SQL_RULE = "python.lang.security.audit.formatted-sql-query"
 TOKEN = "test-token"
+PYGOAT = "https://github.com/adeyosemanputra/pygoat"
+DJANGO_RULE = "python.django.security.injection.tainted-sql-string"
+FLASK_RULE = "python.flask.security.injection.tainted-sql-string"
 V4_KEYS = ["AV", "AC", "AT", "PR", "UI", "VC", "VI", "VA", "SC", "SI", "SA"]
 
 
-def load(database, data_dir, manifest=MANIFEST, sarif="semgrep-pygoat.sarif") -> str:
+def load(database, data_dir, manifest=MANIFEST, sarif="semgrep-pygoat.sarif", repo=PYGOAT) -> str:
     return load_sarif(
         database,
         data_dir,
         manifest,
         FIXTURE / sarif,
         FIXTURE / "pygoat",
-        "https://github.com/adeyosemanputra/pygoat",
+        repo,
         "2aa4cc14f251e4a780e94e200aed6b36a5b15c21",
     ).scan_id
 
@@ -211,6 +215,34 @@ def test_without_the_checkout_the_code_is_empty(database, scan_id, tmp_path):
     assert detail["code"] is None
 
 
+def insert_triage_run(conn, scan_id):
+    """A triage run of the scan whose group step has finished."""
+    return conn.execute(
+        "INSERT INTO triage_runs (scan_id, cheap_model, strong_model, budget_usd, grouped_at)"
+        " VALUES (%s, 'cheap', 'strong', 5, now()) RETURNING id",
+        (scan_id,),
+    ).fetchone()[0]
+
+
+def insert_verdict(conn, run_id, finding=None, group=None):
+    """A true positive of critical severity for the finding or the group."""
+    return conn.execute(
+        "INSERT INTO verdicts (triage_run_id, finding_id, group_id, verdict, reasoning,"
+        " cited_lines, injection_suspected, model_version, cvss_v4_vector, cvss_v4_score,"
+        " cvss_v4_level, cvss_v4_justifications) VALUES (%s, %s, %s, 'true_positive',"
+        " 'f-string query', %s, false, 'm-1',"
+        " 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N', 9.3, 'critical', %s)"
+        " RETURNING id",
+        (
+            run_id,
+            finding,
+            group,
+            json.dumps([{"file": LAB, "start_line": 50, "end_line": 57}]),
+            json.dumps(dict.fromkeys(V4_KEYS, "why")),
+        ),
+    ).fetchone()[0]
+
+
 def test_a_verdict_and_an_edit_show_in_the_queue_and_the_detail(database, tmp_path):
     """A triage run that grouped a scan of its own and judged one finding. The edit changes
     only the verdict, so the severity stays the AI's."""
@@ -218,24 +250,8 @@ def test_a_verdict_and_an_edit_show_in_the_queue_and_the_detail(database, tmp_pa
     client = make_client(database, tmp_path)
     target = finding_id(client, scan_id, SQL_RULE, 57)
     with psycopg.connect(database) as conn:
-        run_id = conn.execute(
-            "INSERT INTO triage_runs (scan_id, cheap_model, strong_model, budget_usd, grouped_at)"
-            " VALUES (%s, 'cheap', 'strong', 5, now()) RETURNING id",
-            (scan_id,),
-        ).fetchone()[0]
-        verdict_id = conn.execute(
-            "INSERT INTO verdicts (triage_run_id, finding_id, verdict, reasoning, cited_lines,"
-            " injection_suspected, model_version, cvss_v4_vector, cvss_v4_score, cvss_v4_level,"
-            " cvss_v4_justifications) VALUES (%s, %s, 'true_positive', 'f-string query',"
-            " %s, false, 'm-1', 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N',"
-            " 9.3, 'critical', %s) RETURNING id",
-            (
-                run_id,
-                target,
-                json.dumps([{"file": LAB, "start_line": 50, "end_line": 57}]),
-                json.dumps(dict.fromkeys(V4_KEYS, "why")),
-            ),
-        ).fetchone()[0]
+        run_id = insert_triage_run(conn, scan_id)
+        verdict_id = insert_verdict(conn, run_id, finding=target)
 
     page = findings(client, scan_id)
     assert page["items"][0]["id"] == target
@@ -268,6 +284,108 @@ def test_a_verdict_and_an_edit_show_in_the_queue_and_the_detail(database, tmp_pa
     counts = client.get(f"/scans/{scan_id}").json()["state_counts"]
     assert (counts["edited"], counts["grouped"], counts["new"]) == (1, 8, 0)
     assert client.get(f"/scans/{scan_id}").json()["triage_run"]["id"] == str(run_id)
+
+
+def test_a_group_with_its_verdict_and_its_cost_in_the_detail(database, tmp_path):
+    """The two tainted-sql-string findings on line 50 grouped by a rule, with Django's as the
+    representative, and judged together by one verdict that took two LLM calls, of 0.0012 and
+    0.003 USD."""
+    scan_id = load(database, tmp_path)
+    client = make_client(database, tmp_path)
+    django = finding_id(client, scan_id, DJANGO_RULE, 50)
+    flask = finding_id(client, scan_id, FLASK_RULE, 50)
+    with psycopg.connect(database) as conn:
+        run_id = insert_triage_run(conn, scan_id)
+        group_id = conn.execute(
+            "INSERT INTO duplicate_groups (scan_id, representative_finding_id, method, rule,"
+            " reason) VALUES (%s, %s, 'rule', 'nearby_lines_related_cwe', 'same line, CWE-89')"
+            " RETURNING id",
+            (scan_id, django),
+        ).fetchone()[0]
+        conn.execute(
+            "UPDATE findings SET group_id = %s WHERE id IN (%s, %s)", (group_id, django, flask)
+        )
+        verdict_id = insert_verdict(conn, run_id, group=group_id)
+        for role, cost in [("verdict", "0.0012"), ("severity", "0.003")]:
+            call_id = conn.execute(
+                "INSERT INTO llm_calls (provider, model, messages, cache_key, max_tokens,"
+                " cost_usd, triage_run_id) VALUES ('anthropic', 'm-1', '[]', %s, 1000, %s, %s)"
+                " RETURNING id",
+                (f"api:{verdict_id}:{role}", cost, run_id),
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO verdict_llm_calls (verdict_id, llm_call_id, role) VALUES (%s, %s, %s)",
+                (verdict_id, call_id, role),
+            )
+
+    detail = client.get(f"/findings/{flask}").json()
+    assert detail["state"] == "triaged" and detail["group_id"] == str(group_id)
+    group = detail["group"]
+    assert (group["id"], group["method"], group["rule"], group["similarity"]) == (
+        str(group_id),
+        "rule",
+        "nearby_lines_related_cwe",
+        None,
+    )
+    assert group["reason"] == "same line, CWE-89"
+    assert group["representative_finding_id"] == django
+    assert [(m["id"], m["rule_id"], m["start_line"], m["state"]) for m in group["members"]] == [
+        (django, DJANGO_RULE, 50, "triaged"),
+        (flask, FLASK_RULE, 50, "triaged"),
+    ]
+    verdict = detail["verdict"]
+    assert (verdict["id"], verdict["group_id"], verdict["finding_id"]) == (
+        str(verdict_id),
+        str(group_id),
+        None,
+    )
+    assert (verdict["call_count"], verdict["cost_usd"]) == (2, 0.0042)
+    assert client.get(f"/findings/{django}").json()["verdict"]["id"] == str(verdict_id)
+    page = findings(client, scan_id, status="triaged")
+    assert sorted(item["id"] for item in page["items"]) == sorted([django, flask])
+    assert {item["group_id"] for item in page["items"]} == {str(group_id)}
+
+
+def test_a_carried_review_hides_the_finding_and_shows_in_the_detail(database, tmp_path):
+    """Two scans of the same commit. The first scan's SQL finding on line 57 is rejected, so
+    the second scan's finding with the same fingerprint and context is hidden with that
+    review, and the queue and the counts leave it out. A repository URL of its own keeps the
+    review from hiding findings of the other tests."""
+    repo = f"https://example.test/{uuid.uuid4().hex}"
+    first = load(database, tmp_path / "first", repo=repo)
+    client = make_client(database, tmp_path / "second")
+    earlier = finding_id(client, first, SQL_RULE, 57)
+    with psycopg.connect(database) as conn:
+        review_id = conn.execute(
+            "INSERT INTO reviews (finding_id, decision, reviewer, comment)"
+            " VALUES (%s, 'reject', 'Ali', 'the query is a constant') RETURNING id",
+            (earlier,),
+        ).fetchone()[0]
+    second = load(database, tmp_path / "second", repo=repo)
+
+    scan = client.get(f"/scans/{second}").json()
+    assert (scan["finding_count"], scan["hidden_count"]) == (9, 1)
+    assert (scan["state_counts"]["new"], scan["state_counts"]["rejected"]) == (8, 0)
+    assert findings(client, second)["total"] == 8
+    assert SQL_RULE not in [item["rule_id"] for item in findings(client, second)["items"]]
+    (hidden,) = [
+        item
+        for item in findings(client, second, include_hidden=True)["items"]
+        if item["rule_id"] == SQL_RULE
+    ]
+    assert (hidden["hidden"], hidden["state"]) == (True, "rejected")
+    assert hidden["carried_review_id"] == str(review_id)
+    detail = client.get(f"/findings/{hidden['id']}").json()
+    assert (detail["hidden"], detail["matched_finding_id"]) == (True, earlier)
+    assert detail["reviews"] == []
+    carried = detail["carried_review"]
+    assert (carried["id"], carried["decision"], carried["reviewer"], carried["comment"]) == (
+        str(review_id),
+        "reject",
+        "Ali",
+        "the query is a constant",
+    )
+    assert carried["verdict_id"] is None and carried["finding_edit_id"] is None
 
 
 # The four Gitleaks results in this file, at lines 53, 59, 65 and 71, read from
