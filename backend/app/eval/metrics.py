@@ -32,6 +32,11 @@ RELATED_CWES = [
     )
 ]
 VERDICTS = {"", "true_positive", "false_positive", "unsure"}
+# The level of an analyzer's own severity, the baseline of the severity step (Table 5 of the
+# proposal). SARIF has four levels, and docs/finding-format.md leaves the mapping to the
+# evaluation: error is the tool's most severe class, so it maps to high, and none of our tools
+# rates anything as critical.
+SEVERITY_LEVELS = {"error": "high", "warning": "medium", "note": "low", "none": "none"}
 CVSS_METRICS = {
     "3": ("AV", "AC", "PR", "UI", "S", "C", "I", "A"),
     "4": ("AV", "AC", "AT", "PR", "UI", "VC", "VI", "VA", "SC", "SI", "SA"),
@@ -121,6 +126,8 @@ def false_positive_check(cases: list[Expected], findings: list[Finding]) -> dict
     because the review screen still shows them. findings_without_case counts the findings whose
     file is no test case's file: a high number usually means the paths don't match, for example
     a path from another folder than the dataset's root, and the rates are then wrong.
+    findings_without_cwe counts the findings with no CWE, which can never flag a case: a high
+    number usually means an adapter didn't read the CWE of some rules.
     """
     if len({case.case_id for case in cases}) != len(cases):
         raise MetricError("each test case must appear once")
@@ -130,6 +137,7 @@ def false_positive_check(cases: list[Expected], findings: list[Finding]) -> dict
     result = {
         "cases": len(cases),
         "findings_without_case": sum(1 for finding in findings if finding.file not in case_files),
+        "findings_without_cwe": sum(1 for finding in findings if not finding.cwes),
         "raw": raw.as_dict(),
         "triaged": triaged.as_dict(),
         "false_positives_removed": _round(_ratio(raw.fp - triaged.fp, raw.fp)),
@@ -241,6 +249,43 @@ def severity_agreement(rows: list[dict[str, str]]) -> dict:
         "max_score_error": _round(max(errors)),
         "level_agreement": _round(sum(levels) / len(levels)),
     }
+
+
+def severity_baseline(rows: list[dict[str, str]]) -> dict:
+    """The analyzer's own severity against the published CVSS level (Table 5, "Is the severity
+    right?"), the baseline that the severity step is compared with.
+
+    Rows have case_id, published_score and tool_severity (error, warning, note or none), one row
+    per CVE, with the severity of the most severe finding at the CVE's vulnerable location. An
+    empty tool_severity is a CVE the analyzer found nothing for: it is counted in no_finding
+    and not in the agreement. by_level counts, for each published level, the levels the tool
+    severity mapped to.
+    """
+    if not rows:
+        raise MetricError("no cases to score")
+    agreed = answered = 0
+    by_level: dict[str, dict[str, int]] = {}
+    for row in rows:
+        severity = row["tool_severity"].strip()
+        if not severity:
+            continue
+        if severity not in SEVERITY_LEVELS:
+            raise MetricError(f"{row['case_id']}: unknown tool severity {severity!r}")
+        published, mapped = level(float(row["published_score"])), SEVERITY_LEVELS[severity]
+        answered += 1
+        agreed += published == mapped
+        counts = by_level.setdefault(published, {})
+        counts[mapped] = counts.get(mapped, 0) + 1
+    return {
+        "cases": len(rows),
+        "no_finding": len(rows) - answered,
+        "level_agreement": _round(_ratio(agreed, answered)),
+        "by_level": {published: by_level[published] for published in sorted(by_level)},
+    }
+
+
+def read_severity_baseline(path: Path) -> list[dict[str, str]]:
+    return list(_read(path, ["case_id", "published_score", "tool_severity"]))
 
 
 def read_severity(path: Path) -> list[dict[str, str]]:
