@@ -6,7 +6,8 @@
     "anthropic": ["https://platform.claude.com/docs/en/about-claude/pricing"],
     "openai": [
       "https://developers.openai.com/api/docs/pricing",
-      "https://developers.openai.com/api/docs/guides/prompt-caching"
+      "https://developers.openai.com/api/docs/guides/prompt-caching",
+      "https://developers.openai.com/api/docs/models/gpt-6-luna"
     ],
     "deepseek": ["https://api-docs.deepseek.com/quick_start/pricing"],
     "qwen": [
@@ -78,6 +79,16 @@
       "provider": "openai",
       "price": {"input": "0.75", "output": "4.50", "cache_read": "0.075", "cache_write": "0.75"},
       "temperature": false
+    },
+    "gpt-6-luna": {
+      "provider": "openai",
+      "price": {"input": "0.10", "output": "0.50", "cache_read": "0.01", "cache_write": "0.125"},
+      "long_context": {
+        "above_prompt_tokens": 272000,
+        "price": {"input": "0.20", "output": "0.75", "cache_read": "0.02", "cache_write": "0.25"}
+      },
+      "temperature": false,
+      "note": "GPT-6 Luna, prices checked on 2026-11-24 on its model page. cache_write is the 30-minute cache write that the page lists. A 12-hour write costs 0.25, and Sieve doesn't ask for one. Knowledge cutoff 18 May 2026."
     },
     "deepseek-v4-pro": {
       "provider": "deepseek",
