@@ -182,6 +182,60 @@ def test_an_unknown_ref_is_refused(origin, tmp_path):
     )
 
 
+@pytest.fixture(scope="module")
+def decoy(tmp_path_factory) -> Path:
+    repo = tmp_path_factory.mktemp("decoy")
+    git(repo, "init", "-q", "-b", "main")
+    (repo / "app.py").write_text("print('decoy')\n", encoding="utf-8")
+    commit_all(repo, "decoy")
+    return repo
+
+
+@pytest.mark.parametrize(
+    "where", ["GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_GLOBAL", "HOME", "XDG"]
+)
+def test_git_ignores_the_git_config_of_the_worker_environment(
+    origin, decoy, tmp_path, monkeypatch, where
+):
+    # Config that would export the decoy instead of the scope entry's repository, and a
+    # credential helper that leaves a mark if Git calls it, in each place Git reads config from.
+    marker = tmp_path / "helper-called"
+    config = {
+        f"url.{decoy.as_uri()}.insteadOf": origin["entry"].url,
+        "credential.helper": f"!echo called >>{marker.as_posix()}",
+    }
+    config_file = (
+        f'[url "{decoy.as_uri()}"]\n\tinsteadOf = {origin["entry"].url}\n'
+        f'[credential]\n\thelper = "!echo called >>{marker.as_posix()}"\n'
+    )
+    home = tmp_path / "home"
+    if where == "GIT_CONFIG_COUNT":
+        monkeypatch.setenv("GIT_CONFIG_COUNT", str(len(config)))
+        for number, (key, value) in enumerate(config.items()):
+            monkeypatch.setenv(f"GIT_CONFIG_KEY_{number}", key)
+            monkeypatch.setenv(f"GIT_CONFIG_VALUE_{number}", value)
+    elif where == "GIT_CONFIG_PARAMETERS":
+        quoted = " ".join(f"'{key}'='{value}'" for key, value in config.items())
+        monkeypatch.setenv("GIT_CONFIG_PARAMETERS", quoted)
+    elif where == "GIT_CONFIG_GLOBAL":
+        (tmp_path / "global").write_text(config_file, encoding="utf-8")
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "global"))
+    elif where == "HOME":
+        home.mkdir()
+        (home / ".gitconfig").write_text(config_file, encoding="utf-8")
+        monkeypatch.setenv("HOME", str(home))
+    else:
+        (tmp_path / "xdg" / "git").mkdir(parents=True)
+        (tmp_path / "xdg" / "git" / "config").write_text(config_file, encoding="utf-8")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        monkeypatch.setenv("HOME", str(home))
+
+    dest = tmp_path / "src"
+    assert export(origin, "main", dest) == origin["second"]
+    assert (dest / "app.py").read_text(encoding="utf-8") == "print('second')\n"
+    assert not marker.exists()
+
+
 def test_only_the_allowed_protocols_are_used(origin, tmp_path):
     with pytest.raises(ExportError, match="cloning .* failed"):
         CheckoutExporter().export(origin["entry"], None, tmp_path / "src")

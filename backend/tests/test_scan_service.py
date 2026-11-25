@@ -263,10 +263,22 @@ def test_f2_5_a_commit_that_exists_only_in_a_fork_is_refused_before_any_containe
 
 
 @network
-def test_f2_4_a_private_repository_cannot_be_cloned_even_when_listed(tmp_path):
-    # GitHub answers an anonymous clone of a private repository exactly as one of a repository
-    # that doesn't exist: 401 and a request for credentials. With no credential helper and
-    # GIT_TERMINAL_PROMPT=0, as in the worker, the clone fails.
+def test_f2_4_a_private_repository_cannot_be_cloned_even_when_listed(tmp_path, monkeypatch):
+    # sieve-ku-comp491/private-scope-test is private, and only the organization's members can
+    # read it. Git with no credentials asks for a user name, which GIT_TERMINAL_PROMPT=0 refuses.
+    # On a machine with Git credentials for GitHub, a clone that used the researcher's Git
+    # config would succeed. Here a credential helper that leaves a mark is also set in the
+    # parent environment and in a Git config file that Git reads besides ~/.gitconfig.
+    marker = tmp_path / "helper-called"
+    helper = f"!echo called >>{marker.as_posix()}"
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "credential.helper")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", helper)
+    (tmp_path / "xdg" / "git").mkdir(parents=True)
+    (tmp_path / "xdg" / "git" / "config").write_text(
+        f'[credential]\n\thelper = "{helper}"\n', encoding="utf-8"
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     private = "https://github.com/sieve-ku-comp491/private-scope-test"
     store = MemoryStore()
     scan_id = store.add_scan(private, requested_ref="HEAD")
@@ -275,7 +287,14 @@ def test_f2_4_a_private_repository_cannot_be_cloned_even_when_listed(tmp_path):
     scans.scope_path = scope_file(tmp_path, private)
 
     assert scans.run_scan(scan_id) == "failed"
-    assert store.scans[scan_id]["error"].startswith(f"cloning {private}.git failed")
+    # Git asked for credentials and got none. The words depend on the Git release: 2.39 says
+    # "terminal prompts disabled", and 2.47 with credential.interactive=false says this.
+    assert store.scans[scan_id]["error"] in (
+        f"cloning {private}.git failed: fatal: could not read Username for "
+        "'https://github.com': terminal prompts disabled",
+        f"cloning {private}.git failed: fatal: unable to get password from user",
+    )
+    assert not marker.exists()
     assert engine.specs == []
 
 
