@@ -161,6 +161,21 @@ def test_the_lines_an_adapter_masks_stay_masked(tmp_path):
     assert "sk-live" in collector(tmp_path).context([finding("settings.py", 2)]).code
 
 
+def test_the_lines_other_findings_mask_stay_masked(tmp_path):
+    """Two Gitleaks findings three lines apart are two items, and each one's code shows the
+    other's line, unless the scan's other findings are passed to be masked too."""
+    lines = ['A_KEY = "sk-live-1"', "DEBUG = True", "PORT = 80", 'B_KEY = "sk-live-2"']
+    write(tmp_path, "settings.py", lines)
+    first = finding("settings.py", 1, tool="gitleaks")
+    second = finding("settings.py", 4, tool="gitleaks")
+
+    alone = collector(tmp_path).context([first])
+    both = collector(tmp_path).context([first], others=[("gitleaks", second.location)])
+
+    assert "sk-live-2" in alone.code
+    assert both.code == f"{REDACTED}\nDEBUG = True\nPORT = 80\n{REDACTED}"
+
+
 def test_a_tool_without_an_adapter_is_refused(tmp_path):
     write(tmp_path, "a.py", ["x = 1"])
     with pytest.raises(AdapterError):

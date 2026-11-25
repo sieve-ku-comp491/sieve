@@ -6,9 +6,14 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.adapters import Finding, FlowStep, Location
-from app.context.items import ContextCollector, Repo, TriageItem
+from app.context.items import ContextCollector, Flagged, Repo, TriageItem
 
 SCAN = "SELECT commit_sha FROM scans WHERE id = %(scan_id)s"
+
+# Every finding of the scan, hidden ones too, for the lines their adapters mask.
+FLAGGED = """
+SELECT tool, file, start_line, end_line FROM findings WHERE scan_id = %(scan_id)s
+"""
 
 FINDINGS = """
 SELECT id::text, scan_id::text, run_id::text, group_id::text, tool, tool_version, rule_id,
@@ -35,8 +40,9 @@ SELECT id::text, representative_finding_id::text FROM duplicate_groups WHERE sca
 def scan_items(conninfo: str, scan_id: str, collector: ContextCollector) -> list[TriageItem]:
     """The scan's triage items, by the file and line of their first finding: one for each
     duplicate group, with the representative first, and one for each finding in no group. Hidden
-    findings are left out, because an earlier review decides them (docs/finding-format.md).
-    The scan is grouped first (app.dedup.group_scan), or every finding is an item of its own."""
+    findings are left out, because an earlier review decides them (docs/finding-format.md),
+    but the lines their adapters mask stay masked in the other items' code. The scan is grouped
+    first (app.dedup.group_scan), or every finding is an item of its own."""
     params = {"scan_id": scan_id}
     with psycopg.connect(conninfo, row_factory=dict_row) as conn:
         scan = conn.execute(SCAN, params).fetchone()
@@ -48,6 +54,10 @@ def scan_items(conninfo: str, scan_id: str, collector: ContextCollector) -> list
             row["id"]: row["representative_finding_id"]
             for row in conn.execute(GROUPS, params).fetchall()
         }
+        flagged: dict[str, list[Flagged]] = defaultdict(list)
+        for row in conn.execute(FLAGGED, params).fetchall():
+            location = Location(row["file"], row["start_line"], row["end_line"])
+            flagged[row["file"]].append((row["tool"], location))
 
     related: dict[str, list[Location]] = defaultdict(list)
     flows: dict[str, list[FlowStep]] = defaultdict(list)
@@ -69,7 +79,8 @@ def scan_items(conninfo: str, scan_id: str, collector: ContextCollector) -> list
     for item_id, findings in members.items():
         representative = representatives.get(item_id)
         findings.sort(key=lambda finding: finding.finding_id != representative)
-        items.append(collector.item(item_id, findings, repo))
+        others = flagged[findings[0].location.file]
+        items.append(collector.item(item_id, findings, repo, others))
     return items
 
 

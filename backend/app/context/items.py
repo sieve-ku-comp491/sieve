@@ -8,14 +8,16 @@ before and after them. A function longer than MAX_LINES is cut the same way, and
 at most. A line longer than MAX_LINE_CHARS, as in minified code, is cut around the flagged
 column. The agent reads more code with its tools when it needs to.
 
-Each finding's adapter masks the lines it masks in its own snippets, so a secret that Gitleaks
-found never reaches a prompt (docs/finding-format.md, Gitleaks).
+The lines an adapter masks in its findings' snippets stay masked here for every finding of the
+scan in the file, hidden ones too, and not only for the item's own: a secret that Gitleaks
+found a few lines away reaches no other item's prompt either (docs/finding-format.md,
+Gitleaks). scan_items() passes those findings as others.
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from app.adapters import AdapterRegistry, Finding, FlowStep
+from app.adapters import AdapterRegistry, Finding, FlowStep, Location
 from app.checkout import CheckoutReader
 from app.context.functions import TreeSitterFunctionLookup
 from app.context.injection import InjectionScanner
@@ -24,6 +26,9 @@ from app.dedup.functions import FunctionLookup, FunctionSpan
 MAX_LINES = 200
 AROUND = 20
 MAX_LINE_CHARS = 500
+
+# A finding's tool and flagged lines, which is all its adapter needs to mask them.
+Flagged = tuple[str, Location]
 
 
 @dataclass(frozen=True, order=True)
@@ -86,12 +91,19 @@ class ContextCollector:
         self._lookup = lookup if lookup is not None else TreeSitterFunctionLookup(reader)
         self._injections = InjectionScanner(reader)
 
-    def item(self, item_id: str, findings: Sequence[Finding], repo: Repo) -> TriageItem:
-        return TriageItem(item_id, list(findings), self.context(findings), repo)
+    def item(
+        self,
+        item_id: str,
+        findings: Sequence[Finding],
+        repo: Repo,
+        others: Sequence[Flagged] = (),
+    ) -> TriageItem:
+        return TriageItem(item_id, list(findings), self.context(findings, others), repo)
 
-    def context(self, findings: Sequence[Finding]) -> CodeContext:
+    def context(self, findings: Sequence[Finding], others: Sequence[Flagged] = ()) -> CodeContext:
         """The code context of one finding, or of a group's members, which are all in one
-        file."""
+        file. others are the scan's other findings, whose adapters mask lines in this file
+        too. Passing the item's own findings among them does no harm."""
         if not findings:
             raise ValueError("a triage item has at least one finding")
         flagged = [finding.location for finding in findings]
@@ -107,8 +119,9 @@ class ContextCollector:
         code = ""
         lines = self._reader.read_lines(file)
         if lines is not None:
-            for finding in findings:
-                lines = self._adapters.get(finding.tool).mask(lines, finding.location)
+            for tool, location in [*((f.tool, f.location) for f in findings), *others]:
+                if location.file == file:
+                    lines = self._adapters.get(tool).mask(lines, location)
             end = min(end, len(lines))
             if end < start:
                 start, end = first, last

@@ -9,6 +9,7 @@ import psycopg
 import pytest
 
 from app.adapters import FlowStep, Location
+from app.adapters.gitleaks import REDACTED
 from app.checkout import CheckoutReader
 from app.context import ContextCollector, Lines, Repo, scan_items
 from app.dedup import FunctionSpan, group_scan
@@ -111,3 +112,26 @@ def test_findings_an_earlier_review_decides_have_no_items(database, tmp_path):
 def test_a_scan_that_does_not_exist(database):
     with pytest.raises(LookupError):
         items(database, str(uuid.uuid4()))
+
+
+def test_a_line_another_finding_masks_stays_masked(database, tmp_path):
+    """The result at line 57 stored as a Gitleaks one: every item whose code covers line 57,
+    the six findings in lab() without grouping, shows it masked."""
+    scan_id = load(database, tmp_path, f"https://example.test/{uuid.uuid4().hex}")
+    with psycopg.connect(database) as conn:
+        conn.execute(
+            "UPDATE findings SET tool = 'gitleaks' WHERE scan_id = %s AND start_line = 57"
+            " AND rule_id LIKE '%%formatted-sql-query'",
+            (scan_id,),
+        )
+
+    covering = [
+        item
+        for item in items(database, scan_id)
+        if item.context.location.start_line <= 57 <= item.context.location.end_line
+    ]
+
+    assert len(covering) == 6
+    for item in covering:
+        code = item.context.code.split("\n")
+        assert code[57 - item.context.location.start_line] == REDACTED
