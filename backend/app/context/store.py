@@ -7,8 +7,9 @@ from psycopg.rows import dict_row
 
 from app.adapters import Finding, FlowStep, Location
 from app.context.items import ContextCollector, Flagged, Repo, TriageItem
+from app.dedup.store import GROUPABLE
 
-SCAN = "SELECT commit_sha FROM scans WHERE id = %(scan_id)s"
+SCAN = "SELECT commit_sha, status FROM scans WHERE id = %(scan_id)s"
 
 # Every finding of the scan, hidden ones too, for the lines their adapters mask.
 FLAGGED = """
@@ -42,12 +43,19 @@ def scan_items(conninfo: str, scan_id: str, collector: ContextCollector) -> list
     duplicate group, with the representative first, and one for each finding in no group. Hidden
     findings are left out, because an earlier review decides them (docs/finding-format.md),
     but the lines their adapters mask stay masked in the other items' code. The scan is grouped
-    first (app.dedup.group_scan), or every finding is an item of its own."""
+    first (app.dedup.group_scan), or every finding is an item of its own.
+
+    Raises LookupError for a scan that doesn't exist, and ValueError for one that hasn't ended
+    as completed or partial, since findings it stores later would never be triaged."""
     params = {"scan_id": scan_id}
     with psycopg.connect(conninfo, row_factory=dict_row) as conn:
         scan = conn.execute(SCAN, params).fetchone()
         if scan is None:
             raise LookupError(f"no scan {scan_id}")
+        if scan["status"] not in GROUPABLE:
+            raise ValueError(
+                f"scan {scan_id} is {scan['status']}, only a completed or partial scan is triaged"
+            )
         rows = conn.execute(FINDINGS, params).fetchall()
         locations = conn.execute(LOCATIONS, params).fetchall()
         representatives = {

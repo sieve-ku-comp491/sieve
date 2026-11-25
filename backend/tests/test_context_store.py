@@ -114,6 +114,16 @@ def test_a_scan_that_does_not_exist(database):
         items(database, str(uuid.uuid4()))
 
 
+def test_a_scan_that_has_not_ended_has_no_items_yet(database, tmp_path):
+    """Findings a running scan stores later would never be triaged, as for group_scan."""
+    scan_id = load(database, tmp_path, f"https://example.test/{uuid.uuid4().hex}")
+    with psycopg.connect(database) as conn:
+        conn.execute("UPDATE scans SET status = 'running' WHERE id = %s", (scan_id,))
+
+    with pytest.raises(ValueError, match="running"):
+        items(database, scan_id)
+
+
 def test_a_line_another_finding_masks_stays_masked(database, tmp_path):
     """The result at line 57 stored as a Gitleaks one: every item whose code covers line 57,
     the six findings in lab() without grouping, shows it masked."""
