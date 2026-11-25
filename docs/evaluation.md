@@ -77,7 +77,22 @@ For each CVE we take the NVD's own vector (the Primary source) in the newest CVS
 
 On 12 Nov 2026, 114 of the 117 CVEs with a known location have a vector: 93 in CVSS 3.1 and 21 in 3.0, by CWE 52 for CWE-22, 29 for CWE-79, 20 for CWE-94 and 13 for CWE-78. 113 come from the NVD's own analysts and one from the CNA that published the CVE. None has a CVSS 4.0 vector yet, because these CVEs are older. CVE-2011-2732, CVE-2011-4367 and CVE-2014-7816 have only CVSS 2.0 vectors, so they stay out of the severity check.
 
-Recent CVEs, published after the training cutoff of both models, are still to be chosen. docs/requirements.md says they are chosen in T6.1, but we pick the two models in the pilot run of T6.2, so the cutoff is known only then, and that table has to be updated to say T6.2. Ali helps choose them.
+### Recent CVEs
+
+The recent CVEs are published after the training cutoff of both models that the pilot triage chose. gpt-6-luna's cutoff is 18 May 2026, from its model page (see its note in models.json). DeepSeek doesn't publish a cutoff for V4.1 Flash, so we take the release of the snapshot we call, DeepSeek-V4.1-Flash-1017 on 17 Oct 2026, as the latest date it can know about. A CVE published on 18 Oct 2026 or later is newer than both.
+
+On 25 Nov 2026 we searched GitHub's reviewed advisories for Maven packages published since 18 Oct 2026, with the four CWEs of the severity check and the related ones in `RELATED_CWES`. Four are in Java projects:
+
+| CVE | Project | CWE | Published | GitHub's vector | Fix commit |
+|---|---|---|---|---|---|
+| CVE-2026-63436 | zeroturnaround/zt-zip | CWE-22 | 9 Nov 2026 | CVSS 3.1, 8.2 | `59a76ad` |
+| CVE-2026-63499 | zeroturnaround/zt-zip | CWE-23 | 9 Nov 2026 | CVSS 4.0, 6.9 | `1b62546` |
+| CVE-2026-9083 | keycloak/keycloak | CWE-22 | 29 Oct 2026 | CVSS 3.1, 4.9 | not linked |
+| CVE-2026-9086 | keycloak/keycloak | CWE-79 | 29 Oct 2026 | CVSS 3.1, 7.3 | not linked |
+
+Two more fit the CWEs but not the language: CVE-2026-75598 in GradleUp/shadow (CWE-22) is in Kotlin, and CVE-2026-76090 in softwaremill/tapir (CWE-94, CVSS 4.0) is in Scala. None is in CWE-78, and none of the Java ones in CWE-94.
+
+We propose the two zt-zip CVEs, whose fix commits give the vulnerable location, and the two Keycloak ones once we find their fixes. Only CVE-2026-63499 has a CVSS 4.0 vector. `cves.csv` takes the NVD's own vector when it has one, and we haven't yet checked the NVD for these four. Four CVEs are few for a severity check of their own, so before T6.4 we can also search the NVD for CVEs that GitHub hasn't reviewed, or wait for more to be published. Ali helps choose them.
 
 ## Neutral copies
 
@@ -332,10 +347,9 @@ For T6.4, 4,766 Java findings and 586 Python findings flag a case, 5,352 in all,
 
 ## Not covered yet
 
-- Recent CVEs, chosen after the pilot run of T6.2, see above.
+- The final list of recent CVEs, their vectors from the NVD and their vulnerable locations, see Recent CVEs above.
 - The labeled duplicate groups and the labeled Juice Shop sample, made by hand in T6.3. The dedup metric reads the groups as they are. The Juice Shop sample is labeled per finding, with many findings in one file, while the false-positive check judges whole files, so it needs a per-finding mode, added with T6.3.
 - The numbers of the severity baseline, which need the analyzers to run on the CVEs' projects, see the baseline run.
 - The false-positive check with the tools of #61, and the changes the pilot suggests for it: more room for deepseek-flash's thinking, a timeout per call, and a prompt that fits weak hashing, weak random and insecure cookie findings. Its cost per finding has to stay within the US$0.01 budget.
-- The change in docs/requirements.md from T6.1 to T6.2 for when the recent CVEs are chosen, see above.
 - How a scan reaches the neutral copies, see above.
 - The target applications have no expected results of their own: they are scanned for duplicates, reports and the PoC check.
