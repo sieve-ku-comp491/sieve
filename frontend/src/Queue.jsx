@@ -259,8 +259,7 @@ function Filters({ filters, search, tools, onChange }) {
           <input
             value={text}
             onChange={(event) => setText(event.target.value)}
-            onBlur={() => text.trim() !== search && onChange({ q: text.trim() })}
-            placeholder="part of a path or rule"
+            placeholder="part of a path or rule, then Enter"
             maxLength={500}
           />
         </label>
