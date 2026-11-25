@@ -63,13 +63,49 @@ def triaged(database, scan):
     return client, scan_id, target
 
 
-def decide(client, target, decision, seen=None, **extra):
-    body = {"decision": decision, "reviewer": "Furkan", "finding_edit_id": seen} | extra
+LATEST = object()
+
+
+def seen(client, target):
+    """The latest edit and the verdict of the finding, as a page that opened it now has them."""
+    response = client.get(f"/findings/{target}")
+    if response.status_code != 200:
+        return None, None
+    detail = response.json()
+    return (detail["latest_edit"] or {}).get("id"), (detail["verdict"] or {}).get("id")
+
+
+def seen_ids(client, target, edit_id, verdict_id):
+    latest_edit, latest_verdict = seen(client, target)
+    return (
+        latest_edit if edit_id is LATEST else edit_id,
+        latest_verdict if verdict_id is LATEST else verdict_id,
+    )
+
+
+def decide(client, target, decision, seen=LATEST, seen_verdict=LATEST, **extra):
+    """Saves a decision as a page that saw the latest edit and verdict, unless seen (the edit)
+    or seen_verdict says otherwise."""
+    edit_id, verdict_id = seen_ids(client, target, seen, seen_verdict)
+    body = {
+        "decision": decision,
+        "reviewer": "Furkan",
+        "finding_edit_id": edit_id,
+        "verdict_id": verdict_id,
+    } | extra
     return client.post(f"/findings/{target}/reviews", json=body, headers=UI)
 
 
-def edit(client, target, **fields):
-    return client.post(f"/findings/{target}/edits", json={"editor": "Furkan"} | fields, headers=UI)
+def edit(client, target, seen=LATEST, seen_verdict=LATEST, **fields):
+    edit_id, verdict_id = seen_ids(client, target, seen, seen_verdict)
+    body = {"editor": "Furkan", "finding_edit_id": edit_id, "verdict_id": verdict_id} | fields
+    return client.post(f"/findings/{target}/edits", json=body, headers=UI)
+
+
+def full_body(client, target, **fields):
+    edit_id, verdict_id = seen(client, target)
+    body = {"decision": "approve", "reviewer": "Furkan"} | fields
+    return body | {"finding_edit_id": edit_id, "verdict_id": verdict_id}
 
 
 def state(client, target):
@@ -240,6 +276,38 @@ def test_a_hidden_finding_can_get_a_decision_of_its_own(triaged, database):
     assert state(client, target) == "approved"
 
 
+def test_an_edit_from_a_page_that_missed_another_edit_is_refused(triaged):
+    """Two pages open on the same finding: the second edit would replace the first one
+    unseen, so it is refused until the page reloads."""
+    client, _, target = triaged
+    first = edit(client, target, seen=None, verdict="unsure")
+    assert first.status_code == 201, first.text
+    second = edit(client, target, seen=None, verdict="false_positive")
+    assert second.status_code == 409
+    assert "edited since you opened it" in second.json()["detail"]
+    assert client.get(f"/findings/{target}").json()["latest_edit"]["verdict"] == "unsure"
+    again = edit(client, target, seen=first.json()["id"], verdict="false_positive")
+    assert again.status_code == 201, again.text
+
+
+def test_a_save_after_the_finding_was_triaged_again_is_refused(database, triaged):
+    """A scan triaged again, for example with other models, gives the finding a new verdict.
+    A page that still shows the old one can't approve, reject or edit it."""
+    client, scan_id, target = triaged
+    _, old = seen(client, target)
+    new = str(add_verdict(database, triage_run(database, scan_id), finding=target))
+    for response in (
+        decide(client, target, "approve", seen_verdict=old),
+        decide(client, target, "reject", seen_verdict=old),
+        edit(client, target, seen_verdict=old, reasoning="still reachable"),
+    ):
+        assert response.status_code == 409
+        assert "triaged again since you opened it" in response.json()["detail"]
+    assert state(client, target) == "triaged"
+    assert decide(client, target, "approve").json()["verdict_id"] == new
+    assert edit(client, target, reasoning="still reachable").json()["verdict_id"] == new
+
+
 @pytest.mark.parametrize(
     ("vector", "reason"),
     [
@@ -265,25 +333,49 @@ def test_a_vector_that_isnt_a_v4_base_vector_is_refused(triaged, vector, reason)
         {"editor": "  ", "verdict": "unsure"},
         {"editor": "Furkan", "verdict": "maybe"},
         {"editor": "Furkan", "verdict": "unsure", "cvss_v4_score": 1.0},
+        {"editor": "Furkan", "verdict": "unsure", "verdict_id": None, "finding_edit_id": None},
     ],
 )
 def test_an_edit_that_changes_nothing_or_is_malformed_is_refused(triaged, body):
     client, _, target = triaged
+    edit_id, verdict_id = seen(client, target)
+    if "verdict_id" not in body:
+        body = body | {"finding_edit_id": edit_id, "verdict_id": verdict_id}
+        expected = 422
+    else:
+        expected = 409
     response = client.post(f"/findings/{target}/edits", json=body, headers=UI)
-    assert response.status_code == 422
+    assert response.status_code == expected
+    assert state(client, target) == "triaged"
+
+
+@pytest.mark.parametrize("missing", ["finding_edit_id", "verdict_id"])
+def test_a_save_must_say_what_the_reviewer_saw(triaged, missing):
+    client, _, target = triaged
+    decision = full_body(client, target)
+    change = {k: v for k, v in decision.items() if k not in ("decision", "reviewer")}
+    change |= {"editor": "Furkan", "verdict": "unsure"}
+    for path, body in (("reviews", decision), ("edits", change)):
+        body.pop(missing)
+        response = client.post(f"/findings/{target}/{path}", json=body, headers=UI)
+        assert response.status_code == 422
+    assert state(client, target) == "triaged"
 
 
 @pytest.mark.parametrize(
     "body",
     [
-        {"decision": "approve", "reviewer": "Furkan"},
-        {"decision": "maybe", "reviewer": "Furkan", "finding_edit_id": None},
-        {"decision": "approve", "reviewer": "", "finding_edit_id": None},
-        {"decision": "approve", "reviewer": "Furkan", "finding_edit_id": "not-a-uuid"},
+        {"decision": "maybe"},
+        {"reviewer": ""},
+        {"reviewer": "x" * 201},
+        {"finding_edit_id": "not-a-uuid"},
+        {"verdict_id": "not-a-uuid"},
+        {"surprise": True},
     ],
 )
 def test_a_malformed_decision_is_refused(triaged, body):
     client, _, target = triaged
+    body = full_body(client, target) | body
     response = client.post(f"/findings/{target}/reviews", json=body, headers=UI)
     assert response.status_code == 422
     assert state(client, target) == "triaged"
@@ -301,7 +393,7 @@ def test_an_unknown_finding_is_not_found(triaged):
 )
 def test_another_web_page_cant_decide(triaged, origin):
     client, _, target = triaged
-    body = {"decision": "approve", "reviewer": "Furkan", "finding_edit_id": None}
+    body = full_body(client, target)
     response = client.post(f"/findings/{target}/reviews", json=body, headers={"Origin": origin})
     assert response.status_code == 403
     assert state(client, target) == "triaged"
@@ -312,7 +404,7 @@ def test_only_a_json_body_is_taken(triaged, content_type):
     """A page on another site can send text/plain or a form, or a body with no type at all,
     without the browser asking first. Even with the JSON inside, they are refused."""
     client, _, target = triaged
-    body = json.dumps({"decision": "approve", "reviewer": "Furkan", "finding_edit_id": None})
+    body = json.dumps(full_body(client, target))
     headers = {} if content_type is None else {"Content-Type": content_type}
     request = client.build_request("POST", f"/findings/{target}/reviews", content=body)
     request.headers.pop("content-type", None)
@@ -323,7 +415,7 @@ def test_only_a_json_body_is_taken(triaged, content_type):
 
 def test_the_cli_without_an_origin_can_decide(triaged):
     client, _, target = triaged
-    body = {"decision": "reject", "reviewer": "cli", "finding_edit_id": None}
+    body = full_body(client, target, decision="reject", reviewer="cli")
     response = client.post(f"/findings/{target}/reviews", json=body)
     assert response.status_code == 201
 
@@ -332,14 +424,14 @@ def test_the_ui_origins_can_be_configured(triaged, monkeypatch):
     client, _, target = triaged
     monkeypatch.setenv("SIEVE_UI_ORIGINS", "http://localhost:3000")
     assert decide(client, target, "approve").status_code == 403
-    body = {"decision": "approve", "reviewer": "Furkan", "finding_edit_id": None}
+    body = full_body(client, target)
     headers = {"Origin": "http://localhost:3000"}
     assert client.post(f"/findings/{target}/reviews", json=body, headers=headers).status_code == 201
 
 
 def test_the_token_is_still_needed(triaged):
     client, _, target = triaged
-    body = {"decision": "approve", "reviewer": "Furkan", "finding_edit_id": None}
+    body = full_body(client, target)
     headers = UI | {"Authorization": "Bearer wrong"}
     response = client.post(f"/findings/{target}/reviews", json=body, headers=headers)
     assert response.status_code == 401

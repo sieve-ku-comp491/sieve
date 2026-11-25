@@ -73,6 +73,22 @@ class Edit:
     note: str | None = None
 
 
+def _id(value) -> str | None:
+    return None if value is None else str(value)
+
+
+def check_seen(current: dict, seen_edit_id: str | None, seen_verdict_id: str | None) -> None:
+    """Refuses a save based on a verdict or an edit that is no longer the latest."""
+    if _id(seen_verdict_id) != _id(current["verdict_id"]):
+        raise ReviewConflict(
+            "the finding was triaged again since you opened it: read the new verdict first"
+        )
+    if _id(seen_edit_id) != _id(current["edit_id"]):
+        raise ReviewConflict(
+            "the finding was edited since you opened it: read the latest edit first"
+        )
+
+
 class ReviewStore:
     def __init__(self, conninfo: str):
         self._conninfo = conninfo
@@ -89,21 +105,18 @@ class ReviewStore:
         reviewer: str,
         comment: str | None,
         seen_edit_id: str | None,
+        seen_verdict_id: str | None,
     ) -> dict:
-        """Saves an approve or a reject. seen_edit_id is the latest edit the reviewer saw, or
-        None if they saw none. When another edit was saved since, the decision is refused, so
-        nobody approves text they haven't read. The review records the verdict and the edit it
-        decided on, which is how the state tells an approval of the latest edit from an older
-        one."""
+        """Saves an approve or a reject. seen_edit_id and seen_verdict_id are the latest edit
+        and the verdict the reviewer saw, or None if there was none. When another edit was
+        saved since, or the finding was triaged again, the decision is refused, so nobody
+        approves text they haven't read. The review records the verdict and the edit it decided
+        on, which is how the state tells an approval of the latest edit from an older one."""
         with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
             current = self._current(conn, finding_id)
             if current["state"] in NOT_YET:
                 raise ReviewConflict(NOT_YET[current["state"]])
-            latest = None if current["edit_id"] is None else str(current["edit_id"])
-            if (None if seen_edit_id is None else str(seen_edit_id)) != latest:
-                raise ReviewConflict(
-                    "the finding was edited since you opened it: read the latest edit first"
-                )
+            check_seen(current, seen_edit_id, seen_verdict_id)
             review = conn.execute(
                 INSERT_REVIEW,
                 {
@@ -118,11 +131,19 @@ class ReviewStore:
             review["state"] = conn.execute(STATE, {"id": finding_id}).fetchone()["state"]
         return review
 
-    def edit(self, finding_id: str, edit: Edit) -> dict:
+    def edit(
+        self,
+        finding_id: str,
+        edit: Edit,
+        seen_edit_id: str | None,
+        seen_verdict_id: str | None,
+    ) -> dict:
         """Saves an edit next to the AI's verdict. Fields the edit leaves out keep the value of
         the previous edit, so the latest edit always holds everything the reviewer changed.
-        The score and level are computed from the vector. The finding becomes edited, which
-        undoes an approval or a rejection until the reviewer decides again."""
+        Like a decision, it is refused when the reviewer didn't see the latest edit or the
+        latest verdict, so two pages can't overwrite each other's changes. The score and level
+        are computed from the vector. The finding becomes edited, which undoes an approval or a
+        rejection until the reviewer decides again."""
         severity = score_v4(edit.cvss_v4_vector) if edit.cvss_v4_vector is not None else None
         with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
             current = self._current(conn, finding_id)
@@ -130,6 +151,7 @@ class ReviewStore:
                 raise ReviewConflict(NOT_YET[current["state"]])
             if current["verdict_id"] is None:
                 raise ReviewConflict("the finding has no verdict to edit")
+            check_seen(current, seen_edit_id, seen_verdict_id)
             row = {
                 "finding_id": finding_id,
                 "verdict_id": current["verdict_id"],

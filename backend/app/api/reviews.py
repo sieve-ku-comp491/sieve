@@ -38,7 +38,8 @@ Store = Annotated[ReviewStore, Depends(get_store)]
 def review(finding_id: UUID, body: ReviewIn, store: Store):
     """Approves or rejects the finding as it is now: the AI's verdict with the latest edit, if
     there is one. The latest review counts, so a finding can be approved after a rejection and
-    the other way round. Refused before triage and after export."""
+    the other way round. Refused before triage, after export, and when the verdict or the
+    latest edit isn't the one the reviewer saw."""
     try:
         return store.decide(
             str(finding_id),
@@ -46,6 +47,7 @@ def review(finding_id: UUID, body: ReviewIn, store: Store):
             body.reviewer,
             body.comment,
             None if body.finding_edit_id is None else str(body.finding_edit_id),
+            None if body.verdict_id is None else str(body.verdict_id),
         )
     except FindingNotFound as error:
         raise HTTPException(404, "no such finding") from error
@@ -56,12 +58,14 @@ def review(finding_id: UUID, body: ReviewIn, store: Store):
 @router.post("/{finding_id}/edits", response_model=EditSaved, status_code=201, responses=REFUSED)
 def edit(finding_id: UUID, body: EditIn, store: Store):
     """Saves the reviewer's changes next to the AI's verdict, which stays as it is. The finding
-    becomes edited until the reviewer approves or rejects it again. Refused before triage and
-    after export."""
+    becomes edited until the reviewer approves or rejects it again. Refused before triage,
+    after export, and when the verdict or the latest edit isn't the one the reviewer saw."""
     try:
         return store.edit(
             str(finding_id),
             Edit(body.editor, body.verdict, body.reasoning, body.cvss_v4_vector, body.note),
+            None if body.finding_edit_id is None else str(body.finding_edit_id),
+            None if body.verdict_id is None else str(body.verdict_id),
         )
     except VectorError as error:
         raise HTTPException(422, f"cvss_v4_vector: {error}") from error

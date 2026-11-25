@@ -529,7 +529,7 @@
           "reviews"
         ],
         "summary": "Review",
-        "description": "Approves or rejects the finding as it is now: the AI's verdict with the latest edit, if\nthere is one. The latest review counts, so a finding can be approved after a rejection and\nthe other way round. Refused before triage and after export.",
+        "description": "Approves or rejects the finding as it is now: the AI's verdict with the latest edit, if\nthere is one. The latest review counts, so a finding can be approved after a rejection and\nthe other way round. Refused before triage, after export, and when the verdict or the\nlatest edit isn't the one the reviewer saw.",
         "operationId": "review_findings__finding_id__reviews_post",
         "parameters": [
           {
@@ -589,7 +589,7 @@
           "reviews"
         ],
         "summary": "Edit",
-        "description": "Saves the reviewer's changes next to the AI's verdict, which stays as it is. The finding\nbecomes edited until the reviewer approves or rejects it again. Refused before triage and\nafter export.",
+        "description": "Saves the reviewer's changes next to the AI's verdict, which stays as it is. The finding\nbecomes edited until the reviewer approves or rejects it again. Refused before triage,\nafter export, and when the verdict or the latest edit isn't the one the reviewer saw.",
         "operationId": "edit_findings__finding_id__edits_post",
         "parameters": [
           {
@@ -817,6 +817,32 @@
             "minLength": 1,
             "title": "Editor"
           },
+          "finding_edit_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Edit Id",
+            "description": "the latest edit the reviewer saw, from latest_edit of the finding, or null if it has none. Refused with 409 when another edit was saved since."
+          },
+          "verdict_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict Id",
+            "description": "the verdict the reviewer saw, from verdict of the finding, or null if it has none. Refused with 409 when the finding was triaged again since."
+          },
           "verdict": {
             "anyOf": [
               {
@@ -876,7 +902,9 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "editor"
+          "editor",
+          "finding_edit_id",
+          "verdict_id"
         ],
         "title": "EditIn",
         "description": "Changes to the verdict, the reasoning or the CVSS v4.0 vector. A field left out keeps\nthe value of the latest edit, or the AI's."
@@ -2173,7 +2201,20 @@
               }
             ],
             "title": "Finding Edit Id",
-            "description": "the latest edit the reviewer saw, from latest_edit of the finding, or null if it has none. The decision is refused when another edit was saved since."
+            "description": "the latest edit the reviewer saw, from latest_edit of the finding, or null if it has none. Refused with 409 when another edit was saved since."
+          },
+          "verdict_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict Id",
+            "description": "the verdict the reviewer saw, from verdict of the finding, or null if it has none. Refused with 409 when the finding was triaged again since."
           }
         },
         "additionalProperties": false,
@@ -2181,7 +2222,8 @@
         "required": [
           "decision",
           "reviewer",
-          "finding_edit_id"
+          "finding_edit_id",
+          "verdict_id"
         ],
         "title": "ReviewIn",
         "description": "An approve or a reject of one finding."

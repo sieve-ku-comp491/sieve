@@ -288,6 +288,15 @@ class FindingDetail(BaseModel):
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20000)]
 
+SEEN_EDIT = Field(
+    description="the latest edit the reviewer saw, from latest_edit of the finding, or null if "
+    "it has none. Refused with 409 when another edit was saved since."
+)
+SEEN_VERDICT = Field(
+    description="the verdict the reviewer saw, from verdict of the finding, or null if it has "
+    "none. Refused with 409 when the finding was triaged again since."
+)
+
 
 class ReviewIn(BaseModel):
     """An approve or a reject of one finding."""
@@ -297,10 +306,8 @@ class ReviewIn(BaseModel):
     decision: Literal["approve", "reject"]
     reviewer: Name
     comment: Text | None = None
-    finding_edit_id: UUID | None = Field(
-        description="the latest edit the reviewer saw, from latest_edit of the finding, or "
-        "null if it has none. The decision is refused when another edit was saved since."
-    )
+    finding_edit_id: UUID | None = SEEN_EDIT
+    verdict_id: UUID | None = SEEN_VERDICT
 
 
 class EditIn(BaseModel):
@@ -310,6 +317,8 @@ class EditIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     editor: Name
+    finding_edit_id: UUID | None = SEEN_EDIT
+    verdict_id: UUID | None = SEEN_VERDICT
     verdict: Verdict | None = None
     reasoning: Text | None = None
     cvss_v4_vector: str | None = Field(
