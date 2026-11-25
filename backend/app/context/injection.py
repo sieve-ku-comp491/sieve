@@ -62,9 +62,9 @@ PATTERNS = [
         r"|every)\s+)*(?:(?:(?:previous|prior|above|earlier|preceding|former|system|original"
         r"|other)\s+)?(?:instructions?|prompts?|directives?|guidelines?)"
         r"|(?:previous|prior|above|earlier|preceding|system)\s+(?:rules?|context|messages?))\b",
-        # The markup of chat prompts.
-        r"<\|im_(?:start|end)\|>|<\|(?:system|user|assistant)\|>|\[/?inst\]|<</?sys>>"
-        r"|\bsystem\s+prompt\b",
+        # The markup of chat prompts. Text that only mentions a system prompt, as chat apps and
+        # their tests do, isn't flagged: the pattern above already flags ignoring one.
+        r"<\|im_(?:start|end)\|>|<\|(?:system|user|assistant)\|>|\[/?inst\]|<</?sys>>",
         # Talking to an AI.
         rf"\b(?:(?:note|message|instructions?|hint|reminder|attention|warning)\s+(?:to|for)\s+"
         rf"(?:the\s+|any\s+|all\s+|our\s+)?{AI}"

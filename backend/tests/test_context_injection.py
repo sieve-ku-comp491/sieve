@@ -72,6 +72,7 @@ ORDINARY = [
     "the AI must be retrained weekly",
     "we never flag these results twice",
     "we do not report these results twice",
+    "The chatbot's system prompt is loaded from settings",
 ]
 
 
