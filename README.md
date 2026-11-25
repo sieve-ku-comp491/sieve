@@ -107,6 +107,6 @@ Then, with the environment started, run from the repo root:
       --repo-url https://github.com/adeyosemanputra/pygoat \
       --commit 2aa4cc14f251e4a780e94e200aed6b36a5b15c21
 
-It prints the new scan's ID and the number of findings, 153 for the run in docs/ui-mockups.md. The scan then shows up in `GET /scans`, and its findings in `GET /scans/<scan ID>/findings`. Each load is a new scan.
+It prints the new scan's ID and the number of findings, 153 for the run in docs/ui-mockups.md. The scan then shows up in `GET /scans`, and its findings in `GET /scans/<scan ID>/findings`. Each load is a new scan. To store several plug-ins' runs on the same checkout as one scan, so that deduplication can group their findings, give `--manifest` and `--sarif` once per run.
 
 `load-sarif` checks `--repo-url` against the scope file, as `POST /scans` does, and stores it normalized. Outside Compose, from `backend/`, point `SIEVE_SCOPE_FILE` at `../scope/scope.toml`. The one exception is an evaluation run of a neutral Benchmark copy (docs/evaluation.md), which is stored under `eval:benchmark-java/<run>` or `eval:benchmark-python/<run>` without a scope entry. `<run>` is a label of the run's own, such as `t6.4`, in lowercase letters, digits, `.`, `_` and `-`, so the matching of repeated scans doesn't carry reviews from one run to the next. The CLI, `POST /scans` and the worker refuse `eval:` URLs.

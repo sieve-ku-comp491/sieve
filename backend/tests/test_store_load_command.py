@@ -120,3 +120,36 @@ def test_the_command_stores_the_scan_under_the_checked_url(
             "SELECT repo_url, status FROM scans WHERE id = %s", (scan_id,)
         ).fetchone()
     assert row == (stored, "completed")
+
+
+def test_several_runs_on_one_checkout_are_stored_as_one_scan(
+    database, scope_file, tmp_path, monkeypatch, capsys
+):
+    # The Semgrep and Bandit fixtures are runs on the same PyGoat files, with 9 results each
+    # (tests/adapter_fixture/README.md).
+    monkeypatch.setenv("DATABASE_URL", database)
+    monkeypatch.setenv("SIEVE_SCOPE_FILE", str(scope_file))
+    monkeypatch.setenv("SIEVE_DATA_DIR", str(tmp_path / "data"))
+    bandit = ["--manifest", str(MANIFEST.parents[1] / "bandit" / "plugin.toml")]
+    bandit += ["--sarif", str(FIXTURE / "bandit-pygoat.sarif")]
+    assert main(load_args("eval:benchmark-python/two-runs") + bandit) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 2 and all(line.endswith(": 9 findings stored") for line in lines)
+    with psycopg.connect(database) as conn:
+        rows = conn.execute(
+            "SELECT s.status, s.languages, r.plugin, r.status, count(f.id) FROM scans s"
+            " JOIN analyzer_runs r ON r.scan_id = s.id JOIN findings f ON f.run_id = r.id"
+            " WHERE s.repo_url = 'eval:benchmark-python/two-runs'"
+            " GROUP BY s.id, r.id ORDER BY r.plugin"
+        ).fetchall()
+    assert rows == [
+        ("completed", ["python"], "bandit", "succeeded", 9),
+        ("completed", ["python"], "semgrep", "succeeded", 9),
+    ]
+
+
+def test_each_manifest_needs_its_sarif_file(monkeypatch, capsys):
+    monkeypatch.setenv("DATABASE_URL", NO_DATABASE)
+    with pytest.raises(SystemExit):
+        main(load_args("eval:benchmark-python/t6.4") + ["--manifest", str(MANIFEST)])
+    assert "once per --manifest" in capsys.readouterr().err
