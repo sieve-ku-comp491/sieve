@@ -206,6 +206,8 @@ def _pilot_sample(args: argparse.Namespace, folder: Path, checkouts: dict[str, P
     chosen = []
     for dataset in sorted(by_dataset):
         cases = expected.read_csv(sources.data_dir() / "answers" / dataset / "expected.csv")
+        flagging = pilot.count_flagging(by_dataset[dataset], cases)
+        print(f"{dataset}: {flagging} findings flag a case")
         rows = pilot.choose(dataset, by_dataset[dataset], cases, args.per_dataset, rng)
         count = pilot.write_expected(rows, cases, folder / f"expected-{dataset}.csv")
         print(f"{dataset}: {len(rows)} findings from {count} cases")

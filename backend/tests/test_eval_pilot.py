@@ -58,6 +58,18 @@ def test_the_sample_takes_one_finding_per_case_from_each_cwe_in_turn():
     assert rows == again
 
 
+def test_the_findings_that_flag_a_case_are_counted_like_the_sample_chooses_them():
+    cases = [case("Case1", "CWE-89"), case("Case2", "CWE-78")]
+    findings = {
+        # Two findings on the same case both count, and CWE-77 is related to CWE-78.
+        "bandit": [finding("Case1", "CWE-89"), finding("Case1", "CWE-89", rule="r2")],
+        "semgrep": [finding("Case2", "CWE-77"), finding("Case1", "CWE-22")],
+    }
+    findings["semgrep"].append(finding("Other", "CWE-89"))
+
+    assert pilot.count_flagging(findings, cases) == 3
+
+
 def test_a_cwe_with_few_cases_gives_all_of_them():
     cases = [case("Case1", "CWE-78"), case("Case2", "CWE-89"), case("Case3", "CWE-89")]
     findings = [finding(c.case_id, c.cwe) for c in cases]

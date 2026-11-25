@@ -89,6 +89,26 @@ def read_findings(tool: str, sarif_path: Path, checkout: Path) -> list[Finding]:
     return adapter.to_findings(sarif, run, CheckoutReader(checkout)).findings
 
 
+def flags_a_case(finding: Finding, by_file: dict[str, Expected]) -> Expected | None:
+    """The case a finding flags: the case of its file, when one of its CWEs is the case's CWE
+    or a related one."""
+    case = by_file.get(finding.location.file)
+    if case is None or not any(related(case.cwe, cwe) for cwe in finding.cwe):
+        return None
+    return case
+
+
+def count_flagging(findings_by_tool: dict[str, list[Finding]], cases: list[Expected]) -> int:
+    """How many findings of one Benchmark flag a case, which a triage of the Benchmark checks."""
+    by_file = {case.file: case for case in cases}
+    return sum(
+        1
+        for findings in findings_by_tool.values()
+        for finding in findings
+        if flags_a_case(finding, by_file) is not None
+    )
+
+
 def choose(
     dataset: str,
     findings_by_tool: dict[str, list[Finding]],
@@ -106,8 +126,8 @@ def choose(
     flagging: dict[str, list[SampledFinding]] = {}
     for tool in sorted(findings_by_tool):
         for index, finding in enumerate(findings_by_tool[tool]):
-            case = by_file.get(finding.location.file)
-            if case is None or not any(related(case.cwe, cwe) for cwe in finding.cwe):
+            case = flags_a_case(finding, by_file)
+            if case is None:
                 continue
             short = dataset.removeprefix("benchmark-")
             flagging.setdefault(case.case_id, []).append(

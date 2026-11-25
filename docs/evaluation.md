@@ -354,7 +354,7 @@ The budget of N1 is US$0.02 per finding for the whole triage of a finding, for b
 
 The US$0.01 for the check is four times deepseek-flash's mean cost at peak price and nearly twice its most expensive finding, which leaves room for the `read_file` and `find_definition` tools of #61. Each tool call adds a turn that sends the conversation again. As an estimate, three turns of the pilot's size, with a tool result of about 1,000 tokens each, cost just under US$0.01 on deepseek-flash at peak price. gpt-6-luna stays far below the budget.
 
-For T6.4, 4,766 Java findings and 586 Python findings flag a case, 5,352 in all, so the whole triage of both Benchmarks has a limit of US$107.04, and the false-positive check of those findings stays within US$53.52 of it. At the pilot's cost without tools the check would spend about US$12.60 on deepseek-flash at peak price and US$3.20 on gpt-6-luna. All 13,389 findings of the two Benchmarks would have a limit of US$267.78.
+`pilot sample` prints each tool's number of findings and each Benchmark's number of findings that flag a case. For T6.4, 4,766 Java findings and 586 Python findings flag a case, 5,352 of the 13,389 in all, so the whole triage of both Benchmarks has a limit of US$107.04, and the false-positive check of those findings stays within US$53.52 of it. At the pilot's cost without tools the check would spend about US$12.60 on deepseek-flash at peak price and US$3.20 on gpt-6-luna. All 13,389 findings of the two Benchmarks would have a limit of US$267.78.
 
 ## Not covered yet
 
