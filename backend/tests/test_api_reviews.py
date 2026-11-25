@@ -3,6 +3,7 @@ changes of docs/finding-states.md. Each test loads a scan of its own and adds th
 it needs, since triage itself isn't built yet."""
 
 import json
+import uuid
 
 import psycopg
 import pytest
@@ -17,8 +18,13 @@ UI = {"Origin": "http://localhost:8080"}
 
 @pytest.fixture
 def scan(database, tmp_path):
-    scan_id = load(database, tmp_path)
-    return make_client(database, tmp_path), scan_id
+    """A scan under a repository URL of its own, so the findings reviewed here are never
+    matched to those of another test's scan."""
+    repo_url = f"https://github.com/example/pygoat-{uuid.uuid4().hex[:12]}"
+    scan_id = load(database, tmp_path, repo=repo_url)
+    client = make_client(database, tmp_path)
+    client.repo_url = repo_url
+    return client, scan_id
 
 
 def triage_run(database, scan_id) -> str:
@@ -214,21 +220,23 @@ def test_a_reported_finding_is_final(database, triaged):
         assert response.json()["detail"] == "the finding is reported: its report has been exported"
 
 
-def test_a_hidden_finding_can_get_a_decision_of_its_own(database, triaged):
-    """A finding hidden in a repeated scan counts with the earlier review until it gets its
-    own, which then counts instead."""
-    client, scan_id, target = triaged
+def test_a_hidden_finding_can_get_a_decision_of_its_own(triaged, database):
+    """A repeated scan of the same repository hides the finding with the earlier review
+    (docs/finding-format.md). It counts with that review until it gets its own, which then
+    counts instead. A hidden finding isn't triaged, so its own review has no verdict."""
+    client, _, target = triaged
     earlier = decide(client, target, "approve").json()["id"]
-    repeat = load(database, client.app.state.settings.data_dir)
-    hidden = finding_id(client, repeat, SQL_RULE, 57)
-    with psycopg.connect(database) as conn:
-        conn.execute(
-            "UPDATE findings SET hidden = true, carried_review_id = %s, matched_finding_id = %s"
-            " WHERE id = %s",
-            (earlier, target, hidden),
-        )
-    assert state(client, hidden) == "approved"
-    assert decide(client, hidden, "reject").json()["state"] == "rejected"
+    repeat = load(database, client.app.state.settings.data_dir, repo=client.repo_url)
+    (hidden,) = [
+        item
+        for item in findings(client, repeat, q=SQL_RULE, include_hidden=True)["items"]
+        if item["rule_id"] == SQL_RULE and item["start_line"] == 57
+    ]
+    detail = client.get(f"/findings/{hidden['id']}").json()
+    assert detail["hidden"] and detail["carried_review"]["id"] == earlier
+    assert detail["state"] == "approved"
+    rejected = decide(client, hidden["id"], "reject").json()
+    assert (rejected["state"], rejected["verdict_id"]) == ("rejected", None)
     assert state(client, target) == "approved"
 
 
