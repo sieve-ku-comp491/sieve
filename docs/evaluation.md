@@ -342,7 +342,9 @@ gpt-6-luna is the cheaper model. It costs a quarter of deepseek-flash per findin
 
 deepseek-flash is the stronger model. It gave 81 right and 6 wrong verdicts against 72 and 19, and it is the only one that meets both targets on both Benchmarks on its own. Its weak point is the 12 replies cut off while thinking. A second opinion from gpt-6-luna on those adds about 4% to the cost but loses two Java true positives, so T3.3 should rather give deepseek-flash more room, with a higher `max_tokens` or a set effort. Its longest call took 229 s, so the triage needs a timeout per call.
 
-So the evaluation uses gpt-6-luna as the cheaper model and deepseek-flash as the stronger one, and deepseek-flash answers first. Neither needs a stronger model on its unsure findings yet.
+So the evaluation uses gpt-6-luna as the cheaper model and deepseek-flash as the stronger one. In T6.4, deepseek-flash checks every finding, and its unsure findings stay unsure for the review screen. gpt-6-luna gives no second opinion: it checks every finding in a run of its own, only to be measured against deepseek-flash. Neither needs a stronger model on its unsure findings yet.
+
+This is the opposite of the Triage API in docs/interfaces.md, where each finding goes to the cheaper model first and only its unsure findings go to the stronger one. With these two models that order can't work: gpt-6-luna was sure, not unsure, about the 13 real cases it called false positives, so they would never reach deepseek-flash, and the share kept stays at 0.769 on Java. T3.3 changes the Triage API to match: one model checks every finding, and a second model on the unsure findings is optional.
 
 Both models get weak hashing, weak random and insecure cookie cases wrong more than the others: 12 of gpt-6-luna's 19 wrong verdicts and 3 of deepseek-flash's 6 are in CWE-327, CWE-328, CWE-330 and CWE-614. The draft prompt calls a finding a true positive when "data that an attacker can control reaches the flagged operation", which doesn't fit those CWEs, where the algorithm or the missing flag is the weakness. The prompt of T3.3 should say so.
 
