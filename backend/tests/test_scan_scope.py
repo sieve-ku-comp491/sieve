@@ -22,7 +22,7 @@ def scope_with(tmp_path: Path, *urls: str) -> ScopeFile:
 
 
 def test_the_committed_scope_file_lists_the_three_targets_with_reasons():
-    scope = ScopeFile.load(ROOT / "scope.toml")
+    scope = ScopeFile.load(ROOT / "scope" / "scope.toml")
     assert [entry.normalized_url for entry in scope.entries] == [
         PYGOAT,
         "https://github.com/WebGoat/WebGoat",
@@ -32,7 +32,7 @@ def test_the_committed_scope_file_lists_the_three_targets_with_reasons():
 
 
 def test_the_committed_scope_file_says_public_code_only():
-    text = (ROOT / "scope.toml").read_text(encoding="utf-8")
+    text = (ROOT / "scope" / "scope.toml").read_text(encoding="utf-8")
     assert "Public code only" in text
 
 

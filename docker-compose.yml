@@ -7,10 +7,11 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     # The API reads the checkouts and SARIF files that the worker writes (docs/architecture.md,
-    # volumes), and the scope file, for the scope check before a scan is queued.
+    # volumes), and the scope file, for the scope check before a scan is queued. The api and the
+    # worker mount the scope folder, not the file, so they see an edit saved as a new file.
     volumes:
       - sieve-data:/data:ro
-      - ./scope.toml:/etc/sieve/scope.toml:ro
+      - ./scope:/etc/sieve:ro
     networks:
       - frontend
       - backend
@@ -33,7 +34,7 @@ services:
       SIEVE_PLUGINS_DIR: /plugins
     volumes:
       - sieve-data:/data
-      - ./scope.toml:/etc/sieve/scope.toml:ro
+      - ./scope:/etc/sieve:ro
       - ./plugins:/plugins:ro
       - /var/run/docker.sock:/var/run/docker.sock
     networks:

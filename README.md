@@ -56,7 +56,7 @@ It should answer `{"status":"ok"}`. Without the token, or with a `Host` other th
 
 ### Scope file
 
-`scope.toml` in the repo root lists the repositories Sieve may scan (requirement F2). The API refuses a scan of any other repository before it clones anything or starts any container, and the worker clones the URL written in the scope file, not the one in the request.
+`scope/scope.toml` lists the repositories Sieve may scan (requirement F2). The API refuses a scan of any other repository before it clones anything or starts any container, and the worker clones the URL written in the scope file, not the one in the request.
 
 The scope file is for public code only. Sieve sends code from these repositories to hosted LLM APIs, so never list confidential code, such as a client's private repository (requirement N4). Sieve clones without credentials, so a private repository fails even when it is listed.
 
@@ -72,7 +72,7 @@ Rules:
 - The commit must be on a branch or tag of the listed repository. GitHub serves a commit pushed to any fork through the original repository's URL, so a commit outside its branches and tags is refused.
 - An entry without a `reason`, or with a URL that breaks these rules, stops the file from loading, and every scan is refused until it is fixed.
 
-The API and the worker read the file on every scan, so an edit takes effect without a restart. Compose mounts it read-only at `/etc/sieve/scope.toml`.
+The API and the worker read the file on every scan, so an edit takes effect without a restart. Compose mounts the `scope` folder read-only at `/etc/sieve`, rather than the file itself: many editors save a file by writing a new one and renaming it, and a container with the file mounted would go on reading the old one.
 
 ### Scan a repository from the command line
 
