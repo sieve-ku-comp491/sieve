@@ -457,6 +457,26 @@ td .muted {
   color: #424a53;
 }
 
+.outside {
+  margin: 12px -16px -16px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.outside h3 {
+  margin-top: 0;
+}
+
+.outside ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.outside li.warn {
+  color: #762c00;
+}
+
 .note-row td {
   font-size: 13px;
   cursor: default;
@@ -684,6 +704,10 @@ td .muted {
 .metrics td:nth-child(3) {
   width: 40px;
   font-family: var(--mono);
+}
+
+.metrics td:last-child {
+  width: 100%;
 }
 
 .metrics tr.changed td:nth-child(2) {

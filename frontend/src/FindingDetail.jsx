@@ -148,7 +148,8 @@ export default function FindingDetail({ findingId, reviewer }) {
       {f.verdict?.injection_suspected && (
         <div className="banner warn-banner">
           ⚠ A comment or string in this code looks like an instruction to an AI. The lines are marked
-          in orange. Read the code yourself before you trust the verdict.
+          in orange, or listed under the code when they are outside it. Read the code yourself
+          before you trust the verdict.
         </div>
       )}
       {f.carried_review && !f.hidden && (
@@ -240,13 +241,48 @@ function Code({ finding }) {
             )
           })}
         </pre>
-      ) : (
+      ) : null}
+      <Outside code={code} file={file} verdict={finding.verdict} />
+      {!code && (
         <div className="empty-state">
           The code can&apos;t be shown: the scan&apos;s checkout isn&apos;t in the data folder.
           {location.snippet && <pre className="code snippet">{location.snippet}</pre>}
         </div>
       )}
     </section>
+  )
+}
+
+// Cited lines and lines that look like instructions to an AI can be outside
+// the code window, or in another file: triage reads the whole enclosing
+// function and the data-flow steps. They are listed here, so every one of
+// them stays checkable.
+function Outside({ code, file, verdict }) {
+  const shown = (entry) => {
+    if (!code || (entry.file && entry.file !== file)) return false
+    const start = entry.start_line ?? entry.line
+    const end = entry.end_line ?? start
+    return start >= code.start_line && end <= code.end_line
+  }
+  const entries = [
+    ...(verdict?.injection_lines ?? []).map((entry) => ({ entry, why: 'looks like an instruction to an AI' })),
+    ...(verdict?.cited_lines ?? []).map((entry) => ({ entry, why: 'cited by the AI' })),
+  ].filter(({ entry }) => !shown(entry))
+  if (entries.length === 0) return null
+  return (
+    <div className="outside">
+      <h3>Outside the code shown</h3>
+      <ul>
+        {entries.map(({ entry, why }) => {
+          const start = entry.start_line ?? entry.line
+          return (
+            <li key={`${why}-${entry.file}-${start}`} className={why === 'cited by the AI' ? '' : 'warn'}>
+              <span className="file">{entry.file ?? file}</span> lines {lines(start, entry.end_line ?? start)}, {why}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 
