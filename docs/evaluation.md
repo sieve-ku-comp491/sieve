@@ -350,16 +350,16 @@ Both models get weak hashing, weak random and insecure cookie cases wrong more t
 
 ### Budget per finding (N1, test 3)
 
-The budget for the false-positive check is US$0.01 per finding, for both models. A triage run's limit is US$0.01 times the number of findings it triages.
+The budget of N1 is US$0.02 per finding for the whole triage of a finding, for both models: US$0.01 for the false-positive check, which the pilot measured, and US$0.01 for the severity call of T3.4 and the grouping questions of #83 together, which it didn't. A triage run's limit is US$0.02 times the number of findings it triages. T3.4 and #83 check that their calls fit in their share, and T6.4 checks the whole.
 
-That is four times deepseek-flash's mean cost at peak price and nearly twice its most expensive finding, which leaves room for the `read_file` and `find_definition` tools of #61. Each tool call adds a turn that sends the conversation again. As an estimate, three turns of the pilot's size, with a tool result of about 1,000 tokens each, cost just under US$0.01 on deepseek-flash at peak price. gpt-6-luna stays far below the budget.
+The US$0.01 for the check is four times deepseek-flash's mean cost at peak price and nearly twice its most expensive finding, which leaves room for the `read_file` and `find_definition` tools of #61. Each tool call adds a turn that sends the conversation again. As an estimate, three turns of the pilot's size, with a tool result of about 1,000 tokens each, cost just under US$0.01 on deepseek-flash at peak price. gpt-6-luna stays far below the budget.
 
-For T6.4, 4,766 Java findings and 586 Python findings flag a case, 5,352 in all, so the triage of both Benchmarks has a limit of US$53.52. At the pilot's cost without tools it would spend about US$12.60 on deepseek-flash at peak price and US$3.20 on gpt-6-luna. All 13,389 findings of the two Benchmarks would have a limit of US$133.89.
+For T6.4, 4,766 Java findings and 586 Python findings flag a case, 5,352 in all, so the whole triage of both Benchmarks has a limit of US$107.04, and the false-positive check of those findings stays within US$53.52 of it. At the pilot's cost without tools the check would spend about US$12.60 on deepseek-flash at peak price and US$3.20 on gpt-6-luna. All 13,389 findings of the two Benchmarks would have a limit of US$267.78.
 
 ## Not covered yet
 
 - The final list of recent CVEs, their vectors from the NVD and their vulnerable locations, see Recent CVEs above.
 - The labeled duplicate groups and the labeled Juice Shop sample, made by hand in T6.3. The dedup metric reads the groups as they are. The Juice Shop sample is labeled per finding, with many findings in one file, while the false-positive check judges whole files, so it needs a per-finding mode, added with T6.3.
 - The numbers of the severity baseline, which need the analyzers to run on the CVEs' projects, see the baseline run.
-- The false-positive check with the tools of #61, and the changes the pilot suggests for it: more room for deepseek-flash's thinking, a timeout per call, and a prompt that fits weak hashing, weak random and insecure cookie findings. Its cost per finding has to stay within the US$0.01 budget.
+- The false-positive check with the tools of #61, and the changes the pilot suggests for it: more room for deepseek-flash's thinking, a timeout per call, and a prompt that fits weak hashing, weak random and insecure cookie findings. Its cost per finding has to stay within its US$0.01 share of the budget, and the Triage API changes to one model on every finding, see The two models.
 - The target applications have no expected results of their own: they are scanned for duplicates, reports and the PoC check.
