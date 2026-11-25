@@ -33,6 +33,16 @@ MARKERS = ("OWASP Benchmark", "Benchmark Project", *AUTHORS)
 PROJECT_NAME = ("OWASP Benchmark", "Sample App")
 MARKUP_COMMENT = re.compile(r"<!--.*?-->|<%--.*?--%>", re.DOTALL)
 MARKUP_SUFFIXES = {".html", ".htm", ".xml", ".jsp"}
+CODE_SUFFIXES = {".java", ".py"}
+# Values in the test code that hint at the answer. In the weak randomness cases, a user name
+# starts with "Safe", as in 'SafeToby', only when the case is not real; real cases use 'Toby'.
+# 'safe!', 'safe', 'moresafe' and 'alsosafe' are arbitrary constants that no code compares, so
+# a neutral word keeps the code doing the same thing.
+SAFE_VALUES = (
+    (re.compile(r"(['\"][ _]?)Safe(?=[A-Z][a-z])"), r"\1"),
+    (re.compile(r"(['\"])(also|more)?safe(!?)\1"), r"\1\2constant\3\1"),
+)
+SAFE_VALUE = re.compile(r"['\"][ _]?Safe[A-Z][a-z]|(['\"])(?:also|more)?safe!?\1")
 # A fixed date makes the copy's commit depend only on its files, so the same seed gives the same
 # commit.
 COMMIT_DATE = "2000-01-01T00:00:00+0000"
@@ -106,7 +116,12 @@ PROFILES = {
         keep=("app.py", "helpers", "templates", "testcode", "testfiles", "requirements.txt"),
         drop=("*Index*.html",),
         remove=(),
-        renames=(('class="safe"', 'class="input"'),),
+        renames=(
+            ('class="safe"', 'class="input"'),
+            # A test input in three deserialization cases, all of them not real.
+            ("safe+data", "plain+data"),
+            ("safe data", "plain data"),
+        ),
         allowed=(),
         allowed_files=(),
         read_expected=expected.benchmark_python,
@@ -143,6 +158,9 @@ class Rewriter:
 
     def text(self, content: str, suffix: str) -> str:
         content = strip_comments(content, suffix)
+        if suffix in CODE_SUFFIXES:
+            for pattern, replacement in SAFE_VALUES:
+                content = pattern.sub(replacement, content)
         content = COMMENT.sub(
             lambda m: "" if any(word in m.group(0) for word in MARKERS) else m.group(0), content
         )
@@ -281,7 +299,8 @@ def make_copy(
             data = path.read_bytes()
             try:
                 text = rewriter.text(data.decode("utf-8"), path.suffix)
-                target.write_text(text, encoding="utf-8")
+                # "\n" on every system, so a copy made on Windows has the same bytes.
+                target.write_text(text, encoding="utf-8", newline="\n")
             except UnicodeDecodeError:
                 target.write_bytes(data)
             files[relative] = target.relative_to(dest).as_posix()
@@ -303,8 +322,8 @@ def make_copy(
 
 
 def leaks(dest: Path, profile: Profile, names: Names) -> list[str]:
-    """Every place in the copy that still names the Benchmark, its categories or its authors, and
-    every source file that still has a comment."""
+    """Every place in the copy that still names the Benchmark, its categories or its authors,
+    every source file that still has a comment, and every 'safe' value left in the test code."""
     words = "|".join(map(re.escape, names.categories))
     patterns = [
         re.compile(r"benchmark|expectedresults", re.IGNORECASE),
@@ -324,6 +343,8 @@ def leaks(dest: Path, profile: Profile, names: Names) -> list[str]:
             text = ""
         if text and strip_comments(text, path.suffix) != text:
             found.append(f"{relative}: comment")
+        if path.suffix in CODE_SUFFIXES and (value := SAFE_VALUE.search(text)):
+            found.append(f"{relative}: {value.group(0)}")
         if allowed:
             # Blank out allowed matches but keep their line breaks, so line numbers stay right.
             text = allowed.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
@@ -338,7 +359,21 @@ def leaks(dest: Path, profile: Profile, names: Names) -> list[str]:
 
 def commit_copy(dest: Path) -> str:
     """Make the copy a git repository with one commit, so a scan can check out an exact commit."""
-    git = ["git", "-C", str(dest), "-c", "user.name=sieve-eval", "-c", "user.email=eval@localhost"]
+    # The settings that change a commit between machines are fixed here: line ending conversion,
+    # signing, the author and the date.
+    git = [
+        "git",
+        "-C",
+        str(dest),
+        "-c",
+        "user.name=sieve-eval",
+        "-c",
+        "user.email=eval@localhost",
+        "-c",
+        "core.autocrlf=false",
+        "-c",
+        "commit.gpgsign=false",
+    ]
     env = {**os.environ, "GIT_AUTHOR_DATE": COMMIT_DATE, "GIT_COMMITTER_DATE": COMMIT_DATE}
     for args in (
         ["init", "--quiet"],

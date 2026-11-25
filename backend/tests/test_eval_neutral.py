@@ -10,6 +10,7 @@ from app.eval.neutral import (
     PROFILES,
     Names,
     NeutralError,
+    Rewriter,
     commit_copy,
     leaks,
     make_copy,
@@ -276,3 +277,79 @@ def test_same_files_give_the_same_commit(tmp_path):
         (tmp_path / name / "a.txt").write_text("x\n")
         commits.append(commit_copy(tmp_path / name))
     assert commits[0] == commits[1]
+
+
+PY_VALUES = """import markupsafe
+
+def init(app):
+    bar = 'safe!'
+    lst.append('safe')
+    lst.append('moresafe')
+    other = "alsosafe"
+    user = f'SafeToby{num}'
+    bar = param + '_SafeStuff'
+    data = yaml.safe_load(text)
+"""
+JAVA_VALUES = """public class A {
+    String bar = "safe!";
+    String user = "SafeInga";
+    StringBuilder b = new StringBuilder(" SafeStuff");
+    String more = "moresafe";
+    DocumentBuilderFactory safeDocBuilderFactory = null;
+}
+"""
+
+
+@pytest.mark.parametrize(
+    "suffix, source, expected",
+    [
+        (
+            ".py",
+            PY_VALUES,
+            "import markupsafe\n\ndef init(app):\n    bar = 'constant!'\n"
+            "    lst.append('constant')\n    lst.append('moreconstant')\n"
+            "    other = \"alsoconstant\"\n    user = f'Toby{num}'\n    bar = param + '_Stuff'\n"
+            "    data = yaml.safe_load(text)\n",
+        ),
+        (
+            ".java",
+            JAVA_VALUES,
+            'public class A {\n    String bar = "constant!";\n    String user = "Inga";\n'
+            '    StringBuilder b = new StringBuilder(" Stuff");\n'
+            '    String more = "moreconstant";\n'
+            "    DocumentBuilderFactory safeDocBuilderFactory = null;\n}\n",
+        ),
+    ],
+)
+def test_safe_values_get_neutral_words_and_code_names_stay(suffix, source, expected):
+    names = Names.make([], [], 1)
+    rewriter_profile = PROFILES["benchmark-python" if suffix == ".py" else "benchmark-java"]
+    assert Rewriter(rewriter_profile, names).text(source, suffix) == expected
+
+
+def test_a_safe_value_left_in_test_code_is_a_leak(tmp_path):
+    make_python_benchmark(tmp_path / "src")
+    dest = tmp_path / "neutral"
+    make_copy(
+        PROFILES["benchmark-python"], tmp_path / "src", "abc", dest, tmp_path / "answers", seed=1
+    )
+    (dest / "app.py").write_text("user = f'SafeTheo{num}'\n")
+    names = Names.make(["BenchmarkTest00001", "BenchmarkTest00002"], ["sqli", "xss"], 1)
+    assert leaks(dest, PROFILES["benchmark-python"], names) == ["app.py: 'SafeTh"]
+
+
+def test_commit_ignores_line_ending_and_signing_settings(tmp_path, monkeypatch):
+    # A machine with autocrlf, as on Windows, and signing turned on, but no key.
+    config = tmp_path / "gitconfig"
+    config.write_text("[core]\n\tautocrlf = true\n[commit]\n\tgpgsign = true\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    copy = tmp_path / "copy"
+    copy.mkdir()
+    (copy / "a.txt").write_bytes(b"one\r\ntwo\r\n")
+    commit = commit_copy(copy)
+    stored = subprocess.run(
+        ["git", "-C", str(copy), "cat-file", "-p", f"{commit}:a.txt"],
+        capture_output=True,
+        check=True,
+    ).stdout
+    assert stored == b"one\r\ntwo\r\n"

@@ -58,6 +58,7 @@ def test_false_positive_check():
         "score": 0.0,
     }
     assert result["findings_without_case"] == 0
+    assert result["findings_without_cwe"] == 0
     assert result["false_positives_removed"] == 0.5
     assert result["true_positives_kept"] == 0.5
     assert result["by_cwe"]["CWE-89"]["raw"]["fp"] == 1
@@ -231,3 +232,15 @@ def test_severity_without_a_prediction_is_counted_not_scored():
 def test_cost_that_is_not_a_number():
     with pytest.raises(MetricError, match="must be numbers"):
         cost_and_time([{"finding_id": "f1", "cost_usd": "free", "seconds": "4"}])
+
+
+def test_findings_without_a_cwe_are_counted():
+    findings = [
+        *FINDINGS,
+        Finding("f6", "a.java", frozenset()),
+        Finding("f7", "b.java", frozenset()),
+    ]
+    result = false_positive_check(CASES, findings)
+    assert result["findings_without_cwe"] == 2
+    # They flag nothing, so the rates are the same as without them.
+    assert result["raw"] == false_positive_check(CASES, FINDINGS)["raw"]
