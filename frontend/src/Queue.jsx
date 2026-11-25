@@ -295,7 +295,8 @@ function show(name, value) {
 }
 
 // One row per triage item: a finding on its own, or the members of a
-// duplicate group on this page under the first of them.
+// duplicate group on this page under the first of them. Members on other
+// pages are counted by GroupRow, which reads the whole group.
 function triageItems(items) {
   const rows = []
   const groups = new Map()
@@ -309,6 +310,27 @@ function triageItems(items) {
     }
   }
   return rows
+}
+
+const UNDECIDED = ['new', 'grouped', 'triaged', 'edited']
+
+// The status of a group as a whole: undecided until every member has a
+// decision, since its report can't be exported before that.
+function GroupStatus({ states }) {
+  const count = (state) => states.filter((s) => s === state).length
+  const decided = ['approved', 'rejected', 'reported']
+    .filter((state) => count(state) > 0)
+    .map((state) => `${count(state)} of ${states.length} ${state}`)
+  const waiting = UNDECIDED.find((state) => count(state) > 0)
+  if (!waiting && decided.length === 1 && count(states[0]) === states.length) {
+    return <span className={`pill state-${states[0]}`}>{states[0]}</span>
+  }
+  return (
+    <>
+      <span className={`pill state-${waiting ?? 'mixed'}`}>{waiting ?? 'decided'}</span>
+      {decided.length > 0 && <div className="sub">{decided.join(', ')}</div>}
+    </>
+  )
 }
 
 function FindingTable({ page, loading }) {
@@ -340,39 +362,63 @@ function FindingTable({ page, loading }) {
         </tr>
       </thead>
       <tbody>
-        {triageItems(page.items).map(({ item, members }) => {
-          const group = members.length > 1
-          const expanded = open.has(item.id)
-          return [
-            <FindingRow
+        {triageItems(page.items).map(({ item, members }) =>
+          item.group_id ? (
+            <GroupRow
               key={item.id}
               item={item}
-              note={
-                group ? (
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      toggle(item.id)
-                    }}
-                  >
-                    {expanded ? '▾' : '▸'} group of {members.length}
-                  </button>
-                ) : null
-              }
-            />,
-            ...(group && expanded
-              ? members.map((member) => <FindingRow key={`m-${member.id}`} item={member} member />)
-              : []),
-          ]
-        })}
+              members={members}
+              expanded={open.has(item.id)}
+              onToggle={() => toggle(item.id)}
+            />
+          ) : (
+            <FindingRow key={item.id} item={item} />
+          ),
+        )}
       </tbody>
     </table>
   )
 }
 
-function FindingRow({ item, note, member = false }) {
+// A finding of a duplicate group. The group's size and every member's state
+// come from the finding detail, so the row is right even when other members
+// are on other pages or don't match the filters.
+function GroupRow({ item, members, expanded, onToggle }) {
+  const detail = useApi(`/findings/${item.id}`)
+  const all = detail.data?.group?.members
+  const size = all?.length ?? members.length
+  const elsewhere = size - members.length
+  const note = (
+    <button
+      type="button"
+      className="link-button"
+      onClick={(event) => {
+        event.stopPropagation()
+        onToggle()
+      }}
+    >
+      {expanded ? '▾' : '▸'} group of {size}
+      {elsewhere > 0 && `, ${members.length} shown here`}
+    </button>
+  )
+  const status = all ? <GroupStatus states={all.map((member) => member.state)} /> : null
+  return (
+    <>
+      <FindingRow item={item} note={note} status={status} />
+      {expanded && members.map((member) => <FindingRow key={`m-${member.id}`} item={member} member />)}
+      {expanded && elsewhere > 0 && (
+        <tr className="member note-row">
+          <td colSpan={6} className="muted">
+            {elsewhere} more {elsewhere === 1 ? 'member is' : 'members are'} on other pages or
+            outside the filters. Open the finding to see the whole group.
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
+function FindingRow({ item, note, status, member = false }) {
   const open = () => {
     window.location.hash = `#/findings/${item.id}`
   }
@@ -426,9 +472,7 @@ function FindingRow({ item, note, member = false }) {
           <span className="muted">not triaged</span>
         )}
       </td>
-      <td>
-        <span className={`pill state-${item.state}`}>{item.state}</span>
-      </td>
+      <td>{status ?? <span className={`pill state-${item.state}`}>{item.state}</span>}</td>
     </tr>
   )
 }

@@ -452,6 +452,16 @@ td .muted {
   color: #a40e26;
 }
 
+.state-mixed {
+  background: #eaeef2;
+  color: #424a53;
+}
+
+.note-row td {
+  font-size: 13px;
+  cursor: default;
+}
+
 .state-reported {
   background: #1f883d;
   color: #fff;
