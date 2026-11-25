@@ -154,6 +154,31 @@ def test_bandit_s_line_from_the_context_region():
     assert adapter.region({"region": region, "contextRegion": {"startLine": 28}}) == region
 
 
+def test_a_call_flagged_for_one_argument_loses_its_columns():
+    """Bandit 1.9.4 on this file reports B602 at line 7, the line of shell=True, with the
+    columns of the whole call: from column 14 of line 5 to column 6 of line 8. On line 7 the
+    start would be past the end, so the location has no columns.
+
+        import subprocess
+
+
+        def run(command):
+            result = subprocess.run(
+                command,
+                shell=True,
+            )
+            return result
+    """
+    adapter = BanditAdapter()
+    region = {"startLine": 5, "endLine": 6, "startColumn": 14, "endColumn": 6}
+    moved = {"startLine": 7, "endLine": 7}
+    assert adapter.region({"region": region, "contextRegion": {"startLine": 6}}) == moved
+    # Columns in order stay, even when they may belong to other lines.
+    region = {"startLine": 5, "endLine": 6, "startColumn": 5, "endColumn": 6}
+    moved = {"startLine": 7, "endLine": 7, "startColumn": 5, "endColumn": 6}
+    assert adapter.region({"region": region, "contextRegion": {"startLine": 6}}) == moved
+
+
 def test_confidence_comes_from_the_result_not_the_rule():
     adapter = BanditAdapter()
     rule = {"properties": {"precision": "high"}}
