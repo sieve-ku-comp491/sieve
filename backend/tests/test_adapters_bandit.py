@@ -134,10 +134,11 @@ def test_keys_in_a_dictionary_get_the_line_bandit_reports(result):
 
 
 def test_bandit_s_line_from_the_context_region():
-    """Regions and context from Bandit 1.9.4 on three small files. contextRegion starts one
+    """Regions and context from Bandit 1.9.4 on four small files. contextRegion starts one
     line above Bandit's line, except that it starts at line 1 for a result on line 1 or 2: a
-    password on line 2 of a dictionary that starts on line 1, a password on line 2 alone, and a
-    password on line 3 of a dictionary that starts on line 2."""
+    password on line 2 of a dictionary that starts on line 1, a password on line 2 alone, a
+    password on line 3 of a dictionary that starts on line 2, and a B603 call to
+    subprocess.run() on lines 29 to 32, which Bandit reports at line 29."""
     adapter = BanditAdapter()
     region = {"startLine": 1, "endLine": 2, "startColumn": 5, "endColumn": 15}
     assert adapter.region({"region": region, "contextRegion": {"startLine": 1}}) == region
@@ -148,6 +149,9 @@ def test_bandit_s_line_from_the_context_region():
     assert adapter.region({"region": region, "contextRegion": {"startLine": 2}}) == moved
     assert adapter.region({"region": region}) == region
     assert adapter.region({"region": region, "contextRegion": {"startLine": "2"}}) == region
+    # Bandit's line is the region's start line, so the region keeps its two lines.
+    region = {"startLine": 29, "endLine": 30, "startColumn": 1, "endColumn": 2}
+    assert adapter.region({"region": region, "contextRegion": {"startLine": 28}}) == region
 
 
 def test_confidence_comes_from_the_result_not_the_rule():
