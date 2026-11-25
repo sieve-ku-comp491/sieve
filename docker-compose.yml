@@ -1,8 +1,11 @@
 services:
   backend:
     build: ./backend
-    env_file: .env
+    # Only the variables the API needs, taken from .env, and not the LLM API keys, which only the
+    # worker gets (docs/architecture.md).
     environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      SIEVE_API_TOKEN: ${SIEVE_API_TOKEN:?set SIEVE_API_TOKEN in .env}
       SIEVE_SCOPE_FILE: /etc/sieve/scope.toml
     ports:
       - "127.0.0.1:8000:8000"
@@ -57,7 +60,10 @@ services:
 
   db:
     image: postgres:17
-    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
     volumes:
       - db-data:/var/lib/postgresql/data
     networks:
