@@ -16,6 +16,9 @@ from urllib.parse import urlsplit
 DEFAULT_SCOPE_FILE = "/etc/sieve/scope.toml"
 ENTRY_KEYS = {"url", "reason"}
 HOST = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$")
+# The one exception to F2: a neutral Benchmark copy loaded for an evaluation run. Each run has a
+# label of its own, so the matching of repeated scans doesn't carry reviews from run to run.
+EVALUATION_URL = re.compile(r"eval:benchmark-(?:java|python)/[a-z0-9][a-z0-9._-]{0,63}")
 
 
 class ScopeError(ValueError):
@@ -146,6 +149,21 @@ class ScopeFile:
         if entry is None:
             raise OutOfScope(normalized, self.path)
         return entry
+
+
+def url_to_load(repo_url: str, scope_path: Path) -> str:
+    """The repository URL that python -m app.store load-sarif stores for a saved SARIF file.
+    An evaluation run of a neutral Benchmark copy (docs/evaluation.md) is stored under its eval:
+    URL, which no scope entry can match. Any other URL must be in the scope file, as for POST
+    /scans, and is stored normalized. Raises UrlError, ScopeError or OutOfScope."""
+    if repo_url.startswith("eval:"):
+        if not EVALUATION_URL.fullmatch(repo_url):
+            raise UrlError(
+                "an evaluation run's URL is eval:benchmark-java/<run> or "
+                "eval:benchmark-python/<run>, where <run> is a short label such as t6.4"
+            )
+        return repo_url
+    return ScopeFile.load(scope_path).allows(repo_url).normalized_url
 
 
 def _entry_problem(item: object) -> str | None:

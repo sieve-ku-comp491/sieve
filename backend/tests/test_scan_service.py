@@ -223,6 +223,20 @@ def test_a_repository_removed_from_the_scope_file_after_queueing_is_not_cloned(t
     assert exporter.calls == [] and engine.specs == []
 
 
+def test_a_scan_of_an_evaluation_url_is_not_run(tmp_path):
+    # load-sarif stores evaluation runs as completed scans. Should one reach the queue, the
+    # worker refuses it like any URL outside the scope file.
+    store = MemoryStore()
+    scan_id = store.add_scan("eval:benchmark-java/t6.4", requested_ref="HEAD")
+    exporter = FakeExporter(FIXTURE / "pygoat")
+    engine = FakeEngine({})
+    scans = service(tmp_path, store, exporter, engine, [SEMGREP])
+
+    assert scans.run_scan(scan_id) == "failed"
+    assert store.scans[scan_id]["error"] == "the repository URL must start with https://"
+    assert exporter.calls == [] and engine.specs == []
+
+
 def github_reachable() -> bool:
     try:
         socket.create_connection(("github.com", 443), timeout=5).close()

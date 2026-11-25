@@ -298,7 +298,7 @@ One row per scan of one commit of one repository.
 | Column | Type | Can be empty | Meaning |
 |---|---|---|---|
 | `id` | uuid | no | primary key |
-| `repo_url` | text | no | the repository URL, normalized as in the scope file check (requirement F2) |
+| `repo_url` | text | no | the repository URL, normalized as in the scope file check (requirement F2), or `eval:benchmark-java/<run>` or `eval:benchmark-python/<run>` for an evaluation run of a neutral Benchmark copy (docs/evaluation.md) |
 | `commit_sha` | text | yes | the full 40-character commit hash that was scanned. Empty until the worker has cloned the repository, because the API can't resolve a branch, tag or short hash without going online. |
 | `requested_ref` | text | yes | what the researcher asked for, if it wasn't a full commit hash: a branch, a tag or a short hash |
 | `status` | text | no | `queued` when created, `running` once the worker starts it, then `completed`, `partial` or `failed` by the rules in docs/interfaces.md |
@@ -308,7 +308,7 @@ One row per scan of one commit of one repository.
 | `started_at` | timestamptz | yes | when the worker started it |
 | `finished_at` | timestamptz | yes | when its last plug-in run ended |
 
-A check constraint requires `commit_sha` or `requested_ref` to be filled. A scan that the scope check refuses is never created, so every row here is a repository from the scope file.
+A check constraint requires `commit_sha` or `requested_ref` to be filled. A scan that the scope check refuses is never created, so every row here is a repository from the scope file, except the evaluation runs that `python -m app.store load-sarif` stores under an `eval:` URL. Each evaluation run has a label of its own in the URL, so the matching of repeated scans by `repo_url` doesn't carry reviews from one run to the next.
 
 ### analyzer_runs
 

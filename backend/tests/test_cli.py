@@ -96,6 +96,14 @@ def test_a_url_with_credentials_is_refused_without_echoing_them(serve):
     assert err == "error: the repository URL must not have a user name or password\n"
 
 
+def test_an_evaluation_url_is_refused(serve):
+    # Only python -m app.store load-sarif takes the eval: URL of an evaluation run.
+    api, _ = serve(NO_DATABASE)
+    code, _, err = run_cli("--api", api, "scan", "eval:benchmark-python/t6.4")
+    assert code == 1
+    assert err == "error: the repository URL must start with https://\n"
+
+
 def test_the_cli_queues_a_scan_in_scope(database, serve):
     api, _ = serve(database)
     code, out, _ = run_cli("--api", api, "scan", PYGOAT, "--commit", "2aa4cc1", "--no-wait")
