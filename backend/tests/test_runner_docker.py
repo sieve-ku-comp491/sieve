@@ -254,7 +254,11 @@ def test_a_plugin_cannot_reach_the_network(client, data_dir):
 def test_out_of_memory(client, data_dir):
     scan = checkout(data_dir, "oom")
     run = run_one(make_runner(client, data_dir, memory="16m"), scan, manifest())
-    assert (run.status, run.reason) == (RunStatus.FAILED, Reason.OUT_OF_MEMORY)
+    assert (run.status, run.reason, run.exit_code) == (
+        RunStatus.FAILED,
+        Reason.OUT_OF_MEMORY,
+        1,
+    ), log_text(data_dir, run)
     assert containers_of(client, run) == []
 
 

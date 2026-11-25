@@ -76,8 +76,9 @@ case "$mode" in
   nothing)
     exit 3 ;;
   oom)
-    # tail keeps everything it reads when there are no line breaks.
-    head -c 500000000 /dev/zero | tail > /dev/null
+    # tail keeps everything it reads when there are no line breaks, until the kernel kills it at
+    # the memory limit. Like a plug-in's run.sh, the script then fails.
+    head -c 500000000 /dev/zero | tail > /dev/null || exit 1
     write_results 2 ;;
   network)
     # Each line of /src/targets is a URL. Exit 0 if any of them answers.

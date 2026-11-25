@@ -16,12 +16,23 @@ import requests.exceptions
 from app.runner.engine import ContainerEngine, ContainerResult, ContainerSpec, EngineError, Mount
 
 MAX_LOG_BYTES = 5 * 1024 * 1024
+# How long a container that failed gets for Docker's OOMKilled flag to arrive.
+OOM_FLAG_WAIT_SECONDS = 2.0
+# The exit codes of a plug-in that finished: results written, or nothing to scan
+# (docs/interfaces.md, Exit codes).
+FINISHED_EXIT_CODES = (0, 3)
 
 
 class DockerEngine(ContainerEngine):
-    def __init__(self, client: docker.DockerClient, max_log_bytes: int = MAX_LOG_BYTES):
+    def __init__(
+        self,
+        client: docker.DockerClient,
+        max_log_bytes: int = MAX_LOG_BYTES,
+        oom_flag_wait_seconds: float = OOM_FLAG_WAIT_SECONDS,
+    ):
         self._client = client
         self._max_log_bytes = max_log_bytes
+        self._oom_flag_wait_seconds = oom_flag_wait_seconds
 
     @classmethod
     def from_env(cls) -> "DockerEngine":
@@ -95,7 +106,7 @@ class DockerEngine(ContainerEngine):
                     container.kill()
 
             container.reload()
-            out_of_memory = bool(container.attrs["State"].get("OOMKilled")) and not timed_out
+            out_of_memory = not timed_out and self._out_of_memory(container, exit_code)
             return ContainerResult(
                 exit_code=exit_code,
                 timed_out=timed_out,
@@ -105,6 +116,22 @@ class DockerEngine(ContainerEngine):
         finally:
             with suppress(docker.errors.DockerException, requests.exceptions.RequestException):
                 container.remove(force=True)
+
+    def _out_of_memory(self, container, exit_code: int | None) -> bool:
+        """Whether the kernel killed a process of the container at its memory limit.
+
+        Docker sets OOMKilled when containerd's OOM event reaches it, and that event can arrive
+        after the exit event that ended the wait. A plug-in whose analyzer was killed usually
+        exits with a failure code, so a container that failed gets a short while for the flag.
+        """
+        wait = 0.0 if exit_code in FINISHED_EXIT_CODES else self._oom_flag_wait_seconds
+        deadline = time.monotonic() + wait
+        while not container.attrs["State"].get("OOMKilled"):
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.1)
+            container.reload()
+        return True
 
     def _read_log(self, container) -> str:
         """The container's output and errors, cut at max_log_bytes."""

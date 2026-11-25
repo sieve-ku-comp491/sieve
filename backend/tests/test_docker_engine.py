@@ -55,3 +55,43 @@ def test_a_network_that_can_reach_out_or_the_host_is_refused(changes):
 def test_a_missing_network_is_an_engine_error():
     with pytest.raises(EngineError, match="the network sieve-build doesn't exist"):
         network_is_internal(None)
+
+
+class StubContainer:
+    """A container whose OOMKilled flag appears after a number of reloads, the way Docker sets it
+    when containerd's OOM event arrives after the exit."""
+
+    def __init__(self, reloads_until_flag: int | None) -> None:
+        self.reloads_until_flag = reloads_until_flag
+        self.reloads = 0
+        self.attrs = {"State": {"OOMKilled": reloads_until_flag == 0}}
+
+    def reload(self) -> None:
+        self.reloads += 1
+        if self.reloads_until_flag is not None and self.reloads >= self.reloads_until_flag:
+            self.attrs["State"]["OOMKilled"] = True
+
+
+def out_of_memory(container: StubContainer, exit_code: int, wait: float = 2.0) -> bool:
+    engine = DockerEngine(SimpleNamespace(), oom_flag_wait_seconds=wait)
+    return engine._out_of_memory(container, exit_code)
+
+
+def test_a_failed_container_waits_for_a_late_oom_flag():
+    container = StubContainer(reloads_until_flag=3)
+    assert out_of_memory(container, exit_code=1)
+    assert container.reloads == 3
+
+
+def test_a_failed_container_without_the_flag_waits_only_so_long():
+    container = StubContainer(reloads_until_flag=None)
+    assert not out_of_memory(container, exit_code=137, wait=0.3)
+    assert 1 <= container.reloads <= 4
+
+
+@pytest.mark.parametrize("exit_code", [0, 3])
+def test_a_finished_plugin_doesnt_wait(exit_code):
+    late = StubContainer(reloads_until_flag=1)
+    assert not out_of_memory(late, exit_code)
+    assert late.reloads == 0
+    assert out_of_memory(StubContainer(reloads_until_flag=0), exit_code)
