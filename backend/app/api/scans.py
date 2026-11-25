@@ -60,7 +60,7 @@ def start_scan(body: StartScan, service: Service):
 def list_scans(
     reader: Reader,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0,
 ):
     """The scans, newest first."""
     return reader.list_scans(limit, offset)
@@ -93,7 +93,7 @@ def list_findings(
         bool, Query(description="also list findings an earlier review decided")
     ] = False,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0,
 ):
     """The scan's findings, highest severity first. Each filter can be given more than once,
     such as status=triaged&status=edited, and keeps findings that match any of its values.

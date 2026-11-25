@@ -148,6 +148,18 @@ def test_a_filter_value_that_isnt_allowed_is_refused(client, scan_id):
     assert response.status_code == 422
 
 
+@pytest.mark.parametrize("offset", [-1, 1_000_001, 9223372036854775808])
+def test_an_offset_out_of_range_is_refused(client, scan_id, offset):
+    assert client.get("/scans", params={"offset": offset}).status_code == 422
+    response = client.get(f"/scans/{scan_id}/findings", params={"offset": offset})
+    assert response.status_code == 422
+
+
+def test_the_last_offset_allowed_gives_an_empty_page(client, scan_id):
+    assert client.get("/scans", params={"offset": 1_000_000}).json() == []
+    assert findings(client, scan_id, offset=1_000_000)["items"] == []
+
+
 def test_an_unknown_scan_or_finding_is_not_found(client):
     unknown = "00000000-0000-0000-0000-000000000000"
     assert client.get(f"/scans/{unknown}").status_code == 404
