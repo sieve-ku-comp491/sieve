@@ -48,8 +48,12 @@ class ReportStore(Protocol):
     def texts(self, report_id: str) -> list[ReportText]:
         """Every version, oldest first."""
 
-    def add_text(self, report_id: str, text: ReportText) -> ReportText:
-        """Saves text as the next version, without an approval, and returns it with its number."""
+    def add_text(
+        self, report_id: str, text: ReportText, finding_ids: tuple[str, ...] | None = None
+    ) -> ReportText:
+        """Saves text as the next version, without an approval, and returns it with its number.
+        finding_ids are the findings a new draft was drafted from, and become the report's.
+        None keeps them, as for an edit."""
 
     def approve_text(self, report_id: str, version: int, approver: str, at: datetime) -> ReportText:
         """Sets the approval of one version of the text."""
@@ -124,8 +128,12 @@ class InMemoryReportStore:
         self.get_report(report_id)
         return list(self._texts[report_id])
 
-    def add_text(self, report_id: str, text: ReportText) -> ReportText:
-        self.get_report(report_id)
+    def add_text(
+        self, report_id: str, text: ReportText, finding_ids: tuple[str, ...] | None = None
+    ) -> ReportText:
+        report = self.get_report(report_id)
+        if finding_ids is not None:
+            self._reports[report_id] = replace(report, finding_ids=tuple(finding_ids))
         saved = replace(
             text,
             version=len(self._texts[report_id]) + 1,

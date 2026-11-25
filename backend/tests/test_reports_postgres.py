@@ -378,16 +378,28 @@ def test_a_group_report_waits_for_every_member_and_leaves_out_a_rejected_one(
     assert covered == {first: first_review, second: second_review}
 
 
-def test_a_member_approved_after_the_draft_is_covered_at_export(database, tmp_path, scan):
+def test_a_member_approved_after_the_draft_needs_a_new_draft(database, tmp_path, scan):
     first = finding(database, scan, CURSOR_EXECUTE, 46)
     second = finding(database, scan, CURSOR_EXECUTE, 47)
     group_id = group(database, scan, first, second)
     triage(database, scan, group_id=group_id)
-    review(database, first)
-    service, _ = make_service(database, tmp_path, [reply()])
+    first_review = review(database, first)
+    service, store = make_service(database, tmp_path, [reply(), reply(title="Two findings")])
     report_id = service.draft((first,)).report_id
     service.approve_text(report_id, 1, "ayse")
     late = review(database, second)
+
+    # The approved text never mentions the second finding, so it can't be exported as is.
+    with pytest.raises(NotApproved, match="ask for a new draft"):
+        service.export(report_id, exported_by="ayse")
+    # The store refuses it too, for a service that checked before the second approval.
+    with pytest.raises(NotApproved, match=f"finding {second} was approved after the text"):
+        store.mark_exported(report_id, 1, str(tmp_path / "x.md"), "ayse", NOW)
+
+    redrafted = service.redraft(report_id)
+    assert set(redrafted.finding_ids) == {first, second}
+    assert len(redrafted.locations) == 2
+    service.approve_text(report_id, 2, "ayse")
     service.export(report_id, exported_by="ayse")
     with psycopg.connect(database) as conn:
         covered = dict(
@@ -397,7 +409,7 @@ def test_a_member_approved_after_the_draft_is_covered_at_export(database, tmp_pa
                 (report_id,),
             ).fetchall()
         )
-    assert covered[second] == late and set(covered) == {first, second}
+    assert covered == {first: first_review, second: late}
 
 
 def test_the_report_uses_the_reviewers_edited_severity_and_reasoning(database, tmp_path, scan):

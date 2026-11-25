@@ -206,13 +206,32 @@ class PostgresReportStore:
             ).fetchall()
         return [_text(row) for row in rows]
 
-    def add_text(self, report_id: str, text: ReportText) -> ReportText:
-        """Saves text as the next version. Raises ReportExported, checked under the lock of the
-        report row, when an export committed while the model was answering."""
+    def add_text(
+        self, report_id: str, text: ReportText, finding_ids: tuple[str, ...] | None = None
+    ) -> ReportText:
+        """Saves text as the next version. finding_ids, for a new draft, become the findings in
+        report_findings. Raises ReportExported, checked under the lock of the report row, when an
+        export committed while the model was answering, and ReportError for findings of another
+        triage item."""
         with self._connect() as conn:
             row = self._report_row(conn, report_id, lock=True)
             if row["status"] == "exported":
                 raise ReportExported(f"report {report_id} was exported and can't change")
+            if finding_ids is not None:
+                ids = _normalized(finding_ids)
+                group_id = self._group_of(conn, ids)
+                if (group_id or ids[0]) != (row["group_id"] or row["finding_id"]):
+                    raise ReportError("the findings are not the ones of this report")
+                conn.execute(
+                    """DELETE FROM report_findings WHERE report_id = %s
+                       AND NOT finding_id = ANY(%s::uuid[])""",
+                    (report_id, list(ids)),
+                )
+                conn.cursor().executemany(
+                    """INSERT INTO report_findings (report_id, finding_id) VALUES (%s, %s)
+                       ON CONFLICT (report_id, finding_id) DO NOTHING""",
+                    [(report_id, finding_id) for finding_id in ids],
+                )
             version = conn.execute(
                 "SELECT max(version) + 1 AS next FROM report_texts WHERE report_id = %s",
                 (report_id,),
@@ -267,7 +286,8 @@ class PostgresReportStore:
         The transaction locks the report and its findings before it checks. A review or an edit
         that is being written waits for the export, or the export waits for it and then sees it,
         so a finding rejected at the same time can't leave a report that is exported with no
-        finding. Raises StaleVersion when the version is not the newest text."""
+        finding. A member approved after the text was drafted is not in the text, so the export
+        asks for a new draft. Raises StaleVersion when the version is not the newest text."""
         with self._connect() as conn:
             row = self._report_row(conn, report_id, lock=True)
             conn.execute(
@@ -288,6 +308,22 @@ class PostgresReportStore:
             members = self._approved_members(conn, row)
             if not members:
                 raise NotApproved(["no approved finding in the report"])
+            drafted = {
+                r["finding_id"]
+                for r in conn.execute(
+                    "SELECT finding_id::text FROM report_findings WHERE report_id = %s",
+                    (report_id,),
+                )
+            }
+            late = sorted(m["finding_id"] for m in members if m["finding_id"] not in drafted)
+            if late:
+                raise NotApproved(
+                    [
+                        f"finding {finding_id} was approved after the text was drafted,"
+                        " ask for a new draft"
+                        for finding_id in late
+                    ]
+                )
             keep = [member["finding_id"] for member in members]
             conn.execute(
                 """DELETE FROM report_findings WHERE report_id = %s

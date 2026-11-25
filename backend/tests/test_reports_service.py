@@ -537,6 +537,15 @@ def test_export_refuses_text_that_still_lists_a_member_rejected_since_the_draft(
     assert store.get_report(report_id).status == "draft"
 
 
+def test_a_new_draft_covers_only_the_members_approved_now(tmp_path):
+    service, store, _, report_id = group_drafted(tmp_path, [reply(), reply(title="Two")])
+    store.set_state("f3", "rejected")
+
+    service.redraft(report_id)
+
+    assert store.get_report(report_id).finding_ids == GROUP[:2]
+
+
 def test_export_refuses_text_whose_severity_was_edited_since_the_draft(tmp_path):
     service, store, *_, report_id = drafted(tmp_path)
     service.approve_text(report_id, 1, "ayse")
