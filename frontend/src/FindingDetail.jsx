@@ -74,16 +74,23 @@ export default function FindingDetail({ findingId, reviewer }) {
     }
   }
 
+  // Every save names the verdict and the latest edit on screen, so the API
+  // refuses it with 409 if either changed since the page loaded.
+  const seen = { finding_edit_id: edit?.id ?? null, verdict_id: f.verdict?.id ?? null }
+
   function decide(decision, comment) {
     return save(`/findings/${f.id}/reviews`, {
       decision,
       reviewer,
       comment: comment || null,
-      finding_edit_id: edit?.id ?? null,
+      ...seen,
     })
   }
 
   const severity = edit?.cvss_v4_vector ? edit : f.verdict
+  // While the edit form is open, Approve and Reject would decide on the values
+  // before the edit and drop the unsaved changes, so they wait for Save or Cancel.
+  const editing = mode === 'edit'
   return (
     <>
       <div className="crumbs">
@@ -109,13 +116,25 @@ export default function FindingDetail({ findingId, reviewer }) {
           </div>
         </div>
         <div className="actions">
-          <button type="button" className="button danger" disabled={busy || !!locked} onClick={() => setMode('reject')}>
+          <button
+            type="button"
+            className="button danger"
+            disabled={busy || !!locked || editing}
+            title={editing ? 'Save or cancel the edit first' : undefined}
+            onClick={() => setMode('reject')}
+          >
             Reject
           </button>
           <button type="button" className="button" disabled={busy || !!locked} onClick={() => setMode('edit')}>
             Edit
           </button>
-          <button type="button" className="button primary" disabled={busy || !!locked} onClick={() => decide('approve')}>
+          <button
+            type="button"
+            className="button primary"
+            disabled={busy || !!locked || editing}
+            title={editing ? 'Save or cancel the edit first' : undefined}
+            onClick={() => decide('approve')}
+          >
             Approve
           </button>
         </div>
@@ -150,7 +169,7 @@ export default function FindingDetail({ findingId, reviewer }) {
               finding={f}
               busy={busy}
               onCancel={() => setMode(null)}
-              onSave={(changes) => save(`/findings/${f.id}/edits`, { editor: reviewer, ...changes })}
+              onSave={(changes) => save(`/findings/${f.id}/edits`, { editor: reviewer, ...seen, ...changes })}
             />
           )}
           <Analyzer finding={f} />
