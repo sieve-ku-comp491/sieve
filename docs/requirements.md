@@ -246,7 +246,7 @@ Notes:
 | OWASP Benchmark for Java | 1.2, commit `0119da4` | 2,740 test cases in 11 categories, 1,415 of them real vulnerabilities (`expectedresults-1.2.csv`) | false-positive check, Java |
 | OWASP Benchmark for Python | 0.1, commit `f129148` | 1,230 test cases in 14 categories, 452 of them real vulnerabilities (`expectedresults-0.1.csv`) | false-positive check, Python |
 | CWE-Bench-Java | commit `afe0ebd` | real Java vulnerabilities with known vulnerable locations, from the IRIS paper. We take the published CVSS vectors from the NVD. | severity |
-| Recent CVEs | chosen in T6.1 | CVEs published after the training cutoff of both models, with a known vulnerable location and a published CVSS vector | severity, and a check that results don't depend on training data |
+| Recent CVEs | chosen in T6.2 | CVEs published after the training cutoff of both models, with a known vulnerable location and a published CVSS vector | severity, and a check that results don't depend on training data |
 | Labeled duplicate groups | made in T6.3 | duplicates in the combined analyzer output for PyGoat, WebGoat and Juice Shop, labeled by hand | deduplication |
 | Labeled Juice Shop sample | made in T6.3 | about 100 Juice Shop findings labeled as true or false positives, using its documented list of vulnerabilities | false-positive check, JavaScript/TypeScript |
 
