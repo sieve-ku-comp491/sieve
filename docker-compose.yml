@@ -24,6 +24,9 @@ services:
   worker:
     build: ./backend
     command: ["sh", "-c", "python -m app.store migrate && exec python -m app.worker"]
+    # The worker stops when the database can't be reached for a moment. Restarted, it marks
+    # the scan it was running as failed and goes on with the queued ones.
+    restart: unless-stopped
     env_file: .env
     environment:
       SIEVE_SCOPE_FILE: /etc/sieve/scope.toml
