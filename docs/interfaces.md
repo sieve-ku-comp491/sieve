@@ -78,7 +78,7 @@ The export in /src has no .git folder, so tools scan the same files whatever the
 - Everything that is not a regular file or a folder, such as symbolic links. A link in a scanned repository could point anywhere, for example to `/proc/self/environ`, and anything that reads the checkout later, inside the worker, would read the worker's environment, including the LLM API keys. We checked that `git archive` keeps such links.
 - The tools' own ignore and configuration files: `.semgrepignore`, `.gitleaks.toml`, `.gitleaksignore` and `.bandit`, in any folder. The scanned repository is not ours, so it must not decide what is scanned.
 
-For the same reason, the export turns off the repository's `export-ignore` and `export-subst` attributes, with `* -export-ignore -export-subst` in the clone's `info/attributes`. We checked that `git archive` otherwise leaves out a file that `.gitattributes` marks `export-ignore`, so a repository could hide files from every analyzer.
+For the same reason, the export turns off every attribute that `git archive` applies, with `* -export-ignore -export-subst -text -eol -ident -filter -working-tree-encoding` in the clone's `info/attributes`, so the files come out as committed. We checked that `git archive` otherwise leaves out a file that `.gitattributes` marks `export-ignore`, so a repository could hide files from every analyzer, and that `working-tree-encoding=UTF-16` turns a Python file into UTF-16, which Python's parser and so Bandit refuse. `text eol=crlf` and `ident` change a file's line endings and `$Id$` lines in the same way.
 
 The runner starts every scan container like this:
 

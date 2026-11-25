@@ -1,7 +1,8 @@
 """The export of a scanned commit, on a local repository served over file://, so these tests
 need no network. The repository has a symbolic link, the tools' ignore files, export-ignore and
 export-subst attributes, a branch, a tag, and a commit that no branch or tag reaches, which
-stands in for a commit that exists only in a fork."""
+stands in for a commit that exists only in a fork. A second repository has attributes that
+would convert its files."""
 
 import os
 import subprocess
@@ -103,6 +104,37 @@ def test_branches_tags_and_the_default_branch_resolve_to_full_hashes(
     origin, tmp_path, ref, expected
 ):
     assert export(origin, ref, tmp_path / "src") == origin[expected]
+
+
+@pytest.fixture(scope="module")
+def converted(tmp_path_factory) -> ScopeEntry:
+    """A repository whose second commit adds a .gitattributes that would make git archive
+    convert the files of the first: to UTF-16, to CRLF line endings, and with $Id$ expanded."""
+    repo = tmp_path_factory.mktemp("converted")
+    git(repo, "init", "-q", "-b", "main")
+    for name, content in CONVERTED.items():
+        (repo / name).write_bytes(content)
+    commit_all(repo, "files")
+    (repo / ".gitattributes").write_bytes(
+        b"encoded.py working-tree-encoding=UTF-16\ncrlf.py text eol=crlf\nident.py ident\n"
+    )
+    # Only .gitattributes, so Git doesn't read the files again with the new attributes.
+    git(repo, "add", ".gitattributes")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "attributes")
+    return ScopeEntry(url=repo.as_uri(), reason="test")
+
+
+CONVERTED = {
+    "encoded.py": b"import os\n",
+    "crlf.py": b"a = 1\nb = 2\n",
+    "ident.py": b"# $Id$\n",
+}
+
+
+def test_the_repository_attributes_cannot_change_the_bytes_of_a_file(converted, tmp_path):
+    dest = tmp_path / "src"
+    CheckoutExporter(protocols=("file",)).export(converted, None, dest)
+    assert {name: (dest / name).read_bytes() for name in CONVERTED} == CONVERTED
 
 
 def test_a_short_hash_resolves(origin, tmp_path):

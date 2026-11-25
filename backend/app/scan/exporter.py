@@ -12,8 +12,8 @@ in the scope entry. Two clones are made:
 2. A shallow fetch of that one commit, whose files git archive writes as a tar stream.
 
 The export keeps regular files and folders only. Symbolic links and the tools' own ignore and
-configuration files are left out, and the repository's export-ignore and export-subst attributes
-are turned off, so the scanned code can't decide what is scanned.
+configuration files are left out, and the repository's attributes that git archive applies are
+turned off, so the scanned code can't decide what is scanned or change the files' bytes.
 """
 
 import os
@@ -30,6 +30,12 @@ IGNORED_FILES = frozenset({".semgrepignore", ".gitleaks.toml", ".gitleaksignore"
 FULL_HASH = re.compile(r"^[0-9a-f]{40}$")
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]{0,199}$")
 DEFAULT_REF = "HEAD"
+# Overrides every .gitattributes of the repository: git archive would otherwise leave files out
+# (export-ignore), rewrite them (export-subst, ident) or convert their encoding and line endings
+# (working-tree-encoding, text, eol, filter), so the analyzers would not see the committed bytes.
+EXPORT_ATTRIBUTES = (
+    "* -export-ignore -export-subst -text -eol -ident -filter -working-tree-encoding\n"
+)
 
 GIT_OPTIONS = (
     "-c", "credential.helper=",
@@ -96,9 +102,7 @@ class CheckoutExporter:
             content = work / "content.git"
             self._git(work, "init", "--quiet", "--bare", str(content), failure="git init failed")
             (content / "info").mkdir(exist_ok=True)
-            (content / "info" / "attributes").write_text(
-                "* -export-ignore -export-subst\n", encoding="utf-8"
-            )
+            (content / "info" / "attributes").write_text(EXPORT_ATTRIBUTES, encoding="utf-8")
             self._git(
                 work,
                 "-C", str(content), "fetch", "--quiet", "--depth=1", "--no-tags",
