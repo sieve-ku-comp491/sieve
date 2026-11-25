@@ -32,6 +32,8 @@ def test_a_request_with_the_token_to_localhost_is_answered(base_url):
         {},
         bearer("wrong"),
         bearer(""),
+        bearer(TOKEN + "x"),
+        bearer(TOKEN[:-1]),
         {"Authorization": TOKEN},
         {"Authorization": f"Basic {TOKEN}"},
     ],
