@@ -81,10 +81,12 @@ def test_f2_3_a_scope_file_that_fails_to_load_refuses_every_scan_naming_the_entr
     )
 
 
-def test_a_commit_that_could_be_an_option_is_refused(tmp_path):
-    response = client(scope(tmp_path)).post(
-        "/scans", json={"repo_url": PYGOAT, "commit": "--upload-pack=touch x"}
-    )
+@pytest.mark.parametrize(
+    "commit",
+    ["--upload-pack=touch x", "main\n", "2aa4cc14f251e4a780e94e200aed6b36a5b15c21\n"],
+)
+def test_a_commit_that_could_be_an_option_or_ends_in_a_newline_is_refused(tmp_path, commit):
+    response = client(scope(tmp_path)).post("/scans", json={"repo_url": PYGOAT, "commit": commit})
     assert response.status_code == 422
     assert "is not a commit hash, branch or tag name" in response.json()["detail"]
 

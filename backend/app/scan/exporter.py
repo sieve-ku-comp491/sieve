@@ -27,8 +27,8 @@ from pathlib import Path, PurePosixPath
 from app.scan.scope import ScopeEntry
 
 IGNORED_FILES = frozenset({".semgrepignore", ".gitleaks.toml", ".gitleaksignore", ".bandit"})
-FULL_HASH = re.compile(r"^[0-9a-f]{40}$")
-REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]{0,199}$")
+FULL_HASH = re.compile(r"[0-9a-f]{40}")
+REF = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/+-]{0,199}")
 DEFAULT_REF = "HEAD"
 # Overrides every .gitattributes of the repository: git archive would otherwise leave files out
 # (export-ignore), rewrite them (export-subst, ident) or convert their encoding and line endings
@@ -62,10 +62,10 @@ def split_ref(ref: str | None) -> tuple[str | None, str | None]:
     branch, tag or short hash in requested_ref. No ref means the default branch."""
     if ref is None or ref == "":
         return None, DEFAULT_REF
-    if FULL_HASH.match(ref.lower()):
+    if FULL_HASH.fullmatch(ref.lower()):
         return ref.lower(), None
     if (
-        not REF.match(ref)
+        not REF.fullmatch(ref)
         or ".." in ref
         or "//" in ref
         or ref.endswith(("/", ".", ".lock"))
@@ -126,7 +126,7 @@ class CheckoutExporter:
         """The full hash of ref, if it is reachable from a branch or tag of the clone."""
         not_found = (
             f"commit {ref} is not on a branch or tag of {url}"
-            if FULL_HASH.match(ref)
+            if FULL_HASH.fullmatch(ref)
             else f"{ref} is not a branch, tag or commit on a branch or tag of {url}"
         )
         resolved = self._git(

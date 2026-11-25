@@ -192,7 +192,18 @@ def test_split_ref(ref, split):
 
 @pytest.mark.parametrize(
     "ref",
-    ["--upload-pack=touch /tmp/x", "-x", "a..b", "a b", "main.lock", "a//b", "x/.hidden", "@{1}"],
+    [
+        "--upload-pack=touch /tmp/x",
+        "-x",
+        "a..b",
+        "a b",
+        "main.lock",
+        "a//b",
+        "x/.hidden",
+        "@{1}",
+        "main\n",
+        "2aa4cc14f251e4a780e94e200aed6b36a5b15c21\n",
+    ],
 )
 def test_refs_that_could_be_options_or_odd_names_are_refused(ref):
     with pytest.raises(RefError):
