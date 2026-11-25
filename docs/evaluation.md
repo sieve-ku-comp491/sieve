@@ -81,18 +81,18 @@ On 12 Nov 2026, 114 of the 117 CVEs with a known location have a vector: 93 in C
 
 The recent CVEs are published after the training cutoff of both models that the pilot triage chose. gpt-6-luna's cutoff is 18 May 2026, from its model page (see its note in models.json). DeepSeek doesn't publish a cutoff for V4.1 Flash, so we take the release of the snapshot we call, DeepSeek-V4.1-Flash-1017 on 17 Oct 2026, as the latest date it can know about. A CVE published on 18 Oct 2026 or later is newer than both.
 
-On 25 Nov 2026 we searched GitHub's reviewed advisories for Maven packages published since 18 Oct 2026, with the four CWEs of the severity check and the related ones in `RELATED_CWES`. Four are in Java projects:
+On 25 Nov 2026 we searched GitHub's reviewed advisories for Maven packages published since 18 Oct 2026, with the four CWEs of the severity check and the related ones in `RELATED_CWES`, and looked each one up in the NVD. The publication date that counts is the NVD's, because a model can have seen a CVE from the day it was published, before GitHub reviewed it. Two are newer than both models:
 
-| CVE | Project | CWE | Published | GitHub's vector | Fix commit |
+| CVE | Project | CWE | Published in the NVD | Vector in the NVD | Fix commit |
 |---|---|---|---|---|---|
-| CVE-2026-63436 | zeroturnaround/zt-zip | CWE-22 | 9 Nov 2026 | CVSS 3.1, 8.2 | `59a76ad` |
-| CVE-2026-63499 | zeroturnaround/zt-zip | CWE-23 | 9 Nov 2026 | CVSS 4.0, 6.9 | `1b62546` |
-| CVE-2026-9083 | keycloak/keycloak | CWE-22 | 29 Oct 2026 | CVSS 3.1, 4.9 | not linked |
-| CVE-2026-9086 | keycloak/keycloak | CWE-79 | 29 Oct 2026 | CVSS 3.1, 7.3 | not linked |
+| CVE-2026-63436 | zeroturnaround/zt-zip | CWE-22 | 3 Nov 2026 | CVSS 3.1, 6.1, from GitHub as the CNA | `59a76ad` |
+| CVE-2026-63499 | zeroturnaround/zt-zip | CWE-23 | 3 Nov 2026 | CVSS 4.0, 6.9, from GitHub as the CNA | `1b62546` |
 
-Two more fit the CWEs but not the language: CVE-2026-75598 in GradleUp/shadow (CWE-22) is in Kotlin, and CVE-2026-76090 in softwaremill/tapir (CWE-94, CVSS 4.0) is in Scala. None is in CWE-78, and none of the Java ones in CWE-94.
+Both are still awaiting analysis in the NVD, so neither has the NVD's own vector yet, and `cves` would take the CNA's. For CVE-2026-63436 the two GitHub sources disagree: the CNA record in the NVD has `AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:L` (6.1), and GitHub's reviewed advisory has `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:L` (8.2). We use the one in the NVD, as for the other CVEs, and check it again before T6.4 in case the NVD's analysts add their own.
 
-We propose the two zt-zip CVEs, whose fix commits give the vulnerable location, and the two Keycloak ones once we find their fixes. Only CVE-2026-63499 has a CVSS 4.0 vector. `cves.csv` takes the NVD's own vector when it has one, and we haven't yet checked the NVD for these four. Four CVEs are few for a severity check of their own, so before T6.4 we can also search the NVD for CVEs that GitHub hasn't reviewed, or wait for more to be published. Ali helps choose them.
+The search also gave two Keycloak CVEs, CVE-2026-9083 (CWE-22) and CVE-2026-9086 (CWE-79). GitHub reviewed them on 29 Oct 2026, but the NVD published them on 25 Jun 2026, before DeepSeek's snapshot, so they are not recent enough. Two more fit the CWEs but not the language: CVE-2026-75598 in GradleUp/shadow (CWE-22) is in Kotlin, and CVE-2026-76090 in softwaremill/tapir (CWE-94, CVSS 4.0) is in Scala. None is in CWE-78 or CWE-94.
+
+We propose the two zt-zip CVEs, whose fix commits give the vulnerable location. Only CVE-2026-63499 has a CVSS 4.0 vector. Two CVEs are too few for a severity check of their own, so before T6.4 we can also search the NVD for CVEs that GitHub hasn't reviewed, or wait for more to be published. Ali helps choose them.
 
 ## Neutral copies
 
