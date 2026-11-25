@@ -90,10 +90,10 @@ PATTERNS = [
         rf"(?:an?\s+|the\s+)?(?:helpful\s+|expert\s+|senior\s+)?(?:{AI}|assistant|chatbot"
         rf"|(?:security\s+)?(?:reviewer|auditor|analyst|expert|scanner|triager)))\b",
         # Telling the reader which verdict to give. A negation counts only as an order, at the
-        # start of a sentence, not in "we never flag these results twice".
+        # start of a sentence or a line, not in "we never flag these results twice".
         rf"\b(?:(?:mark|classify|label|report|treat|flag|rate|score|consider|tag|record|close"
         rf"|dismiss)\s+{OBJECT}\s+(?:\w+\s+){{0,4}}?as\s+(?:an?\s+)?{VERDICT}"
-        rf"|(?<![a-z]\s)(?:do\s+not|don'?t|never|no\s+need\s+to)\s+(?:report|flag|mention"
+        rf"|(?<![a-z][ \t])(?:do\s+not|don'?t|never|no\s+need\s+to)\s+(?:report|flag|mention"
         rf"|escalate|alert\s+on|warn\s+about)\s+(?:this|the|these|that)\s+{NOUN}"
         rf"|(?:respond|reply|answer|say|conclude)\s+(?:only\s+)?(?:with|that)\b.{{0,40}}?{VERDICT}"
         rf"|(?:respond|reply|answer)\s+(?:only\s+)?(?:with\s+)?[\"'`]?false[\s_-]*positive"
