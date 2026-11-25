@@ -145,7 +145,7 @@ Every call is a row in `llm_calls`, including cache hits and failed calls (N3). 
 - Each model has its provider and its prices in US dollars per million tokens: `input`, `output`, `cache_read` and `cache_write`. All four are required. Where a provider has no separate cache price, repeat the input price.
 - `long_context` gives a higher price for the whole request once the prompt is longer than `above_prompt_tokens`.
 - `off_peak` gives a lower price outside the provider's peak hours: the cost is multiplied by `price_factor` when a call starts and ends outside `peak_hours_utc` ("HH:MM-HH:MM" in UTC) on `peak_days` (Mon to Sun). The providers don't say whether the start or the end of a call counts, so a call that crosses into or out of peak hours is charged the peak price. The worst case always uses the peak price.
-- `temperature` is true for a model that accepts a temperature of 0, and LLMClient then sends 0. It is false for Claude, because the Anthropic SDK has no temperature parameter and current Claude models reject one, and for the GPT-5 models, which reject one too. The other providers are in Providers with a Chat Completions API below.
+- `temperature` is true for a model that accepts a temperature of 0, and LLMClient then sends 0. It is false for Claude, because the Anthropic SDK has no temperature parameter and current Claude models reject one, and for the GPT-5 models, which reject one too. It is also false for GPT-6 Luna, whose model page doesn't list a temperature. The other providers are in Providers with a Chat Completions API below.
 - `server_fallbacks` is described in the next section.
 - `note` is a remark for whoever updates the file. The code doesn't read it.
 
