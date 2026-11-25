@@ -110,7 +110,16 @@ Each copy is then a git repository with one commit. Its files are written with `
 
 The answers go to `eval-data/answers/<dataset>/`, outside the copy: `expected.csv` with the neutral names, `mapping.csv` from every original name to its neutral one, `seed.txt` and the copy's commit. The triage agent's tools read only the scanned checkout (docs/architecture.md), so they can't reach the answers. Never put the answers folder inside a scanned checkout, and `neutral` refuses to write it there. `--seed` makes the same names again.
 
-A scan can't reach a copy yet. Requirement F2 lets Sieve scan only public repositories listed in the scope file, cloned over `https://`, and the copy is a local repository. T6.2 chooses between pushing the copies to a public repository that the scope file lists, and a local mode for evaluation runs, which would need F2 to change.
+The copies stay on the machine that made them, and evaluation runs load them into the findings store from there. Requirement F2 lets Sieve scan only public repositories listed in the scope file, cloned over `https://`, and a copy is a local repository, so it can't go through a scan request. We don't push the copies to a public repository to get around that: both Benchmarks are GPL, which asks a published copy to keep the copyright notices that name OWASP Benchmark, and a public copy could end up in a later model's training data, which is what the copy is there to avoid.
+
+The analyzers run on the copy as in the baseline run, and `python -m app.store load-sarif` stores each analyzer's SARIF file as a scan of the copy, from backend/:
+
+    python -m app.store load-sarif --manifest ../plugins/bandit/plugin.toml \
+        --sarif <bandit.sarif> --checkout ../eval-data/neutral/benchmark-python \
+        --repo-url eval:benchmark-python \
+        --commit $(git -C ../eval-data/neutral/benchmark-python rev-parse HEAD)
+
+`load-sarif` copies the checkout into the data folder, where triage reads it like the checkout of any scan, and clones nothing. The `eval:` prefix marks these scans as evaluation runs, and it can't match a scope entry, since those start with `https://`. On a throwaway PostgreSQL 17, this stored 536 Bandit findings for the Python copy and 3,176 Semgrep findings for the Java copy. docs/requirements.md gives this as the one exception to F2.
 
 The code itself can still look familiar to a model, as docs/data-flow.md says, which is why the evaluation also uses CWE-Bench-Java and the recent CVEs.
 
@@ -351,5 +360,4 @@ For T6.4, 4,766 Java findings and 586 Python findings flag a case, 5,352 in all,
 - The labeled duplicate groups and the labeled Juice Shop sample, made by hand in T6.3. The dedup metric reads the groups as they are. The Juice Shop sample is labeled per finding, with many findings in one file, while the false-positive check judges whole files, so it needs a per-finding mode, added with T6.3.
 - The numbers of the severity baseline, which need the analyzers to run on the CVEs' projects, see the baseline run.
 - The false-positive check with the tools of #61, and the changes the pilot suggests for it: more room for deepseek-flash's thinking, a timeout per call, and a prompt that fits weak hashing, weak random and insecure cookie findings. Its cost per finding has to stay within the US$0.01 budget.
-- How a scan reaches the neutral copies, see above.
 - The target applications have no expected results of their own: they are scanned for duplicates, reports and the PoC check.

@@ -54,6 +54,8 @@ Acceptance tests:
 4. A private repository can't be scanned even when it is listed. The test clones with Git's credential helpers turned off and `GIT_TERMINAL_PROMPT=0`, as the scan service does, so it gives the same result on a developer's machine as in the worker: the clone fails and the scan ends with an error.
 5. A scan of PyGoat at commit `0dc3c4f403bea36b83a03c7c07a7d676b939eab3`, which exists only in a fork of PyGoat, is refused before any container starts.
 
+The one exception is the evaluation's neutral copies of the OWASP Benchmarks (docs/evaluation.md). They are local repositories that we don't publish, so they can't be listed in the scope file. Evaluation runs store their findings with `python -m app.store load-sarif` and the repository URL `eval:<dataset>`, which clones nothing and doesn't go through the CLI or the REST API, so the tests above still hold for every scan request. The copies are made from public code, so sending them to an LLM provider keeps N4.
+
 Built in T2.4. Verified in T2.4. The stretch requirement S3 adds the scope imported from HackerOne.
 
 ### F3 Group duplicate findings
