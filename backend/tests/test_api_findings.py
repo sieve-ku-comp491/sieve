@@ -14,19 +14,20 @@ from app.main import create_app
 from app.store import load_sarif
 
 FIXTURE = Path(__file__).parent / "adapter_fixture"
-MANIFEST = Path(__file__).resolve().parents[2] / "plugins" / "semgrep" / "plugin.toml"
+PLUGINS = Path(__file__).resolve().parents[2] / "plugins"
+MANIFEST = PLUGINS / "semgrep" / "plugin.toml"
 LAB = "dockerized_labs/sql_injection_lab/app.py"
 SQL_RULE = "python.lang.security.audit.formatted-sql-query"
 TOKEN = "test-token"
 V4_KEYS = ["AV", "AC", "AT", "PR", "UI", "VC", "VI", "VA", "SC", "SI", "SA"]
 
 
-def load(database, data_dir) -> str:
+def load(database, data_dir, manifest=MANIFEST, sarif="semgrep-pygoat.sarif") -> str:
     return load_sarif(
         database,
         data_dir,
-        MANIFEST,
-        FIXTURE / "semgrep-pygoat.sarif",
+        manifest,
+        FIXTURE / sarif,
         FIXTURE / "pygoat",
         "https://github.com/adeyosemanputra/pygoat",
         "2aa4cc14f251e4a780e94e200aed6b36a5b15c21",
@@ -255,3 +256,31 @@ def test_a_verdict_and_an_edit_show_in_the_queue_and_the_detail(database, tmp_pa
     counts = client.get(f"/scans/{scan_id}").json()["state_counts"]
     assert (counts["edited"], counts["grouped"], counts["new"]) == (1, 8, 0)
     assert client.get(f"/scans/{scan_id}").json()["triage_run"]["id"] == str(run_id)
+
+
+# The four Gitleaks results in this file, at lines 53, 59, 65 and 71, read from
+# gitleaks-pygoat.sarif: a password hash in each user of USERS.
+AUTH = "dockerized_labs/auth_failure_lab/app.py"
+SECRET_LINES = (53, 59, 65, 71)
+
+
+def load_gitleaks(database, data_dir) -> str:
+    return load(database, data_dir, PLUGINS / "gitleaks" / "plugin.toml", "gitleaks-pygoat.sarif")
+
+
+def test_every_secret_in_the_code_window_is_masked(database, tmp_path):
+    """The code window of each finding at 53 and 59 holds the other one's line too. Both read
+    REDACTED in both, as does any other Gitleaks line in the window, and the lines between
+    them show as they are."""
+    scan_id = load_gitleaks(database, tmp_path)
+    client = make_client(database, tmp_path)
+    source = (FIXTURE / "pygoat" / AUTH).read_text(encoding="utf-8").splitlines()
+    secrets = [source[line - 1] for line in SECRET_LINES]
+    for line, window, masked in [(53, (43, 63), (53, 59)), (59, (49, 69), (53, 59, 65))]:
+        code = client.get(f"/findings/{finding_id(client, scan_id, 'generic-api-key', line)}")
+        code = code.json()["code"]
+        assert (code["file"], code["start_line"], code["end_line"]) == (AUTH, *window)
+        assert not set(secrets) & set(code["lines"])
+        for number, text in enumerate(code["lines"], start=window[0]):
+            assert text == ("REDACTED" if number in masked else source[number - 1])
+        assert code["lines"][58 - window[0]] == '        "role": "user",'
