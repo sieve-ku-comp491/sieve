@@ -52,7 +52,11 @@ def normalize_url(url: str) -> str:
         raise UrlError("the repository URL must not have a query")
     if "#" in url:
         raise UrlError("the repository URL must not have a fragment")
-    parts = urlsplit(url)
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        # Such as an unclosed [ or a fullwidth slash in the host.
+        raise UrlError("the repository URL is not a valid URL") from None
     if "@" in parts.netloc:
         raise UrlError("the repository URL must not have a user name or password")
     if ":" in parts.netloc:
@@ -70,11 +74,13 @@ def normalize_url(url: str) -> str:
 
 
 def without_credentials(url: str) -> str:
-    """The URL with any user name and password removed, so an error message never shows them."""
-    parts = urlsplit(url) if isinstance(url, str) else None
-    if parts is None or "@" not in parts.netloc:
+    """The URL with any user name and password removed, so an error message never shows them.
+    Works on any string, also one that urlsplit can't parse."""
+    scheme, separator, rest = str(url).partition("://")
+    if not separator:
         return str(url)
-    return parts._replace(netloc=parts.netloc.rsplit("@", 1)[1]).geturl()
+    authority, slash, path = rest.partition("/")
+    return f"{scheme}://{authority.rsplit('@', 1)[-1]}{slash}{path}"
 
 
 @dataclass(frozen=True)

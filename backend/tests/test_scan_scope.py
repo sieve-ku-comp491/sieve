@@ -79,6 +79,8 @@ def test_another_repository_of_the_same_owner_is_refused_naming_it_and_the_file(
         (" https://github.com/adeyosemanputra/pygoat", "space"),
         ("https://github.com/adeyosemanputra\\pygoat", "backslash"),
         ("", "empty"),
+        ("https://[github.com/adeyosemanputra/pygoat", "not a valid URL"),
+        ("https://github.com\uff0fadeyosemanputra/pygoat", "not a valid URL"),
     ],
 )
 def test_urls_that_break_the_rules_are_refused(tmp_path, url, problem):
@@ -119,6 +121,12 @@ def test_an_empty_reason_counts_as_none(tmp_path):
         ("https://me:secret@github.com/a/b", "https://github.com/a/b", "password"),
         ("https://github.com:8443/a/b", "https://github.com:8443/a/b", "port"),
         ("https://github.com/a/b?x=1", "https://github.com/a/b?x=1", "query"),
+        ("https://[github.com/a/b", "https://[github.com/a/b", "not a valid URL"),
+        (
+            "https://me:secret@github.com\uff0fa/b",
+            "https://github.com\uff0fa/b",
+            "not a valid URL",
+        ),
     ],
 )
 def test_an_entry_whose_url_breaks_the_rules_is_rejected_naming_it(tmp_path, url, shown, problem):

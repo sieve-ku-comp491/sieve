@@ -56,6 +56,8 @@ def test_f2_1_a_repository_not_in_the_scope_file_is_refused_naming_it_and_the_fi
     [
         ("https://user:token@github.com/adeyosemanputra/pygoat", "user name or password"),
         ("http://github.com/adeyosemanputra/pygoat", "must start with https://"),
+        ("https://[github.com/adeyosemanputra/pygoat", "not a valid URL"),
+        ("https://token@github.com\uff0fadeyosemanputra/pygoat", "not a valid URL"),
     ],
 )
 def test_f2_2_urls_that_break_the_rules_are_refused(tmp_path, url, problem):
