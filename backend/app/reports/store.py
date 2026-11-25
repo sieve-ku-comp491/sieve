@@ -25,6 +25,7 @@ class StoredReport:
     exported_text_version: int | None = None
     export_path: str | None = None
     exported_by: str | None = None
+    format: str = "markdown"  # the format it was exported in
 
 
 class ReportStore(Protocol):
@@ -47,8 +48,12 @@ class ReportStore(Protocol):
     def texts(self, report_id: str) -> list[ReportText]:
         """Every version, oldest first."""
 
-    def add_text(self, report_id: str, text: ReportText) -> ReportText:
-        """Saves text as the next version, without an approval, and returns it with its number."""
+    def add_text(
+        self, report_id: str, text: ReportText, finding_ids: tuple[str, ...] | None = None
+    ) -> ReportText:
+        """Saves text as the next version, without an approval, and returns it with its number.
+        finding_ids are the findings a new draft was drafted from, and become the report's.
+        None keeps them, as for an edit."""
 
     def approve_text(self, report_id: str, version: int, approver: str, at: datetime) -> ReportText:
         """Sets the approval of one version of the text."""
@@ -58,9 +63,15 @@ class ReportStore(Protocol):
         docs/finding-states.md)."""
 
     def mark_exported(
-        self, report_id: str, version: int, path: str, exported_by: str, at: datetime
+        self,
+        report_id: str,
+        version: int,
+        path: str,
+        exported_by: str,
+        at: datetime,
+        format: str = "markdown",
     ) -> None:
-        """Sets the report to exported, with the version that was exported."""
+        """Sets the report to exported, with the version and the format that were exported."""
 
 
 class InMemoryReportStore:
@@ -117,8 +128,12 @@ class InMemoryReportStore:
         self.get_report(report_id)
         return list(self._texts[report_id])
 
-    def add_text(self, report_id: str, text: ReportText) -> ReportText:
-        self.get_report(report_id)
+    def add_text(
+        self, report_id: str, text: ReportText, finding_ids: tuple[str, ...] | None = None
+    ) -> ReportText:
+        report = self.get_report(report_id)
+        if finding_ids is not None:
+            self._reports[report_id] = replace(report, finding_ids=tuple(finding_ids))
         saved = replace(
             text,
             version=len(self._texts[report_id]) + 1,
@@ -150,7 +165,13 @@ class InMemoryReportStore:
         return reasons
 
     def mark_exported(
-        self, report_id: str, version: int, path: str, exported_by: str, at: datetime
+        self,
+        report_id: str,
+        version: int,
+        path: str,
+        exported_by: str,
+        at: datetime,
+        format: str = "markdown",
     ) -> None:
         # Checks again, as the Postgres store does in the same transaction.
         reasons = self.export_refusals(report_id)
@@ -164,4 +185,5 @@ class InMemoryReportStore:
             exported_text_version=version,
             export_path=path,
             exported_by=exported_by,
+            format=format,
         )

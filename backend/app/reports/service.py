@@ -102,15 +102,15 @@ class ReportService:
 
     def redraft(self, report_id: str) -> Report:
         """A new draft from the model, as the next version, for the members that are approved
-        now, so it brings the severity and the locations up to date after a member is rejected
-        or the finding is edited. The earlier text goes into the request, so the answer is a new
-        text and not the cached one. It needs a new approval. Raises NotApproved when no member
-        is approved."""
+        now, which become the findings of the report. It brings the severity and the locations
+        up to date after a member is rejected or approved, or the finding is edited. The earlier
+        text goes into the request, so the answer is a new text and not the cached one. It needs
+        a new approval. Raises NotApproved when no member is approved."""
         report = self._open(report_id)
         context = self._approved_members(report.finding_ids)
         previous = self.store.current_text(report_id)
         text = self._ask(context, attempt=previous.version + 1, previous=previous)
-        self.store.add_text(report_id, text)
+        self.store.add_text(report_id, text, context.finding_ids)
         return self.get(report_id)
 
     def approve_text(self, report_id: str, version: int, approver: str) -> Report:
@@ -158,7 +158,9 @@ class ReportService:
         try:
             with temporary.open("x", encoding="utf-8", newline="\n") as file:
                 file.write(content)
-            self.store.mark_exported(report_id, text.version, str(path), exported_by, self.now())
+            self.store.mark_exported(
+                report_id, text.version, str(path), exported_by, self.now(), report_format.name
+            )
             os.replace(temporary, path)
         except BaseException:
             temporary.unlink(missing_ok=True)
@@ -199,10 +201,18 @@ class ReportService:
 
     def _approved_members(self, finding_ids: tuple[str, ...]) -> FindingContext:
         """The context of the findings whose latest review approves them, which is what the
-        report's text has to match. A member rejected since the draft is left out (F5, test 3).
-        Raises NotApproved when no finding is approved."""
+        report's text has to match. A member rejected since the draft is left out (F5, test 3),
+        and a member of the group approved since is taken in. Raises NotApproved when no finding
+        is approved."""
         context = self.store.finding_context(finding_ids)
         approved = tuple(fid for fid in finding_ids if context.states.get(fid) == "approved")
+        approved += tuple(
+            sorted(
+                fid
+                for fid, state in context.states.items()
+                if state == "approved" and fid not in finding_ids
+            )
+        )
         if approved == tuple(finding_ids):
             return context
         if not approved:
