@@ -150,6 +150,7 @@ def test_scan_container_gets_the_contract_flags(data_dir):
     assert spec.cap_drop == ("ALL",)
     assert spec.no_new_privileges is True
     assert (spec.memory, spec.cpus, spec.pids_limit) == ("4g", 2.0, 512)
+    assert spec.sysctls == {}
     assert spec.env == {"SIEVE_SRC": "/src", "SIEVE_OUT": "/out", "HOME": "/tmp"}
     assert spec.labels == {
         "sieve.scan_id": "scan-1",
@@ -407,6 +408,7 @@ def test_build_step_runs_first_with_its_own_flags(data_dir):
     assert build.user == "10001:10001"
     assert build.read_only and build.cap_drop == ("ALL",) and build.no_new_privileges
     assert build.pids_limit == 1024
+    assert build.sysctls == {"net.ipv6.conf.all.disable_ipv6": "1"}
     assert build.env == {"SIEVE_SRC": "/src", "SIEVE_BUILD": "/build", "HOME": "/tmp"}
     assert build.labels["sieve.step"] == "build"
     build_mounts = {m.target: m for m in build.mounts}

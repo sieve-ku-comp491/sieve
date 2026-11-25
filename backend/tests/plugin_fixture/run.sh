@@ -40,6 +40,8 @@ if [ -n "$SIEVE_BUILD" ]; then
           get)
             answer=$(printf 'GET %s HTTP/1.1\r\nHost: %s\r\n\r\n' "$target" "$target" \
               | nc -w 5 maven-proxy 3128 2>/dev/null | head -n 1 | cut -d ' ' -f 2) ;;
+          # The number of IPv6 addresses the container has, loopback included.
+          ipv6) answer=$(grep -c . /proc/net/if_inet6) ;;
         esac
         echo "$kind $target ${answer:-none}" | tee -a "$SIEVE_BUILD/network.txt"
       done < "$SIEVE_SRC/targets"

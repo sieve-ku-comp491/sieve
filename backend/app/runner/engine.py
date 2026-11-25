@@ -45,6 +45,7 @@ class ContainerSpec:
     memory: str = "4g"
     cpus: float = 2.0
     pids_limit: int = 512
+    sysctls: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

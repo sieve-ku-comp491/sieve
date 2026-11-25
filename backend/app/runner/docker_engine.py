@@ -134,6 +134,7 @@ def create_arguments(spec: ContainerSpec) -> dict:
         "mem_limit": spec.memory,
         "nano_cpus": int(spec.cpus * 1_000_000_000),
         "pids_limit": spec.pids_limit,
+        "sysctls": dict(spec.sysctls),
         "environment": dict(spec.env),
         "labels": dict(spec.labels),
         "mounts": [docker_mount(mount) for mount in spec.mounts],

@@ -444,9 +444,10 @@ def test_a_build_step_cannot_reach_the_docker_host(client, data_dir, build_netwo
             f"direct {build_gateway}:{listener.port}",
             f"direct {plain_gateway}:{listener.port}",
         ]
-        answers = network_answers(client, data_dir, build_network, targets)
+        answers = network_answers(client, data_dir, build_network, [*targets, "ipv6 addresses"])
         assert listener.connections() == 0
-        assert answers == {target: "failed" for target in targets}
+        # No IPv6 address either, so no link-local route to the bridge, which has one.
+        assert answers == {target: "failed" for target in targets} | {"ipv6 addresses": "0"}
 
         # From the plain internal network the listener is reachable through the gateway, so the
         # listener works and the missing host address is what stops the build step.
