@@ -31,6 +31,7 @@ from app.llm.catalog import Catalog, ModelInfo, Price
 from app.llm.client import LLMClient
 from app.llm.fake import FakeProvider
 from app.llm.provider import ProviderError
+from app.llm.types import StopReason
 
 PRICE = Price(
     input=Decimal("1.00"),
@@ -257,6 +258,25 @@ def test_an_llm_group_that_joins_another_keeps_every_call():
     assert group.method == "llm"
     assert group.llm_call_ids == [record.id for record in log.records]
     assert len(group.llm_call_ids) == 3
+
+
+def test_an_answer_that_was_cut_off_counts_as_unsure(unclear):
+    provider = FakeProvider(
+        replies=[answer("yes"), answer("yes")], stop_reason=StopReason.MAX_TOKENS
+    )
+    client, _ = make_client(provider)
+
+    assert LLMStep(client, "cheap", "strong").group(unclear, []) == []
+    assert [request.model for request in provider.requests] == ["cheap", "strong"]
+
+
+def test_the_effort_and_the_token_limit_reach_every_call(unclear):
+    provider = FakeProvider(replies=[answer("unsure"), answer("no")])
+    client, _ = make_client(provider)
+
+    LLMStep(client, "cheap", "strong", effort="low", max_tokens=1234).group(unclear, [])
+
+    assert [(r.effort, r.max_tokens) for r in provider.requests] == [("low", 1234)] * 2
 
 
 def test_each_scan_starts_the_counters_again(unclear):

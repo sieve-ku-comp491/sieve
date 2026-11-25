@@ -4,8 +4,8 @@
 After the rule and similarity steps, the pairs of findings or groups that are close in the code
 and whose text similarity is from ASK_FROM up to GROUP_AT go to a model, the highest score of
 the whole scan first, so the questions that a stop leaves unasked are the least likely ones.
-The cheaper model answers first, and only an answer of unsure, or one that can't be read, goes
-to the stronger model. A pair the model calls the same issue becomes one
+The cheaper model answers first, and only an answer of unsure, one that can't be read or one
+that was cut off goes to the stronger model. A pair the model calls the same issue becomes one
 group, which records every call behind the decision, so the duplicate_group_llm_calls rows link
 it to them. The findings of any other pair are kept apart: no later group can hold two of them,
 so a third finding can't join what the model separated, and the same two findings are never
@@ -42,7 +42,7 @@ from app.llm.budget import BudgetExceeded
 from app.llm.client import LLMClient
 from app.llm.provider import ProviderError
 from app.llm.templates import load_template
-from app.llm.types import CodeBlock
+from app.llm.types import CodeBlock, StopReason
 
 TEMPLATE = "duplicate_check"
 MAX_QUESTIONS = 50
@@ -53,7 +53,8 @@ FENCE = re.compile(r"^\s*```(?:json)?\s*\n(.*?)\n\s*```\s*$", re.DOTALL | re.IGN
 
 
 class LLMStep:
-    """Asks a model about the pairs the earlier steps leave unclear."""
+    """Asks a model about the pairs the earlier steps leave unclear. effort and max_tokens go to
+    every call: a model that thinks counts its thinking against max_tokens."""
 
     def __init__(
         self,
@@ -65,6 +66,8 @@ class LLMStep:
         ask_from: float = ASK_FROM,
         group_at: float = GROUP_AT,
         max_questions: int = MAX_QUESTIONS,
+        effort: str | None = None,
+        max_tokens: int = MAX_TOKENS,
     ):
         self._client = client
         self._models = [model for model in (cheap_model, strong_model) if model]
@@ -73,6 +76,8 @@ class LLMStep:
         self._ask_from = ask_from
         self._group_at = group_at
         self._max_questions = max_questions
+        self._effort = effort
+        self._max_tokens = max_tokens
         self._template = load_template(TEMPLATE)
         self.questions = 0
         self.stopped: str | None = None
@@ -134,11 +139,21 @@ class LLMStep:
         calls: list[str] = []
         for model in self._models:
             response = self._client.ask(
-                self._template, values, code, model=model, max_tokens=MAX_TOKENS
+                self._template,
+                values,
+                code,
+                model=model,
+                max_tokens=self._max_tokens,
+                effort=self._effort,
             )
             if response.call_id:
                 calls.append(response.call_id)
-            answer, reason = parse_answer(response.text)
+            # Only a complete answer counts, as docs/llm-provider.md says: text cut off at
+            # max_tokens or by a refusal may hold a yes the model never finished.
+            if response.stop_reason is StopReason.COMPLETE:
+                answer, reason = parse_answer(response.text)
+            else:
+                answer, reason = "unsure", None
             if answer != "unsure":
                 return answer, reason, calls
         return "unsure", None, calls
