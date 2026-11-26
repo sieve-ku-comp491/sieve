@@ -40,6 +40,8 @@ if [ -n "$SIEVE_BUILD" ]; then
           get)
             answer=$(printf 'GET %s HTTP/1.1\r\nHost: %s\r\n\r\n' "$target" "$target" \
               | nc -w 5 maven-proxy 3128 2>/dev/null | head -n 1 | cut -d ' ' -f 2) ;;
+          # The number of IPv6 addresses the container has, loopback included.
+          ipv6) answer=$(grep -c . /proc/net/if_inet6) ;;
         esac
         echo "$kind $target ${answer:-none}" | tee -a "$SIEVE_BUILD/network.txt"
       done < "$SIEVE_SRC/targets"
@@ -74,8 +76,9 @@ case "$mode" in
   nothing)
     exit 3 ;;
   oom)
-    # tail keeps everything it reads when there are no line breaks.
-    head -c 500000000 /dev/zero | tail > /dev/null
+    # tail keeps everything it reads when there are no line breaks, until the kernel kills it at
+    # the memory limit. Like a plug-in's run.sh, the script then fails.
+    head -c 500000000 /dev/zero | tail > /dev/null || exit 1
     write_results 2 ;;
   network)
     # Each line of /src/targets is a URL. Exit 0 if any of them answers.

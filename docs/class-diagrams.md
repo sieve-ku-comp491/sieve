@@ -85,6 +85,7 @@ classDiagram
     +memory: str
     +cpus: float
     +pids_limit: int
+    +sysctls: dict
   }
   class Mount {
     +volume: str

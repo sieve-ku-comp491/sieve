@@ -405,6 +405,9 @@ class PluginRunner:
             memory=self.settings.memory,
             cpus=self.settings.cpus,
             pids_limit=self.settings.build_pids_limit,
+            # No IPv6 address at all, not even a link-local one, whatever the engine does with
+            # IPv6 on an IPv4-only network (docs/interfaces.md, Build step).
+            sysctls={"net.ipv6.conf.all.disable_ipv6": "1"},
         )
 
     def _data_mount(self, subpath: str, target: str, read_only: bool) -> Mount:

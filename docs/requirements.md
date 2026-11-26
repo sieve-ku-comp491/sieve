@@ -225,7 +225,7 @@ These versions stay fixed from the baseline run in week 4 to the final evaluatio
 |---|---|---|---|---|
 | Semgrep CE | Python, Java, JavaScript/TypeScript | 1.183.0 | semgrep-rules at commit `16b9e6d` (21 Oct 2026), the `security` folders only | `--sarif` |
 | Bandit | Python | 1.9.4 | built in | `-f sarif`, with the `bandit[sarif]` extra |
-| SpotBugs with Find Security Bugs | Java | SpotBugs 4.10.5, Find Security Bugs 1.14.0, and Maven 3.9.16 for the build step | built in, security patterns only, without SPRING_ENDPOINT | `-sarif` |
+| SpotBugs with Find Security Bugs | Java | SpotBugs 4.10.5, Find Security Bugs 1.14.0, and Maven 3.9.16 for the build step | built in, security patterns only, without the seven endpoint patterns such as SPRING_ENDPOINT | `-sarif` |
 | ESLint with eslint-plugin-security | JavaScript/TypeScript | ESLint 10.14.0, eslint-plugin-security 4.2.1, typescript-eslint 8.72.1, TypeScript 6.0.3 | the plug-in's recommended set | the `@microsoft/eslint-formatter-sarif` 3.1.0 formatter |
 | Gitleaks | secrets in any file | 8.30.1 | built in | `--report-format sarif`, run with `--redact` |
 
