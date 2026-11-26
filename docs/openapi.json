@@ -400,6 +400,85 @@
         }
       }
     },
+    "/scans/{scan_id}/code": {
+      "get": {
+        "tags": [
+          "scans"
+        ],
+        "summary": "Get Code",
+        "description": "Lines start to end of one file of the scan's checkout, for code the finding's code\nwindow doesn't hold, such as cited lines and injection lines elsewhere. At most 200 lines:\na longer range stops after 200, and an end past the file stops at its last line, so\nend_line tells where the lines stop. Every finding of the scan in the file is masked as in\nthe code window, so a secret Gitleaks found reads REDACTED. A path outside the checkout,\na file that can't be read, and a file with a finding of a tool whose adapter is unknown\nare not found.",
+        "operationId": "get_code_scans__scan_id__code_get",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "file",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "a path relative to the checkout",
+              "title": "File"
+            },
+            "description": "a path relative to the checkout"
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000000,
+              "minimum": 1,
+              "description": "the first line",
+              "title": "Start"
+            },
+            "description": "the first line"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000000,
+              "minimum": 1,
+              "description": "the last line",
+              "title": "End"
+            },
+            "description": "the last line"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Code"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "no such scan, or the file isn't one the scan's checkout can serve"
+          },
+          "422": {
+            "description": "the range is not one of the file's lines"
+          }
+        }
+      }
+    },
     "/findings/{finding_id}": {
       "get": {
         "tags": [
@@ -608,7 +687,7 @@
           "lines"
         ],
         "title": "Code",
-        "description": "Lines of the scanned file around the finding, read from the scan's checkout."
+        "description": "Lines of a scanned file, read from the scan's checkout."
       },
       "FindingDetail": {
         "properties": {

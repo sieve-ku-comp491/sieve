@@ -148,7 +148,7 @@ ORDER BY f.file, f.start_line, f.rule_id, f.id
 
 FLAGGED_LINES = """
 SELECT DISTINCT tool, start_line, end_line FROM findings
-WHERE scan_id = %(scan_id)s AND file = %(file)s
+WHERE scan_id = %(scan_id)s AND file = ANY(%(files)s::text[])
 ORDER BY tool, start_line, end_line
 """
 
@@ -214,11 +214,13 @@ class FindingsReader:
             row = conn.execute("SELECT 1 FROM scans WHERE id = %s", (scan_id,)).fetchone()
         return row is not None
 
-    def flagged_lines(self, scan_id: str, file: str) -> list[dict]:
-        """The tool and lines of every finding of the scan in the file, hidden ones too, for
-        masking the code around one of them."""
+    def flagged_lines(self, scan_id: str, *files: str) -> list[dict]:
+        """The tool and lines of every finding of the scan in the files, hidden ones too, for
+        masking the code around one of them. Two names of one file, such as a link and its
+        target, give the findings under either name."""
         with self._connect() as conn:
-            return conn.execute(FLAGGED_LINES, {"scan_id": scan_id, "file": file}).fetchall()
+            params = {"scan_id": scan_id, "files": list(files)}
+            return conn.execute(FLAGGED_LINES, params).fetchall()
 
     def list_findings(
         self, scan_id: str, filters: FindingFilter, limit: int, offset: int

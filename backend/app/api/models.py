@@ -146,7 +146,7 @@ class FlowStep(Location):
 
 
 class Code(BaseModel):
-    """Lines of the scanned file around the finding, read from the scan's checkout."""
+    """Lines of a scanned file, read from the scan's checkout."""
 
     file: str
     start_line: int = Field(description="the line number of the first line in lines")

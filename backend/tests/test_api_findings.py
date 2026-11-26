@@ -431,3 +431,131 @@ def test_the_code_window_of_a_long_finding_stops_at_200_lines(database, tmp_path
     assert (code["start_line"], code["end_line"], len(code["lines"])) == (10, 209, 200)
     assert code["lines"][:2] == ["", 'app = Flask("app")']
     assert set(code["lines"][10:]) == {"REDACTED"}
+
+
+def code(client, scan_id, file, start, end):
+    return client.get(f"/scans/{scan_id}/code", params={"file": file, "start": start, "end": end})
+
+
+@pytest.fixture
+def gitleaks_scan(database, tmp_path):
+    scan_id = load_gitleaks(database, tmp_path)
+    return make_client(database, tmp_path), scan_id, tmp_path / "scans" / scan_id
+
+
+def test_the_code_endpoint_masks_every_secret_in_the_range(gitleaks_scan):
+    """Lines 50 to 62 hold the Gitleaks findings at 53 and 59. Both read REDACTED and the
+    lines around them show as they are. The same file asked for under other spellings of its
+    path is masked the same way, and named as the findings name it."""
+    client, scan_id, _ = gitleaks_scan
+    source = (FIXTURE / "pygoat" / AUTH).read_text(encoding="utf-8").splitlines()
+    expected = [
+        "REDACTED" if number in (53, 59) else source[number - 1] for number in range(50, 63)
+    ]
+    assert expected[3] == "REDACTED" and expected[8] == '        "role": "user",'
+    for spelling in (AUTH, "dockerized_labs/./auth_failure_lab/app.py", f"./{AUTH}"):
+        response = code(client, scan_id, spelling, 50, 62)
+        assert response.status_code == 200, response.text
+        assert response.json() == {
+            "file": AUTH,
+            "start_line": 50,
+            "end_line": 62,
+            "lines": expected,
+        }
+
+
+def test_the_code_endpoint_masks_a_file_read_through_a_link(gitleaks_scan):
+    """A link in the checkout to the file reads the file, so its secrets are masked too."""
+    client, scan_id, scan_dir = gitleaks_scan
+    try:
+        (scan_dir / "src" / "link.py").symlink_to(scan_dir / "src" / AUTH)
+    except OSError:
+        pytest.skip("this system can't make symbolic links")
+    lines = code(client, scan_id, "link.py", 53, 53).json()["lines"]
+    assert lines == ["REDACTED"]
+
+
+def test_the_code_endpoint_serves_files_without_findings(gitleaks_scan):
+    client, scan_id, _ = gitleaks_scan
+    response = code(client, scan_id, LAB, 1, 1)
+    assert response.json()["lines"] == ["from flask import Flask, render_template, request"]
+
+
+def test_the_code_endpoint_stops_at_200_lines_and_at_the_end_of_the_file(gitleaks_scan):
+    """The file has 238 lines. Lines 10 to 238 are 229 lines, so they stop at 209. From line
+    230, an end past the file stops at 238, its last line."""
+    client, scan_id, _ = gitleaks_scan
+    body = code(client, scan_id, AUTH, 10, 238).json()
+    assert (body["start_line"], body["end_line"], len(body["lines"])) == (10, 209, 200)
+    assert body["lines"][:2] == ["", 'app = Flask("app")']
+    assert body["lines"][43] == "REDACTED"
+    body = code(client, scan_id, AUTH, 230, 5000).json()
+    assert (body["start_line"], body["end_line"], len(body["lines"])) == (230, 238, 9)
+
+
+@pytest.mark.parametrize(
+    "file",
+    [
+        "../outside.txt",
+        "src/../../outside.txt",
+        "dockerized_labs/../../outside.txt",
+        "missing.py",
+        "dockerized_labs",
+        "dockerized_labs/auth_failure_lab/app.py\x00",
+    ],
+)
+def test_the_code_endpoint_serves_nothing_outside_the_checkout(gitleaks_scan, file):
+    """outside.txt is in the scan's folder in the data folder, next to src."""
+    client, scan_id, scan_dir = gitleaks_scan
+    (scan_dir / "outside.txt").write_text("worker secret\n", encoding="utf-8")
+    response = code(client, scan_id, file, 1, 1)
+    assert response.status_code == 404, response.text
+    assert "worker secret" not in response.text
+
+
+def test_the_code_endpoint_refuses_an_absolute_path_and_a_link_out(gitleaks_scan):
+    client, scan_id, scan_dir = gitleaks_scan
+    outside = scan_dir / "outside.txt"
+    outside.write_text("worker secret\n", encoding="utf-8")
+    assert code(client, scan_id, str(outside), 1, 1).status_code == 404
+    assert code(client, scan_id, outside.as_posix(), 1, 1).status_code == 404
+    try:
+        (scan_dir / "src" / "out.txt").symlink_to(outside)
+    except OSError:
+        pytest.skip("this system can't make symbolic links")
+    assert code(client, scan_id, "out.txt", 1, 1).status_code == 404
+
+
+def test_the_code_endpoint_needs_a_known_scan_and_its_checkout(database, gitleaks_scan, tmp_path):
+    client, scan_id, _ = gitleaks_scan
+    unknown = "00000000-0000-0000-0000-000000000000"
+    assert code(client, unknown, AUTH, 1, 1).status_code == 404
+    other = make_client(database, tmp_path / "empty")
+    assert code(other, scan_id, AUTH, 1, 1).status_code == 404
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"file": AUTH, "start": 0, "end": 1},
+        {"file": AUTH, "start": 5, "end": 4},
+        {"file": AUTH, "start": 239, "end": 240},
+        {"file": AUTH, "start": 1},
+        {"file": "", "start": 1, "end": 1},
+        {"file": AUTH, "start": 1, "end": 10_000_001},
+    ],
+)
+def test_the_code_endpoint_refuses_a_bad_range(gitleaks_scan, params):
+    client, scan_id, _ = gitleaks_scan
+    assert client.get(f"/scans/{scan_id}/code", params=params).status_code == 422
+
+
+def test_the_code_endpoint_needs_the_token(gitleaks_scan):
+    client, scan_id, _ = gitleaks_scan
+    response = client.get(
+        f"/scans/{scan_id}/code",
+        params={"file": AUTH, "start": 53, "end": 53},
+        headers={"Authorization": "Bearer wrong"},
+    )
+    assert response.status_code == 401
+    assert "REDACTED" not in response.text
