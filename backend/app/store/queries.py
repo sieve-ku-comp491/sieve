@@ -62,6 +62,13 @@ LATEST_EDIT = """
 SELECT e.* FROM finding_edits e WHERE e.finding_id = f.id ORDER BY e.created_at DESC LIMIT 1
 """
 
+# The size of the finding's duplicate group and its members' states, counted over the scan's
+# findings before any filter, so a row knows its whole group. Members of a group are always of
+# the group's scan.
+GROUP_STATES = ", ".join(
+    f"'{state}', count(*) FILTER (WHERE st.state = '{state}') OVER g" for state in STATES
+)
+
 ITEMS = f"""
 SELECT
     f.id, f.scan_id, f.run_id, f.group_id, f.tool, f.tool_version, f.rule_id, f.cwe, f.message,
@@ -71,12 +78,15 @@ SELECT
     coalesce(e.verdict, v.verdict) AS verdict,
     coalesce(e.cvss_v4_level, v.cvss_v4_level) AS severity,
     coalesce(e.cvss_v4_score, v.cvss_v4_score) AS score,
-    coalesce(v.injection_suspected, false) AS injection_suspected
+    coalesce(v.injection_suspected, false) AS injection_suspected,
+    CASE WHEN f.group_id IS NOT NULL THEN count(*) OVER g END AS group_size,
+    CASE WHEN f.group_id IS NOT NULL THEN jsonb_build_object({GROUP_STATES}) END AS group_states
 FROM findings f
 JOIN finding_states st ON st.finding_id = f.id
 LEFT JOIN LATERAL ({LATEST_VERDICT}) v ON true
 LEFT JOIN LATERAL ({LATEST_EDIT}) e ON true
 WHERE f.scan_id = %(scan_id)s AND st.scan_id = %(scan_id)s
+WINDOW g AS (PARTITION BY f.group_id)
 """
 
 FILTERED = f"""

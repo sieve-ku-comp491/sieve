@@ -1308,6 +1308,44 @@
           "injection_suspected": {
             "type": "boolean",
             "title": "Injection Suspected"
+          },
+          "group_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Size",
+            "description": "the number of findings in its duplicate group, itself included, whatever the filters: the members of group in the finding detail. Hidden findings are never grouped, so every member is in the queue. Null when it has no group."
+          },
+          "group_states": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "propertyNames": {
+                  "enum": [
+                    "new",
+                    "grouped",
+                    "triaged",
+                    "edited",
+                    "approved",
+                    "rejected",
+                    "reported"
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group States",
+            "description": "the number of those members in each state. Null when it has no group."
           }
         },
         "type": "object",
@@ -1334,7 +1372,9 @@
           "verdict",
           "severity",
           "score",
-          "injection_suspected"
+          "injection_suspected",
+          "group_size",
+          "group_states"
         ],
         "title": "FindingItem",
         "description": "One row of the review queue."

@@ -122,6 +122,14 @@ class FindingItem(BaseModel):
     severity: Level | None = Field(description="the CVSS v4.0 level, from the same place")
     score: float | None = Field(description="the CVSS v4.0 score, from the same place")
     injection_suspected: bool
+    group_size: int | None = Field(
+        description="the number of findings in its duplicate group, itself included, whatever "
+        "the filters: the members of group in the finding detail. Hidden findings are never "
+        "grouped, so every member is in the queue. Null when it has no group."
+    )
+    group_states: dict[State, int] | None = Field(
+        description="the number of those members in each state. Null when it has no group."
+    )
 
 
 class FindingPage(BaseModel):

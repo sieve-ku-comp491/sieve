@@ -604,3 +604,60 @@ def test_the_detail_lists_every_edit_newest_first(database, tmp_path):
     )
     assert edits[1]["cvss_v4_vector"] is None
     assert {edit["verdict_id"] for edit in edits} == {str(verdict_id)}
+
+
+def test_a_grouped_row_counts_its_whole_group(database, tmp_path):
+    """The two tainted-sql-string findings on line 50 in one group with one verdict. The
+    reviewer approves Django's and edits Flask's, so the group has one approved and one edited
+    member, whichever rows the filters keep. A repository URL of its own keeps the approval
+    from hiding findings in later scans of the other tests."""
+    scan_id = load(database, tmp_path, repo=f"https://example.test/{uuid.uuid4().hex}")
+    client = make_client(database, tmp_path)
+    django = finding_id(client, scan_id, DJANGO_RULE, 50)
+    flask = finding_id(client, scan_id, FLASK_RULE, 50)
+    with psycopg.connect(database) as conn:
+        run_id = insert_triage_run(conn, scan_id)
+        group_id = conn.execute(
+            "INSERT INTO duplicate_groups (scan_id, representative_finding_id, method, rule,"
+            " reason) VALUES (%s, %s, 'rule', 'nearby_lines_related_cwe', 'same line, CWE-89')"
+            " RETURNING id",
+            (scan_id, django),
+        ).fetchone()[0]
+        conn.execute(
+            "UPDATE findings SET group_id = %s WHERE id IN (%s, %s)", (group_id, django, flask)
+        )
+        verdict_id = insert_verdict(conn, run_id, group=group_id)
+        conn.execute(
+            "INSERT INTO reviews (finding_id, decision, reviewer, verdict_id)"
+            " VALUES (%s, 'approve', 'Ali', %s)",
+            (django, verdict_id),
+        )
+        conn.execute(
+            "INSERT INTO finding_edits (finding_id, verdict_id, editor, verdict)"
+            " VALUES (%s, %s, 'Furkan', 'unsure')",
+            (flask, verdict_id),
+        )
+
+    states = {
+        "new": 0,
+        "grouped": 0,
+        "triaged": 0,
+        "edited": 1,
+        "approved": 1,
+        "rejected": 0,
+        "reported": 0,
+    }
+    rows = {item["id"]: item for item in findings(client, scan_id)["items"]}
+    for member in (django, flask):
+        assert (rows[member]["group_size"], rows[member]["group_states"]) == (2, states)
+    others = [item for item in rows.values() if item["id"] not in (django, flask)]
+    assert len(others) == 7
+    assert {(item["group_size"], item["group_states"]) for item in others} == {(None, None)}
+    (approved,) = findings(client, scan_id, status="approved")["items"]
+    assert (approved["id"], approved["group_size"], approved["group_states"]) == (
+        django,
+        2,
+        states,
+    )
+    detail = client.get(f"/findings/{django}").json()
+    assert len(detail["group"]["members"]) == 2
