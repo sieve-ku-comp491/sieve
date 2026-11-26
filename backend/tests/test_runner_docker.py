@@ -4,6 +4,7 @@ Skipped when Docker isn't running. CI's Ubuntu runners have Docker, so these run
 """
 
 import ipaddress
+import os
 import random
 import socket
 import sys
@@ -172,6 +173,15 @@ def test_missing_output_and_nothing_scanned(client, data_dir):
         assert (run.status, run.reason) == expected, mode
 
 
+def control_failed(message: str) -> None:
+    """A positive control got nothing. Without it the test proves nothing, so on Linux and in CI,
+    where the control works, the test fails. Elsewhere, such as a machine whose firewall stops
+    containers from reaching the host, it is skipped."""
+    if sys.platform.startswith("linux") or os.environ.get("CI"):
+        pytest.fail(message)
+    pytest.skip(message)
+
+
 class Listener:
     """Counts the TCP connections that reach a port on this machine."""
 
@@ -208,6 +218,22 @@ def test_a_plugin_cannot_reach_the_network(client, data_dir):
     listener = Listener()
     try:
         url = f"http://host.docker.internal:{listener.port}/"
+        # First the same request from a container with a network, which must arrive, so that a
+        # listener that gets nothing can't pass the check below.
+        try:
+            client.containers.run(
+                "busybox:1.37.0",
+                ["wget", "-q", "-T", "3", "-O", "/dev/null", url],
+                extra_hosts={"host.docker.internal": "host-gateway"},
+                remove=True,
+            )
+        except docker.errors.ContainerError:
+            pass  # the listener closes the connection without an HTTP answer
+        time.sleep(0.5)
+        reached = listener.connections
+        if reached == 0:
+            control_failed("a container with a network didn't reach the listener on the host")
+
         scan = checkout(data_dir, "network", targets=f"{url}\nhttp://1.1.1.1/\n")
         run = run_one(make_runner(client, data_dir), scan, manifest())
 
@@ -220,21 +246,7 @@ def test_a_plugin_cannot_reach_the_network(client, data_dir):
         assert f"could not reach {url}" in log
         assert "reached" not in log.replace("could not reach", "")
         time.sleep(0.5)
-        assert listener.connections == 0
-
-        # The same request from a container with a network does arrive, so the listener works.
-        try:
-            client.containers.run(
-                "busybox:1.37.0",
-                ["wget", "-q", "-T", "3", "-O", "/dev/null", url],
-                extra_hosts={"host.docker.internal": "host-gateway"},
-                remove=True,
-            )
-        except docker.errors.ContainerError:
-            pass  # the listener closes the connection without an HTTP answer
-        time.sleep(0.5)
-        if listener.connections == 0:
-            pytest.skip("containers on this machine can't reach the host even with a network")
+        assert listener.connections == reached
     finally:
         listener.close()
 
@@ -242,7 +254,11 @@ def test_a_plugin_cannot_reach_the_network(client, data_dir):
 def test_out_of_memory(client, data_dir):
     scan = checkout(data_dir, "oom")
     run = run_one(make_runner(client, data_dir, memory="16m"), scan, manifest())
-    assert (run.status, run.reason) == (RunStatus.FAILED, Reason.OUT_OF_MEMORY)
+    assert (run.status, run.reason, run.exit_code) == (
+        RunStatus.FAILED,
+        Reason.OUT_OF_MEMORY,
+        1,
+    ), log_text(data_dir, run)
     assert containers_of(client, run) == []
 
 
@@ -400,23 +416,48 @@ def test_a_build_step_reaches_no_host_but_maven_central(client, data_dir, maven_
 class HostListener:
     """Counts the TCP connections to a port in the Docker host's own network namespace, from a
     busybox container on the host network. On Linux that is this machine. Docker Desktop runs the
-    engine in a VM, which owns the bridges' gateway addresses, so Listener wouldn't see those."""
+    engine in a VM, which owns the bridges' gateway addresses, so Listener wouldn't see those.
+
+    The port is picked at random, and something on the host may already listen on it. nc then
+    stops at once with "nc: bind: Address already in use", so the listener tries another port.
+    """
+
+    ATTEMPTS = 5
 
     def __init__(self, client) -> None:
-        self.port = random.randint(20000, 59999)
-        self.container = client.containers.run(
-            "busybox:1.37.0",
-            ["nc", "-lk", "-p", str(self.port), "-e", "sh", "-c", "echo hit >> /tmp/hits"],
-            name=f"sieve-test-host-listener-{uuid.uuid4().hex[:8]}",
-            network_mode="host",
-            detach=True,
-        )
+        failures = []
+        for _ in range(self.ATTEMPTS):
+            self.port = random.randint(20000, 59999)
+            self.container = client.containers.run(
+                "busybox:1.37.0",
+                ["nc", "-lk", "-p", str(self.port), "-e", "sh", "-c", "echo hit >> /tmp/hits"],
+                name=f"sieve-test-host-listener-{uuid.uuid4().hex[:8]}",
+                network_mode="host",
+                detach=True,
+            )
+            failure = self._wait_until_listening()
+            if failure is None:
+                return
+            failures.append(f"port {self.port}: {failure}")
+            self.close()
+        pytest.fail("the listener on the host network didn't start:\n" + "\n".join(failures))
+
+    def _wait_until_listening(self) -> str | None:
+        """None once nc listens, or else why it doesn't."""
         deadline = time.monotonic() + 10
-        while f":{self.port} " not in self._run("netstat -ltn"):
-            if time.monotonic() > deadline:
-                self.close()
-                pytest.fail("the listener on the host network didn't start")
+        while time.monotonic() < deadline:
+            self.container.reload()
+            if self.container.status != "running":
+                state = self.container.attrs["State"]
+                output = self.container.logs().decode().strip() or "no output"
+                return f"{state['Status']} with exit code {state['ExitCode']}: {output}"
+            try:
+                if f":{self.port} " in self._run("netstat -ltn"):
+                    return None
+            except docker.errors.APIError:
+                pass  # nc stopped after the reload, and the next round reports it
             time.sleep(0.2)
+        return "not listening after 10 s"
 
     def _run(self, command: str) -> str:
         return self.container.exec_run(["sh", "-c", command]).output.decode()
@@ -437,19 +478,10 @@ def test_a_build_step_cannot_reach_the_docker_host(client, data_dir, build_netwo
     try:
         plain.reload()
         plain_gateway = plain.attrs["IPAM"]["Config"][0]["Gateway"]
-        # On a network without inhibit_ipv4, Docker gives the bridge the subnet's first address.
-        subnet = client.networks.get(build_network).attrs["IPAM"]["Config"][0]["Subnet"]
-        build_gateway = ipaddress.ip_network(subnet)[1]
-        targets = [
-            f"direct {build_gateway}:{listener.port}",
-            f"direct {plain_gateway}:{listener.port}",
-        ]
-        answers = network_answers(client, data_dir, build_network, targets)
-        assert listener.connections() == 0
-        assert answers == {target: "failed" for target in targets}
 
-        # From the plain internal network the listener is reachable through the gateway, so the
-        # listener works and the missing host address is what stops the build step.
+        # First a container on the plain internal network reaches the listener through the
+        # gateway, so the listener works and the missing host address is what stops the build
+        # step below.
         try:
             client.containers.run(
                 "busybox:1.37.0",
@@ -459,8 +491,21 @@ def test_a_build_step_cannot_reach_the_docker_host(client, data_dir, build_netwo
             )
         except docker.errors.ContainerError:
             pass
-        if listener.connections() == 0:
-            pytest.skip("containers on this machine can't reach the host through a gateway address")
+        reached = listener.connections()
+        if reached == 0:
+            control_failed("a container didn't reach the host through a gateway address")
+
+        # On a network without inhibit_ipv4, Docker gives the bridge the subnet's first address.
+        subnet = client.networks.get(build_network).attrs["IPAM"]["Config"][0]["Subnet"]
+        build_gateway = ipaddress.ip_network(subnet)[1]
+        targets = [
+            f"direct {build_gateway}:{listener.port}",
+            f"direct {plain_gateway}:{listener.port}",
+        ]
+        answers = network_answers(client, data_dir, build_network, [*targets, "ipv6 addresses"])
+        assert listener.connections() == reached
+        # No IPv6 address either, so no link-local route to the bridge, which has one.
+        assert answers == {target: "failed" for target in targets} | {"ipv6 addresses": "0"}
     finally:
         listener.close()
         plain.remove()

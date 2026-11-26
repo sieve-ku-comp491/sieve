@@ -1,0 +1,24 @@
+# The repositories Sieve may scan (requirement F2). Sieve refuses every other
+# repository before it clones anything or starts any container.
+#
+# Public code only. Sieve sends code from these repositories to hosted LLM
+# APIs, and it clones without credentials, so a private repository fails even
+# when it is listed (requirement N4). Never list confidential code, such as a
+# client's private repository.
+#
+# Each entry needs a reason that says why we may scan it: it is our own code,
+# a deliberately vulnerable application, source code that a bug bounty
+# program lists in its scope, or public code at a commit with a published CVE,
+# scanned for our evaluation. The rules for URLs are in README.md, "Scope file".
+
+[[repository]]
+url = "https://github.com/adeyosemanputra/pygoat"
+reason = "OWASP PyGoat, a deliberately vulnerable application"
+
+[[repository]]
+url = "https://github.com/WebGoat/WebGoat"
+reason = "OWASP WebGoat, a deliberately vulnerable application"
+
+[[repository]]
+url = "https://github.com/juice-shop/juice-shop"
+reason = "OWASP Juice Shop, a deliberately vulnerable application"

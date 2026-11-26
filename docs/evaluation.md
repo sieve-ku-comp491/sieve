@@ -138,7 +138,7 @@ The findings CSV has `finding_id`, `file`, `cwe` (several separated by `;`) and 
 
 Triage removes a finding only when its verdict is `false_positive`. Unsure findings stay, because the review screen still shows them. The output also counts `findings_without_case`, the findings whose file is no case's file, and `findings_without_cwe`, the findings with no CWE, which can't flag any case. A high count of the first usually means the paths don't match the dataset's, and of the second that an adapter didn't read the CWE of some rules. Either way the rates are lower than they should be.
 
-Related CWEs are in `RELATED_CWES` in `backend/app/eval/metrics.py`, for example CWE-77 and CWE-78. Weak hashing (CWE-328) and broken crypto (CWE-327) are related, because analyzers tag MD5 and SHA-1 as CWE-327 while the Benchmark files those cases under CWE-328. We checked this on the Bandit SARIF file that the Python Benchmark ships: Bandit tags all 45 of its findings on weak-hashing cases as CWE-327. With the two related, those Bandit results give a true-positive rate of 0.0996 and a false-positive rate of 0.1208 over the 1,230 cases.
+Related CWEs are in `RELATED_CWES` in `backend/app/cwe.py`, for example CWE-77 and CWE-78. Weak hashing (CWE-328) and broken crypto (CWE-327) are related, because analyzers tag MD5 and SHA-1 as CWE-327 while the Benchmark files those cases under CWE-328. We checked this on the Bandit SARIF file that the Python Benchmark ships: Bandit tags all 45 of its findings on weak-hashing cases as CWE-327. With the two related, those Bandit results give a true-positive rate of 0.0996 and a false-positive rate of 0.1208 over the 1,230 cases.
 
 ### Deduplication (requirement F3, test 4)
 

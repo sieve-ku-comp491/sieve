@@ -8,10 +8,11 @@ status=$?
 [ "$status" -eq 0 ] || exit "$status"
 
 # The settings Find Security Bugs recommends: maximum effort, all confidence levels, and only
-# the SECURITY category. security-only.xml also leaves out SPRING_ENDPOINT, which lists
-# endpoints rather than bugs. SpotBugs exits with 0 when the analysis finished, with or without
-# bugs. It has no option to ignore @SuppressFBWarnings in the scanned code: -omitVisitors
-# doesn't turn off NoteSuppressedWarnings, and suppressed bugs never reach the SARIF file.
+# the SECURITY category. security-only.xml also leaves out the seven endpoint patterns, such
+# as SPRING_ENDPOINT, which list endpoints rather than bugs. SpotBugs exits with 0 when the
+# analysis finished, with or without bugs. It has no option to ignore @SuppressFBWarnings in
+# the scanned code: -omitVisitors doesn't turn off NoteSuppressedWarnings, and suppressed bugs
+# never reach the SARIF file.
 java -Xmx3g -jar /opt/spotbugs/lib/spotbugs.jar -textui \
   -effort:max -low -nested:false \
   -pluginList /opt/findsecbugs/findsecbugs-plugin-1.14.0.jar \

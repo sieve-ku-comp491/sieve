@@ -71,6 +71,28 @@ class ScanDetail(Scan):
     )
 
 
+class StartScan(BaseModel):
+    repo_url: str = Field(
+        max_length=2000,
+        description="an https URL of a repository in the scope file, without a user name, "
+        "password, port, query or fragment",
+        examples=["https://github.com/adeyosemanputra/pygoat"],
+    )
+    commit: str | None = Field(
+        default=None,
+        max_length=200,
+        description="a full or short commit hash, a branch or a tag. The commit must be on a "
+        "branch or tag of the repository. The default branch when left out.",
+    )
+
+
+class ScanStarted(BaseModel):
+    scan_id: UUID
+    job_id: UUID
+    repo_url: str = Field(description="the repository URL, normalized as in the scope check")
+    status: str
+
+
 class FindingItem(BaseModel):
     """One row of the review queue."""
 
@@ -237,8 +259,10 @@ class FindingDetail(BaseModel):
     created_at: datetime
     state: State
     code: Code | None = Field(
-        description="the flagged lines with up to 10 lines before and after. Empty when the "
-        "checkout can't be read."
+        description="the flagged lines with up to 10 lines before and after, at most 200 lines: "
+        "a longer finding shows its first lines, and end_line tells where the window stops. "
+        "Lines that any finding of the scan masks, such as a secret Gitleaks found, read "
+        "REDACTED. Empty when the checkout can't be read."
     )
     verdict: VerdictOut | None = Field(description="the latest verdict of its triage item")
     latest_edit: FindingEdit | None

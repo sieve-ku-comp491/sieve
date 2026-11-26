@@ -87,10 +87,10 @@ def group_scan(
     triage_run_id: str | None = None,
 ) -> list[Group]:
     """Groups the scan's findings once: the rule step with lookup, then later_steps, such as
-    text similarity and the LLM. Saves the groups, and sets grouped_at on the triage run when
-    one is given, all in one transaction. Refuses a scan that hasn't ended as completed or
-    partial, and a scan that was already grouped, because its groups may already have
-    verdicts."""
+    text similarity and the LLM, which should be made with the same lookup. Saves the groups,
+    and sets grouped_at on the triage run when one is given, all in one transaction. Refuses a
+    scan that hasn't ended as completed or partial, and a scan that was already grouped,
+    because its groups may already have verdicts."""
     with psycopg.connect(conninfo) as conn:
         scan = conn.execute(LOCK_SCAN, {"scan_id": scan_id}).fetchone()
         if scan is None:

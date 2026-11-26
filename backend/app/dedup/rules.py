@@ -2,8 +2,8 @@
 with related CWEs (requirement F3).
 
 Two findings match when they are in the same file, some CWE of one is the same as or related to
-some CWE of the other (RELATED_CWES in app.eval.metrics, the list the evaluation uses, and
-COPIED_RULE_CWES below), and either:
+some CWE of the other (RELATED_CWES in app.cwe, the list the evaluation uses, and COPIED_RULE_CWES
+below), and either:
 
 - the function lookup knows a function for both and it is the same function
   (same_function_related_cwe), or
@@ -31,9 +31,9 @@ import re
 from collections import defaultdict
 from collections.abc import Sequence
 
+from app.cwe import related
 from app.dedup.functions import FunctionLookup, FunctionSpan, NoFunctionLookup
 from app.dedup.groups import Group, ScanFinding
-from app.eval.metrics import related
 
 # Kept small, because a wrong merge costs more than a missed one: the precision target of F3 is
 # 0.9. Analyzers that flag the same call report the same line or lines of the same statement.
@@ -95,12 +95,25 @@ class RuleStep:
     ) -> bool:
         if not any(_related(x, y) for x in a.cwe for y in b.cwe):
             return False
-        if a.tool == b.tool and not _within(a, b, 0):
-            return False
-        fa, fb = functions[a.finding_id], functions[b.finding_id]
-        if fa is not None or fb is not None:
-            return fa == fb
-        return _within(a, b, self._nearby)
+        return close(a, b, functions[a.finding_id], functions[b.finding_id], self._nearby)
+
+
+def close(
+    a: ScanFinding,
+    b: ScanFinding,
+    function_a: FunctionSpan | None,
+    function_b: FunctionSpan | None,
+    nearby_lines: int = NEARBY_LINES,
+) -> bool:
+    """Whether a and b are close enough in the code to be one issue, as the rules count it:
+    findings of one tool only when their lines overlap, others in the same function, or, when no
+    function is known for either, at most nearby_lines apart. The text-similarity and LLM steps
+    use the same test."""
+    if a.tool == b.tool and not _within(a, b, 0):
+        return False
+    if function_a is not None or function_b is not None:
+        return function_a == function_b
+    return _within(a, b, nearby_lines)
 
 
 def _within(a: ScanFinding, b: ScanFinding, lines: int) -> bool:

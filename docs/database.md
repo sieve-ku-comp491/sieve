@@ -298,7 +298,7 @@ One row per scan of one commit of one repository.
 | Column | Type | Can be empty | Meaning |
 |---|---|---|---|
 | `id` | uuid | no | primary key |
-| `repo_url` | text | no | the repository URL, normalized as in the scope file check (requirement F2) |
+| `repo_url` | text | no | the repository URL, normalized as in the scope file check (requirement F2), or `eval:benchmark-java/<run>` or `eval:benchmark-python/<run>` for an evaluation run of a neutral Benchmark copy (docs/evaluation.md) |
 | `commit_sha` | text | yes | the full 40-character commit hash that was scanned. Empty until the worker has cloned the repository, because the API can't resolve a branch, tag or short hash without going online. |
 | `requested_ref` | text | yes | what the researcher asked for, if it wasn't a full commit hash: a branch, a tag or a short hash |
 | `status` | text | no | `queued` when created, `running` once the worker starts it, then `completed`, `partial` or `failed` by the rules in docs/interfaces.md |
@@ -308,7 +308,7 @@ One row per scan of one commit of one repository.
 | `started_at` | timestamptz | yes | when the worker started it |
 | `finished_at` | timestamptz | yes | when its last plug-in run ended |
 
-A check constraint requires `commit_sha` or `requested_ref` to be filled. A scan that the scope check refuses is never created, so every row here is a repository from the scope file.
+A check constraint requires `commit_sha` or `requested_ref` to be filled. A scan that the scope check refuses is never created, so every row here is a repository from the scope file, except the evaluation runs that `python -m app.store load-sarif` stores under an `eval:` URL. Each evaluation run has a label of its own in the URL, so the matching of repeated scans by `repo_url` doesn't carry reviews from one run to the next.
 
 ### analyzer_runs
 
@@ -411,9 +411,9 @@ One row per group of findings in one scan that describe the same issue. Each gro
 | `id` | uuid | no | primary key, the triage item's `item_id` for a group (docs/interfaces.md) |
 | `scan_id` | uuid | no | the scan, references `scans` |
 | `representative_finding_id` | uuid | yes | the finding the review screen shows first. It references `findings (id, group_id)` together with the group's own `id`, so the representative must be a member of this group. The check is deferred to the end of the transaction, because the group and its members' `group_id` are written together. |
-| `method` | text | no | `rule`, `similarity` or `llm` |
-| `rule` | text | yes | for `rule`: the rule that matched, `same_function_related_cwe` or `nearby_lines_related_cwe` (`backend/app/dedup/rules.py`) |
-| `similarity` | numeric(4,3) | yes | for `similarity`: the score that put the findings together, from 0 to 1 |
+| `method` | text | no | `rule`, `similarity` or `llm`: the last step that changed the group |
+| `rule` | text | yes | for `rule`: the rule that matched, `same_function_related_cwe` or `nearby_lines_related_cwe` (`backend/app/dedup/rules.py`). Kept when a later step adds to the group. |
+| `similarity` | numeric(4,3) | yes | for `similarity`: the text-similarity score that put the findings together, from 0 to 1. Kept when the LLM step adds to the group. |
 | `reason` | text | no | one sentence a reviewer can read, such as "Same function and related CWEs (CWE-77 and CWE-78)" |
 | `created_at` | timestamptz | no | |
 
@@ -422,6 +422,8 @@ Constraints:
 - `(id, scan_id)` is unique, and `findings (group_id, scan_id)` references it, so a group's members all come from the group's scan.
 - A check constraint requires `rule` for `method = 'rule'` and `similarity` for `method = 'similarity'`.
 - "At least two findings" and "at least one LLM call for `method = 'llm'`" can't be check constraints. The deduplication code enforces them, and writes a group and its members in one transaction.
+
+More than one step can form a group: text similarity can add a finding to a group of the rules, and the LLM step can join two groups (docs/interfaces.md, Triage API, Steps). `method` is then the last step that changed the group. `rule` stays set when the rules formed part of it, `similarity` holds the score of a text-similarity join when there was one, and `duplicate_group_llm_calls` links the group to every call behind it.
 
 We tested these keys on PostgreSQL 17: a member from another scan and a representative from outside the group are both rejected, and a valid group commits.
 
@@ -490,13 +492,13 @@ Report drafts are charged to the latest triage run of the finding's scan, so the
 
 ### llm_calls
 
-Every call that goes through `LLMClient`: triage, severity, deduplication and report drafts. The LLM client (#34) already creates this table from `backend/app/llm/llm_calls.sql`, and `CallLog.record()` writes one row per call and returns its `id`, the call ID that verdicts and groups link to (requirement N3). The columns below are that file's, plus `triage_run_id`, the only one the review side adds.
+Every call that goes through `LLMClient`: triage, severity, deduplication and report drafts. Migration `0002_llm_calls.sql` creates this table, which the LLM client (#34) used to create on its own, and `CallLog.record()` writes one row per call and returns its `id`, the call ID that verdicts and groups link to (requirement N3). The columns below are those of `0002_llm_calls.sql`, plus `triage_run_id`, the only one the review side adds, in `0003_review_side.sql`.
 
 | Column | Type | Can be empty | Meaning |
 |---|---|---|---|
 | `id` | uuid | no | primary key, the call ID |
-| `job_id` | uuid | yes | the job that made the call. It will reference `jobs` once the findings store creates that table, as `llm_calls.sql` says. |
-| `triage_run_id` | uuid | yes | the run whose budget the call is charged to, references `triage_runs`: the triage run itself, or for a report draft the latest triage run of the finding's scan. Empty for calls outside a run, such as the smoke test. Not called `run_id`, because `findings.run_id` is the plug-in run. Added to `llm_calls.sql` with the findings store's migrations. |
+| `job_id` | uuid | yes | the job that made the call, references `jobs` |
+| `triage_run_id` | uuid | yes | the run whose budget the call is charged to, references `triage_runs`: the triage run itself, or for a report draft the latest triage run of the finding's scan. Empty for calls outside a run, such as the smoke test. Not called `run_id`, because `findings.run_id` is the plug-in run. Added by `0003_review_side.sql`. |
 | `provider` | text | no | the provider's `name`, such as `anthropic` or `openai` |
 | `model` | text | no | the model that was asked for |
 | `model_version` | text | yes | the exact model version the API answered with |
@@ -683,8 +685,8 @@ Besides the primary keys and the unique constraints above:
 | `jobs` | `(created_at)` where `status = 'queued'` | the worker taking the oldest waiting job |
 | `triage_runs` | `(scan_id, created_at)` | the runs of a scan, and whether its group step has finished |
 | `llm_calls` | `(triage_run_id)` | the calls and the cost of a run (requirement N1) |
-| `llm_calls` | `(cache_key, created_at DESC)` where `NOT cached AND error IS NULL AND stop_reason = 'complete'` | the cache lookup, created by `llm_calls.sql` |
-| `llm_calls` | `(job_id)` | the calls of a job, created by `llm_calls.sql` |
+| `llm_calls` | `(cache_key, created_at DESC)` where `NOT cached AND error IS NULL AND stop_reason = 'complete'` | the cache lookup, created by `0002_llm_calls.sql` |
+| `llm_calls` | `(job_id)` | the calls of a job, created by `0002_llm_calls.sql` |
 | `verdicts` | `(finding_id, created_at DESC)` | the latest verdict of a finding |
 | `verdicts` | `(group_id, created_at DESC)` | the latest verdict of a group |
 | `verdict_llm_calls` | `(llm_call_id)` | the verdict a call belongs to, when reading the call log |
