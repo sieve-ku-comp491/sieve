@@ -254,11 +254,12 @@ def test_a_plugin_cannot_reach_the_network(client, data_dir):
 def test_out_of_memory(client, data_dir):
     scan = checkout(data_dir, "oom")
     run = run_one(make_runner(client, data_dir, memory="16m"), scan, manifest())
-    assert (run.status, run.reason, run.exit_code) == (
-        RunStatus.FAILED,
-        Reason.OUT_OF_MEMORY,
-        1,
-    ), log_text(data_dir, run)
+    assert (run.status, run.reason) == (RunStatus.FAILED, Reason.OUT_OF_MEMORY), log_text(
+        data_dir, run
+    )
+    # The kernel picks which process to kill at the limit. When it is tail, the script exits
+    # with 1; when it is the script's own shell, the container ends with 137 (SIGKILL).
+    assert run.exit_code in (1, 137), log_text(data_dir, run)
     assert containers_of(client, run) == []
 
 
