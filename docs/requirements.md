@@ -54,6 +54,8 @@ Acceptance tests:
 4. A private repository can't be scanned even when it is listed. The test clones with Git's credential helpers turned off and `GIT_TERMINAL_PROMPT=0`, as the scan service does, so it gives the same result on a developer's machine as in the worker: the clone fails and the scan ends with an error.
 5. A scan of PyGoat at commit `0dc3c4f403bea36b83a03c7c07a7d676b939eab3`, which exists only in a fork of PyGoat, is refused before any container starts.
 
+The one exception is the neutral copies of the two OWASP Benchmarks made by `python -m app.eval neutral` (docs/evaluation.md). They are local repositories that we don't publish, so they can't be in the scope file. Only `python -m app.store load-sarif` stores them, with a repository URL `eval:benchmark-java/<run>` or `eval:benchmark-python/<run>`. load-sarif checks every other URL against the scope file, and POST /scans, the CLI and the worker refuse eval: URLs, so nothing clones them and the tests above hold for every scan request. The copies are made from public code, so sending them to an LLM provider keeps N4.
+
 Built in T2.4. Verified in T2.4. The stretch requirement S3 adds the scope imported from HackerOne.
 
 ### F3 Group duplicate findings
@@ -246,7 +248,7 @@ Notes:
 | OWASP Benchmark for Java | 1.2, commit `0119da4` | 2,740 test cases in 11 categories, 1,415 of them real vulnerabilities (`expectedresults-1.2.csv`) | false-positive check, Java |
 | OWASP Benchmark for Python | 0.1, commit `f129148` | 1,230 test cases in 14 categories, 452 of them real vulnerabilities (`expectedresults-0.1.csv`) | false-positive check, Python |
 | CWE-Bench-Java | commit `afe0ebd` | real Java vulnerabilities with known vulnerable locations, from the IRIS paper. We take the published CVSS vectors from the NVD. | severity |
-| Recent CVEs | chosen in T6.1 | CVEs published after the training cutoff of both models, with a known vulnerable location and a published CVSS vector | severity, and a check that results don't depend on training data |
+| Recent CVEs | chosen in T6.2 | CVEs published after the training cutoff of both models, with a known vulnerable location and a published CVSS vector | severity, and a check that results don't depend on training data |
 | Labeled duplicate groups | made in T6.3 | duplicates in the combined analyzer output for PyGoat, WebGoat and Juice Shop, labeled by hand | deduplication |
 | Labeled Juice Shop sample | made in T6.3 | about 100 Juice Shop findings labeled as true or false positives, using its documented list of vulnerabilities | false-positive check, JavaScript/TypeScript |
 

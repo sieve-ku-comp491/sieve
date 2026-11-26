@@ -2,10 +2,11 @@
 
 import argparse
 import json
+import random
 import sys
 from pathlib import Path
 
-from app.eval import expected, findings, metrics, neutral, nvd, sources
+from app.eval import expected, findings, metrics, neutral, nvd, pilot, sources
 
 DATASETS = {
     "benchmark-java": lambda root, s: expected.benchmark_java(root, s.commit),
@@ -63,6 +64,30 @@ def main(argv: list[str] | None = None) -> int:
     baseline.add_argument("--cases", type=Path, required=True)
     cost = kinds.add_parser("cost", help="API cost and time per finding")
     cost.add_argument("--findings", type=Path, required=True)
+
+    trial = commands.add_parser("pilot", help="the pilot triage of T6.2")
+    steps = trial.add_subparsers(dest="step", required=True)
+    sample = steps.add_parser("sample", help="choose the findings of the pilot")
+    sample.add_argument(
+        "--sarif",
+        action="append",
+        required=True,
+        metavar="DATASET:TOOL=FILE",
+        help="a Benchmark, a tool and its SARIF file, for example "
+        "benchmark-python:bandit=bandit.sarif, repeatable",
+    )
+    sample.add_argument("--per-dataset", type=int, default=50)
+    sample.add_argument("--seed", type=int, required=True)
+    triage = steps.add_parser("run", help="triage the sample with one model")
+    triage.add_argument("--model", required=True)
+    triage.add_argument("--budget", required=True, help="the run's limit in US dollars")
+    triage.add_argument("--limit", type=int, required=True, help="triage the first N findings")
+    triage.add_argument("--effort")
+    triage.add_argument(
+        "--dry-run", action="store_true", help="print the worst-case costs and send nothing"
+    )
+    for step in (sample, triage):
+        step.add_argument("--dir", type=Path, help="the pilot's folder, default eval-data/pilot")
 
     args = parser.parse_args(argv)
     return COMMANDS[args.command](args)
@@ -159,6 +184,72 @@ def run_metrics(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_pilot(args: argparse.Namespace) -> int:
+    folder = args.dir or sources.data_dir() / "pilot"
+    checkouts = {name: sources.data_dir() / "neutral" / name for name in pilot.DATASETS}
+    if args.step == "sample":
+        return _pilot_sample(args, folder, checkouts)
+    return _pilot_run(args, folder, checkouts)
+
+
+def _pilot_sample(args: argparse.Namespace, folder: Path, checkouts: dict[str, Path]) -> int:
+    by_dataset: dict[str, dict[str, list]] = {}
+    for item in args.sarif:
+        left, file = _pair(item, "--sarif", "DATASET:TOOL=FILE")
+        dataset, _, tool = left.partition(":")
+        if dataset not in pilot.DATASETS or not tool:
+            raise SystemExit(f"--sarif needs DATASET:TOOL=FILE with one of {pilot.DATASETS}")
+        found = pilot.read_findings(tool, Path(file), checkouts[dataset])
+        by_dataset.setdefault(dataset, {})[tool] = found
+        print(f"{dataset} {tool}: {len(found)} findings")
+    rng = random.Random(args.seed)
+    chosen = []
+    for dataset in sorted(by_dataset):
+        cases = expected.read_csv(sources.data_dir() / "answers" / dataset / "expected.csv")
+        flagging = pilot.count_flagging(by_dataset[dataset], cases)
+        print(f"{dataset}: {flagging} findings flag a case")
+        rows = pilot.choose(dataset, by_dataset[dataset], cases, args.per_dataset, rng)
+        count = pilot.write_expected(rows, cases, folder / f"expected-{dataset}.csv")
+        print(f"{dataset}: {len(rows)} findings from {count} cases")
+        chosen.extend(rows)
+    pilot.write_sample(chosen, folder / "sample.csv")
+    print(f"{len(chosen)} findings in {folder / 'sample.csv'}")
+    return 0
+
+
+def _pilot_run(args: argparse.Namespace, folder: Path, checkouts: dict[str, Path]) -> int:
+    from app.llm import Budget, LLMClient, load_catalog, load_template, providers_from_env
+    from app.llm.cache import InMemoryResponseCache
+    from app.llm.call_log import InMemoryCallLog
+
+    sample = pilot.read_sample(folder / "sample.csv")
+    template = load_template(pilot.TEMPLATE)
+    catalog = load_catalog()
+    budget = Budget(args.budget)
+    if args.dry_run:
+        client = LLMClient({}, catalog, budget, InMemoryCallLog(), InMemoryResponseCache())
+        costs = pilot.worst_cases(
+            sample, checkouts, client, template, args.model, args.limit, args.effort
+        )
+        print(
+            f"{len(costs)} calls to {args.model}: worst case ${max(costs):.6f} for one call, "
+            f"${sum(costs):.6f} for all, against a ${budget.limit_usd} budget"
+        )
+        return 0
+
+    from app.llm.postgres import PostgresCallStore
+
+    store = PostgresCallStore()
+    client = LLMClient(providers_from_env(catalog), catalog, budget, store, store)
+    results = folder / args.model / "results.csv"
+    count = pilot.triage(
+        sample, checkouts, client, template, args.model, results, args.limit, args.effort
+    )
+    pilot.split_by_dataset(results)
+    print(f"{count} findings triaged, ${budget.spent_usd} spent, results in {results}")
+    return 0
+
+
 def _pair(item: str, option: str, form: str) -> tuple[str, str]:
     left, _, right = item.partition("=")
     if not left or not right:
@@ -194,6 +285,7 @@ COMMANDS = {
     "findings": run_findings,
     "cves": run_cves,
     "metrics": run_metrics,
+    "pilot": run_pilot,
 }
 
 if __name__ == "__main__":

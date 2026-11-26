@@ -28,6 +28,7 @@ From `backend/`, with the virtual environment from the README:
     python -m app.eval cves                        # look up CVSS vectors in the NVD
     python -m app.eval findings --help             # analyzer SARIF files as a findings CSV
     python -m app.eval metrics --help              # the metric scripts
+    python -m app.eval pilot --help                # the pilot triage, see below
 
 Everything the commands write goes to `eval-data/` in the repository root, which is in .gitignore, except `cves`, which rewrites the committed `backend/app/eval/cves.csv` unless `--out` names another file. Set `SIEVE_EVAL_DIR` to use another folder. `fetch` checks out each source without history, about 350 MB in all, most of it the Java Benchmark, and doesn't download a source that is already at its commit. It always leaves the folder exactly as the commit has it: after a pin changes, the files that only the old version had are removed, and files changed or added by hand are restored or removed. `expected`, `neutral` and `cves` stop and say to run `fetch` when a source isn't checked out at its pinned commit, so their output never records a commit that the files don't match. `cves` waits 6.5 seconds between NVD requests, as the NVD allows without an API key, so it takes about 13 minutes. With `NVD_API_KEY` set, it waits 0.7 seconds.
 
@@ -76,7 +77,22 @@ For each CVE we take the NVD's own vector (the Primary source) in the newest CVS
 
 On 12 Nov 2026, 114 of the 117 CVEs with a known location have a vector: 93 in CVSS 3.1 and 21 in 3.0, by CWE 52 for CWE-22, 29 for CWE-79, 20 for CWE-94 and 13 for CWE-78. 113 come from the NVD's own analysts and one from the CNA that published the CVE. None has a CVSS 4.0 vector yet, because these CVEs are older. CVE-2011-2732, CVE-2011-4367 and CVE-2014-7816 have only CVSS 2.0 vectors, so they stay out of the severity check.
 
-Recent CVEs, published after the training cutoff of both models, are still to be chosen. docs/requirements.md says they are chosen in T6.1, but we pick the two models in the pilot run of T6.2, so the cutoff is known only then, and that table has to be updated to say T6.2. Ali helps choose them.
+### Recent CVEs
+
+The recent CVEs are published after the training cutoff of both models that the pilot triage chose. gpt-6-luna's cutoff is 18 May 2026, from its model page (see its note in models.json). DeepSeek doesn't publish a cutoff for V4.1 Flash, so we take the release of the snapshot we call, DeepSeek-V4.1-Flash-1017 on 17 Oct 2026 in DeepSeek's change log (https://api-docs.deepseek.com/updates), as the latest date it can know about. A CVE published on 18 Oct 2026 or later is newer than both. `deepseek-flash` is an alias for DeepSeek's latest model, so it can move to a newer snapshot before T6.4, and the cutoff with it. Before T6.4, the change log and the `model_version` that `llm_calls` records for a test call show whether it has.
+
+On 25 Nov 2026 we searched GitHub's reviewed advisories for Maven packages published since 18 Oct 2026, with the four CWEs of the severity check and the related ones in `RELATED_CWES`, and looked each one up in the NVD. The publication date that counts is the NVD's, because a model can have seen a CVE from the day it was published, before GitHub reviewed it. Two are newer than both models:
+
+| CVE | Project | CWE | Published in the NVD | Vector in the NVD | Fix commit |
+|---|---|---|---|---|---|
+| CVE-2026-63436 | zeroturnaround/zt-zip | CWE-22 | 3 Nov 2026 | CVSS 3.1, 6.1, from GitHub as the CNA | `59a76ad` |
+| CVE-2026-63499 | zeroturnaround/zt-zip | CWE-23 | 3 Nov 2026 | CVSS 4.0, 6.9, from GitHub as the CNA | `1b62546` |
+
+Both are still awaiting analysis in the NVD, so neither has the NVD's own vector yet, and `cves` would take the CNA's. For CVE-2026-63436 the two GitHub sources disagree: the CNA record in the NVD has `AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:L` (6.1), and GitHub's reviewed advisory has `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:L` (8.2). We use the one in the NVD, as for the other CVEs, and check it again before T6.4 in case the NVD's analysts add their own.
+
+The search also gave two Keycloak CVEs, CVE-2026-9083 (CWE-22) and CVE-2026-9086 (CWE-79). GitHub reviewed them on 29 Oct 2026, but the NVD published them on 25 Jun 2026, before DeepSeek's snapshot, so they are not recent enough. Two more fit the CWEs but not the language: CVE-2026-75598 in GradleUp/shadow (CWE-22) is in Kotlin, and CVE-2026-76090 in softwaremill/tapir (CWE-94, CVSS 4.0) is in Scala. No Java candidate is in CWE-78 or CWE-94.
+
+We propose the two zt-zip CVEs, whose fix commits give the vulnerable location. Only CVE-2026-63499 has a CVSS 4.0 vector. Two CVEs are too few for a severity check of their own, so before T6.4 we can also search the NVD for CVEs that GitHub hasn't reviewed, or wait for more to be published. Ali helps choose them.
 
 ## Neutral copies
 
@@ -94,7 +110,18 @@ Each copy is then a git repository with one commit. Its files are written with `
 
 The answers go to `eval-data/answers/<dataset>/`, outside the copy: `expected.csv` with the neutral names, `mapping.csv` from every original name to its neutral one, `seed.txt` and the copy's commit. The triage agent's tools read only the scanned checkout (docs/architecture.md), so they can't reach the answers. Never put the answers folder inside a scanned checkout, and `neutral` refuses to write it there. `--seed` makes the same names again.
 
-A scan can't reach a copy yet. Requirement F2 lets Sieve scan only public repositories listed in the scope file, cloned over `https://`, and the copy is a local repository. T6.2 chooses between pushing the copies to a public repository that the scope file lists, and a local mode for evaluation runs, which would need F2 to change.
+The copies stay on the machine that made them, and evaluation runs load them into the findings store from there. Requirement F2 lets Sieve scan only public repositories listed in the scope file, cloned over `https://`, and a copy is a local repository, so it can't go through a scan request. We don't push the copies to a public repository to get around that: both Benchmarks are GPL, which asks a published copy to keep the copyright notices that name OWASP Benchmark, and a public copy could end up in a later model's training data, which is what the copy is there to avoid.
+
+The analyzers run on the copy as in the baseline run, and `python -m app.store load-sarif` stores the copy as one scan, with a run for each analyzer's SARIF file, from backend/:
+
+    python -m app.store load-sarif \
+        --manifest ../plugins/semgrep/plugin.toml --sarif <semgrep.sarif> \
+        --manifest ../plugins/bandit/plugin.toml --sarif <bandit.sarif> \
+        --checkout ../eval-data/neutral/benchmark-python \
+        --repo-url eval:benchmark-python/t6.4 \
+        --commit $(git -C ../eval-data/neutral/benchmark-python rev-parse HEAD)
+
+`load-sarif` copies the checkout into the data folder, where triage reads it like the checkout of any scan, and clones nothing. The `eval:` prefix marks these scans as evaluation runs, and it can't match a scope entry, since those start with `https://`. The part after the Benchmark names the run, here `t6.4`. Repeated scans are matched by repository URL, so two loads of the same copy under one URL would match, and findings rejected in an earlier run would come back hidden and skip grouping and triage. Each evaluation run gets its own name to keep them apart. Grouping works within a scan, so with both analyzers in one scan, duplicates across the two tools are grouped as in a real scan. On a throwaway PostgreSQL 17, this stored 2,009 findings for the Python copy, 1,473 from Semgrep and 536 from Bandit, and 11,380 for the Java copy, 3,176 from Semgrep and 8,204 from SpotBugs, the 13,389 of the T6.4 limits. docs/requirements.md gives this as the one exception to F2. load-sarif accepts only these `eval:` URLs and the repositories in the scope file.
 
 The code itself can still look familiar to a model, as docs/data-flow.md says, which is why the evaluation also uses CWE-Bench-Java and the recent CVEs.
 
@@ -257,12 +284,84 @@ Table 5 of the proposal compares the severity step with "the analyzer's own seve
 
 The mapping and the metric are done and tested on a small example. The numbers are not: they need the analyzers to run on the vulnerable commit of each of the 117 CVEs of CWE-Bench-Java, which means building 117 projects. That is a separate job, and it can start from the CVE list in `cves.csv`.
 
+## Pilot triage
+
+The pilot sends 100 findings of the baseline run through LLMClient with the draft prompt `backend/app/llm/prompts/false_positive_check.md`, to measure the cost and time per finding (requirement N1, test 3) and to choose the two models of the evaluation. It has no tools and no second opinion: one call per finding, with the finding's tool, rule, CWEs, message and lines as values and the whole case file as the code, read from the neutral copy. Nothing of the case's original name or its answer reaches the model.
+
+### How it was run
+
+The analyzers ran again on the neutral copies of the baseline run, at the same commits and settings, except that SpotBugs ran in the plug-in's own scan image on the Maven build. Every analyzer gave the same true and false positives as in the baseline. Then, from backend/:
+
+    python -m app.eval pilot sample --seed 20261122 \
+        --sarif benchmark-java:semgrep=<semgrep.sarif> --sarif benchmark-java:spotbugs=<spotbugs.sarif> \
+        --sarif benchmark-python:semgrep=<semgrep.sarif> --sarif benchmark-python:bandit=<bandit.sarif>
+    python -m app.eval pilot run --model deepseek-flash --budget 0.05 --limit 10
+    python -m app.eval pilot run --model deepseek-flash --budget 0.50 --limit 100
+    python -m app.eval pilot run --model gpt-6-luna --budget 0.05 --limit 10
+    python -m app.eval pilot run --model gpt-6-luna --budget 0.40 --limit 100
+    python -m app.eval metrics cost --findings ../eval-data/pilot/<model>/results.csv
+    python -m app.eval metrics false-positives --expected ../eval-data/pilot/expected-<dataset>.csv \
+        --findings ../eval-data/pilot/<model>/results-<dataset>.csv
+
+`pilot sample` reads the SARIF files with the pipeline's adapters and keeps the findings that flag a Benchmark case, a finding in the case's file with its CWE or a related one. It takes one finding per case, and visits the CWEs of each Benchmark in turn until it has 50 findings from each. It writes `sample.csv` and the answers of the sampled cases to `eval-data/pilot/`. `pilot run` sends the first `--limit` findings of the sample to one model, skips findings it already has, and stops at its budget, so the first 10 findings of each model were checked before the other 90. `--dry-run` prints the worst-case cost of the calls and sends nothing. The calls were logged in a PostgreSQL `llm_calls` table, with `max_tokens` 4,000 and no effort, so each model thought at its default.
+
+The sample has 4 or 5 findings from each of the 11 CWEs that the analyzers flag in each Benchmark, apart from CWE-601 in Python, which has only 2 flagged cases. 65 of the 100 cases are real: 39 of the 50 in Java, because CWE-327, CWE-328, CWE-330 and CWE-614 have no false positive there, and 26 of the 50 in Python. The 100 findings come from SpotBugs (29), Semgrep (56) and Bandit (15).
+
+The calls ran on 25 Nov 2026 between 06:28 and 07:15 UTC, inside DeepSeek's peak hours, so deepseek-flash was charged its full price. Off-peak it costs half. `llm_calls` has the 200 calls with one template version, `dd1e59257403`, no cache hit and no error.
+
+### Results
+
+| | deepseek-flash | gpt-6-luna |
+|---|---|---|
+| Total cost of 100 findings | US$0.2347 | US$0.0603 |
+| Mean cost per finding | US$0.00235 | US$0.00060 |
+| Median cost, most expensive finding | US$0.00198, US$0.00542 | US$0.00052, US$0.00164 |
+| Mean time, median time, longest | 13.3 s, 8.2 s, 229 s | 7.3 s, 6.3 s, 21 s |
+| Mean tokens in, out | 1,421, 1,695 | 1,355, 872 |
+| Verdicts: true positive, false positive, unsure | 56, 31, 13 | 51, 40, 9 |
+| Replies that aren't valid JSON | 12, all cut off at 4,000 tokens | 0 |
+| Right and wrong verdicts, unsure left out | 81 and 6 | 72 and 19 |
+| Real cases called a false positive | 4 | 13 |
+
+Cost and time come from `metrics cost`. The output tokens include the models' thinking, which is most of deepseek-flash's output. Its 12 cut-off replies ran out of tokens while thinking, and they count as unsure, so only one of its 13 unsure verdicts was the model's own answer.
+
+The targets of F4 on the sample, from `metrics false-positives`, as the share of false positives removed and the share of true positives kept. Every sampled case is flagged before triage, so these two shares are what triage changes. The targets are at least 0.5 and at least 0.9.
+
+| Triage | Java removed | Java kept | Python removed | Python kept |
+|---|---|---|---|---|
+| deepseek-flash | 0.727 | 0.949 | 0.792 | 0.923 |
+| gpt-6-luna | 0.636 | 0.769 | 0.833 | 0.846 |
+| deepseek-flash, gpt-6-luna on its unsure findings | 0.727 | 0.897 | 0.875 | 0.923 |
+| gpt-6-luna, deepseek-flash on its unsure findings | 0.818 | 0.769 | 0.833 | 0.846 |
+
+The two orders are worked out from the same calls: the second model's verdict replaces the first one's where the first was unsure. deepseek-flash first sends 13 findings to gpt-6-luna and costs US$0.00245 and 14.6 s per finding. gpt-6-luna first sends 9 to deepseek-flash and costs US$0.00089 and 8.7 s per finding.
+
+The sample is small. Java has 11 cases that are not real and Python 24, so one verdict moves the share removed by 9 or 4 points, and the share kept by 2.6 or 3.8 points. The numbers rank the models, but T6.4 measures them.
+
+### The two models
+
+gpt-6-luna is the cheaper model. It costs a quarter of deepseek-flash per finding at peak price and half off-peak, it answers faster, and every reply was valid JSON. It keeps too few true positives, though: it called 13 real cases false positives, and the share kept is 0.769 on Java and 0.846 on Python, under the 0.9 target.
+
+deepseek-flash is the stronger model. It gave 81 right and 6 wrong verdicts against 72 and 19, and it is the only one that meets both targets on both Benchmarks on its own. Its weak point is the 12 replies cut off while thinking. A second opinion from gpt-6-luna on those adds about 4% to the cost but loses two Java true positives, so T3.3 should rather give deepseek-flash more room, with a higher `max_tokens` or a set effort. Its longest call took 229 s, so the triage needs a timeout per call.
+
+So the evaluation uses gpt-6-luna as the cheaper model and deepseek-flash as the stronger one. In T6.4, deepseek-flash checks every finding, and its unsure findings stay unsure for the review screen. gpt-6-luna gives no second opinion: it checks every finding in a run of its own, only to be measured against deepseek-flash. Neither needs a stronger model on its unsure findings yet.
+
+This is the opposite of the Triage API in docs/interfaces.md, where each finding goes to the cheaper model first and only its unsure findings go to the stronger one. With these two models that order can't work: gpt-6-luna was sure, not unsure, about the 13 real cases it called false positives, so they would never reach deepseek-flash, and the share kept stays at 0.769 on Java. T3.3 changes the Triage API to match: one model checks every finding, and a second model on the unsure findings is optional.
+
+Both models get weak hashing, weak random and insecure cookie cases wrong more than the others: 12 of gpt-6-luna's 19 wrong verdicts and 3 of deepseek-flash's 6 are in CWE-327, CWE-328, CWE-330 and CWE-614. The draft prompt calls a finding a true positive when "data that an attacker can control reaches the flagged operation", which doesn't fit those CWEs, where the algorithm or the missing flag is the weakness. The prompt of T3.3 should say so.
+
+### Budget per finding (N1, test 3)
+
+The budget of N1 is US$0.02 per finding for the whole triage of a finding, for both models: US$0.01 for the false-positive check, which the pilot measured, and US$0.01 for the severity call of T3.4 and the grouping questions of #83 together, which it didn't. A triage run's limit is US$0.02 times the number of findings it triages. T3.4 and #83 check that their calls fit in their share, and T6.4 checks the whole.
+
+The US$0.01 for the check is four times deepseek-flash's mean cost at peak price and nearly twice its most expensive finding, which leaves room for the `read_file` and `find_definition` tools of #61. Each tool call adds a turn that sends the conversation again. As an estimate, three turns of the pilot's size, with a tool result of about 1,000 tokens each, cost just under US$0.01 on deepseek-flash at peak price. gpt-6-luna stays far below the budget.
+
+`pilot sample` prints each tool's number of findings and each Benchmark's number of findings that flag a case. For T6.4, 4,766 Java findings and 586 Python findings flag a case, 5,352 of the 13,389 in all, so the whole triage of both Benchmarks has a limit of US$107.04, and the false-positive check of those findings stays within US$53.52 of it. At the pilot's cost without tools the check would spend about US$12.60 on deepseek-flash at peak price and US$3.20 on gpt-6-luna. All 13,389 findings of the two Benchmarks would have a limit of US$267.78.
+
 ## Not covered yet
 
-- Recent CVEs, chosen after the pilot run of T6.2, see above.
+- The final list of recent CVEs, their vectors from the NVD and their vulnerable locations, see Recent CVEs above.
 - The labeled duplicate groups and the labeled Juice Shop sample, made by hand in T6.3. The dedup metric reads the groups as they are. The Juice Shop sample is labeled per finding, with many findings in one file, while the false-positive check judges whole files, so it needs a per-finding mode, added with T6.3.
 - The numbers of the severity baseline, which need the analyzers to run on the CVEs' projects, see the baseline run.
-- The pilot triage run and the budget per finding that it sets. The draft prompt and the two models, deepseek-flash and gpt-6-luna, are on #64, and #79 adds gpt-6-luna to the model catalog, so only the run itself is left.
-- The change in docs/requirements.md from T6.1 to T6.2 for when the recent CVEs are chosen, see above.
-- How a scan reaches the neutral copies, see above.
+- The false-positive check with the tools of #61, and the changes the pilot suggests for it: more room for deepseek-flash's thinking, a timeout per call, and a prompt that fits weak hashing, weak random and insecure cookie findings. Its cost per finding has to stay within its US$0.01 share of the budget, and the Triage API changes to one model on every finding, see The two models.
 - The target applications have no expected results of their own: they are scanned for duplicates, reports and the PoC check.
