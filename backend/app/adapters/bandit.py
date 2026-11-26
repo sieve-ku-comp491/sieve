@@ -26,7 +26,11 @@ class BanditAdapter(BaseSarifAdapter):
 
         When contextRegion starts at line 1, Bandit's line is 1 or 2 and the two can't be told
         apart, so the region stays as it is. It still holds Bandit's line, since it starts at
-        line 1 or 2 and SARIF's endLine is the code's second line."""
+        line 1 or 2 and SARIF's endLine is the code's second line.
+
+        For a call flagged because of one argument, Bandit's line is the argument's while the
+        columns are where the call starts and ends, on other lines. When the start column is
+        past the end column, the line has no columns."""
         region = super().region(physical)
         context = physical.get("contextRegion")
         context_start = context.get("startLine") if isinstance(context, dict) else None
@@ -36,7 +40,11 @@ class BanditAdapter(BaseSarifAdapter):
         line = context_start + 1
         if line == start:
             return region
-        return {**region, "startLine": line, "endLine": line}
+        moved = {**region, "startLine": line, "endLine": line}
+        first, last = region.get("startColumn"), region.get("endColumn")
+        if type(first) is int and type(last) is int and first > last:
+            del moved["startColumn"], moved["endColumn"]
+        return moved
 
     def snippet(self, region: dict) -> str | None:
         """Bandit 1.9.4's snippet is only the first flagged line, and when the flagged code
