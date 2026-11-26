@@ -194,6 +194,7 @@ def test_one_finding_with_its_location_and_code(client, scan_id):
     assert code["lines"][-1] == "                )"
     assert detail["state"] == "new"
     assert detail["verdict"] is None and detail["latest_edit"] is None
+    assert detail["edits"] == []
     assert detail["reviews"] == [] and detail["carried_review"] is None
     assert detail["group"] is None
 
@@ -559,3 +560,47 @@ def test_the_code_endpoint_needs_the_token(gitleaks_scan):
     )
     assert response.status_code == 401
     assert "REDACTED" not in response.text
+
+
+def test_the_detail_lists_every_edit_newest_first(database, tmp_path):
+    """Two edits of the SQL finding on line 57, each saved in a transaction of its own as the
+    edit endpoint saves them. The second keeps the first one's verdict and adds the vector of
+    the verdict, which scores 9.3 in FIRST's CVSS v4.0 calculator."""
+    scan_id = load(database, tmp_path)
+    client = make_client(database, tmp_path)
+    target = finding_id(client, scan_id, SQL_RULE, 57)
+    with psycopg.connect(database) as conn:
+        verdict_id = insert_verdict(conn, insert_triage_run(conn, scan_id), finding=target)
+    edit_ids = []
+    vector = "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"
+    for editor, vector_or_none, score, level, note in [
+        ("Furkan", None, None, None, "needs a look"),
+        ("Ali", vector, 9.3, "critical", "the query takes the form field"),
+    ]:
+        with psycopg.connect(database) as conn:
+            edit_ids.append(
+                conn.execute(
+                    "INSERT INTO finding_edits (finding_id, verdict_id, editor, verdict,"
+                    " cvss_v4_vector, cvss_v4_score, cvss_v4_level, note)"
+                    " VALUES (%s, %s, %s, 'unsure', %s, %s, %s, %s) RETURNING id",
+                    (target, verdict_id, editor, vector_or_none, score, level, note),
+                ).fetchone()[0]
+            )
+
+    detail = client.get(f"/findings/{target}").json()
+    edits = detail["edits"]
+    assert [edit["id"] for edit in edits] == [str(edit_ids[1]), str(edit_ids[0])]
+    assert edits[0] == detail["latest_edit"]
+    assert set(edits[1]) == set(detail["latest_edit"])
+    assert (edits[0]["editor"], edits[0]["cvss_v4_score"], edits[0]["cvss_v4_level"]) == (
+        "Ali",
+        9.3,
+        "critical",
+    )
+    assert (edits[1]["editor"], edits[1]["verdict"], edits[1]["note"]) == (
+        "Furkan",
+        "unsure",
+        "needs a look",
+    )
+    assert edits[1]["cvss_v4_vector"] is None
+    assert {edit["verdict_id"] for edit in edits} == {str(verdict_id)}

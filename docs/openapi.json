@@ -933,6 +933,14 @@
               }
             ]
           },
+          "edits": {
+            "items": {
+              "$ref": "#/components/schemas/FindingEdit"
+            },
+            "type": "array",
+            "title": "Edits",
+            "description": "every edit of the finding, newest first, with the fields of latest_edit"
+          },
           "reviews": {
             "items": {
               "$ref": "#/components/schemas/Review"
@@ -997,6 +1005,7 @@
           "code",
           "verdict",
           "latest_edit",
+          "edits",
           "reviews",
           "carried_review",
           "group"

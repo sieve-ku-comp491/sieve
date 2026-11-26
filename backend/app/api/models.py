@@ -266,6 +266,9 @@ class FindingDetail(BaseModel):
     )
     verdict: VerdictOut | None = Field(description="the latest verdict of its triage item")
     latest_edit: FindingEdit | None
+    edits: list[FindingEdit] = Field(
+        description="every edit of the finding, newest first, with the fields of latest_edit"
+    )
     reviews: list[Review] = Field(description="newest first")
     carried_review: Review | None = Field(
         description="the earlier review that applies to it from an earlier scan. It decides "

@@ -123,6 +123,10 @@ WHERE f.id = %(id)s
 
 FINDING_EDIT = f"SELECT e.* FROM findings f, LATERAL ({LATEST_EDIT}) e WHERE f.id = %(id)s"
 
+FINDING_EDITS = """
+SELECT * FROM finding_edits WHERE finding_id = %(id)s ORDER BY created_at DESC, id
+"""
+
 FINDING_REVIEWS = """
 SELECT id, decision, reviewer, comment, verdict_id, finding_edit_id, created_at
 FROM reviews WHERE finding_id = %(id)s ORDER BY created_at DESC, id
@@ -234,7 +238,7 @@ class FindingsReader:
         return total, rows
 
     def get_finding(self, finding_id: str) -> dict | None:
-        """The finding with its locations, its latest verdict and edit, its reviews, the review
+        """The finding with its locations, its latest verdict, its edits, its reviews, the review
         carried over from an earlier scan, and its duplicate group with the members."""
         with self._connect() as conn:
             finding = conn.execute(GET_FINDING, {"id": finding_id}).fetchone()
@@ -247,6 +251,7 @@ class FindingsReader:
             ]
             finding["verdict"] = conn.execute(FINDING_VERDICT, {"id": finding_id}).fetchone()
             finding["latest_edit"] = conn.execute(FINDING_EDIT, {"id": finding_id}).fetchone()
+            finding["edits"] = conn.execute(FINDING_EDITS, {"id": finding_id}).fetchall()
             finding["reviews"] = conn.execute(FINDING_REVIEWS, {"id": finding_id}).fetchall()
             finding["carried_review"] = None
             if finding["carried_review_id"] is not None:
