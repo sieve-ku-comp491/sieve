@@ -1,11 +1,18 @@
-"""The response bodies of the scan and finding endpoints. Field names are the column names of
+"""The request and response bodies of the API. Field names are the column names of
 docs/database.md and the field names of docs/finding-format.md."""
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 State = Literal["new", "grouped", "triaged", "edited", "approved", "rejected", "reported"]
 Verdict = Literal["true_positive", "false_positive", "unsure"]
@@ -283,3 +290,79 @@ class FindingDetail(BaseModel):
         "the finding when hidden is true, and is a suggestion otherwise."
     )
     group: Group | None
+
+
+def storable(value: str) -> str:
+    """PostgreSQL text can't hold NUL, and UTF-8 can't encode a lone surrogate, so both are
+    refused here as a 422 instead of failing in the database."""
+    if "\x00" in value:
+        raise ValueError("must not contain a NUL character")
+    if any("\ud800" <= char <= "\udfff" for char in value):
+        raise ValueError("must not contain a lone surrogate")
+    return value
+
+
+Name = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=200),
+    AfterValidator(storable),
+]
+Text = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=20000),
+    AfterValidator(storable),
+]
+Vector = Annotated[str, StringConstraints(max_length=200), AfterValidator(storable)]
+
+SEEN_EDIT = Field(
+    description="the latest edit the reviewer saw, from latest_edit of the finding, or null if "
+    "it has none. Refused with 409 when another edit was saved since."
+)
+SEEN_VERDICT = Field(
+    description="the verdict the reviewer saw, from verdict of the finding, or null if it has "
+    "none. Refused with 409 when the finding was triaged again since."
+)
+
+
+class ReviewIn(BaseModel):
+    """An approve or a reject of one finding."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approve", "reject"]
+    reviewer: Name
+    comment: Text | None = None
+    finding_edit_id: UUID | None = SEEN_EDIT
+    verdict_id: UUID | None = SEEN_VERDICT
+
+
+class EditIn(BaseModel):
+    """Changes to the verdict, the reasoning or the CVSS v4.0 vector. A field left out keeps
+    the value of the latest edit, or the AI's."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    editor: Name
+    finding_edit_id: UUID | None = SEEN_EDIT
+    verdict_id: UUID | None = SEEN_VERDICT
+    verdict: Verdict | None = None
+    reasoning: Text | None = None
+    cvss_v4_vector: Vector | None = Field(
+        default=None,
+        description="the 11 base metrics. The score and the level are computed from it.",
+    )
+    note: Text | None = None
+
+    @model_validator(mode="after")
+    def changes_something(self) -> "EditIn":
+        if self.verdict is None and self.reasoning is None and self.cvss_v4_vector is None:
+            raise ValueError("change the verdict, the reasoning or the CVSS vector")
+        return self
+
+
+class ReviewSaved(Review):
+    state: State = Field(description="the finding's state after the decision")
+
+
+class EditSaved(FindingEdit):
+    state: State = Field(description="the finding's state after the edit")

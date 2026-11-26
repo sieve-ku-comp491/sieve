@@ -106,6 +106,36 @@ def test_the_token_is_needed(tmp_path):
     assert response.status_code == 401
 
 
+@pytest.mark.parametrize("origin", ["https://example.com", "http://localhost:3000", "null"])
+def test_another_web_page_cant_start_a_scan(tmp_path, origin):
+    """nginx adds the token to every request it forwards, so a page on another origin is refused
+    by its Origin before the scope check or the database is reached."""
+    response = client(scope(tmp_path)).post(
+        "/scans", json={"repo_url": PYGOAT}, headers={"Origin": origin}
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "requests from this origin can't change data"
+
+
+@pytest.mark.parametrize("content_type", ["text/plain", "application/x-www-form-urlencoded"])
+def test_only_a_json_body_starts_a_scan(tmp_path, content_type):
+    response = client(scope(tmp_path)).post(
+        "/scans",
+        content=f'{{"repo_url": "{PYGOAT}"}}',
+        headers={"Content-Type": content_type},
+    )
+    assert response.status_code == 415
+
+
+def test_the_review_web_app_and_the_cli_pass_the_origin_check(tmp_path):
+    """The web app sends its own Origin, and the CLI sends none. Both reach the scope check,
+    and with no database configured that ends in 503."""
+    test_client = client(scope(tmp_path), database_url=None)
+    for headers in ({"Origin": "http://localhost:8080"}, {}):
+        response = test_client.post("/scans", json={"repo_url": PYGOAT}, headers=headers)
+        assert response.status_code == 503
+
+
 def count(database, sql: str, *params) -> int:
     with psycopg.connect(database) as conn:
         return conn.execute(sql, params).fetchone()[0]

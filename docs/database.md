@@ -597,7 +597,7 @@ One row per decision of the reviewer on a finding. Rows are never changed or del
 | `decision` | text | no | `approve` or `reject` |
 | `reviewer` | text | no | who decided. Sieve has one user, the researcher, so there is no users table. |
 | `comment` | text | yes | the reviewer's note, such as why a finding was rejected |
-| `verdict_id` | uuid | yes | the AI verdict shown when the reviewer decided, references `verdicts`. Empty only if the finding had no verdict yet, for example after a run stopped at its budget. |
+| `verdict_id` | uuid | yes | the AI verdict shown when the reviewer decided, references `verdicts`. Empty only if the finding had no verdict, for example a decision on a finding that deduplication hid, since hidden findings aren't triaged. |
 | `finding_edit_id` | uuid | yes | the latest edit when the reviewer decided, references `finding_edits`. Empty when there was no edit. An edit saved after this review undoes the approval (docs/finding-states.md). |
 | `created_at` | timestamptz | no | |
 

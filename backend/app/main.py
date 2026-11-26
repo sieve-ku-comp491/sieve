@@ -1,11 +1,13 @@
 """The FastAPI back end. Every request passes the Host and token checks in app.api.security."""
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api import findings, reviews, scans
 from app.api.deps import Settings
+from app.api.errors import validation_failed
 from app.api.models import Health
 from app.api.security import ALLOWED_HOSTS, TokenMiddleware
 
@@ -16,6 +18,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     app = FastAPI(title="Sieve", version=VERSION)
     app.state.settings = settings
+    app.add_exception_handler(RequestValidationError, validation_failed)
 
     @app.get("/health", response_model=Health, tags=["health"])
     def health():
