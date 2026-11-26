@@ -20,6 +20,7 @@ from app.api.models import (
     ToolSeverity,
     Verdict,
 )
+from app.api.security import json_from_the_ui
 from app.checkout import CheckoutError, CheckoutReader
 from app.scan import OutOfScope, RefError, ScanService, ScopeError, UrlError
 from app.scan.service import NoQueue
@@ -35,15 +36,22 @@ Service = Annotated[ScanService, Depends(get_scan_service)]
     "",
     status_code=202,
     response_model=ScanStarted,
+    dependencies=[Depends(json_from_the_ui)],
     responses={
-        403: {"description": "the repository is not in the scope file"},
+        403: {
+            "description": "the repository is not in the scope file, or the request comes from"
+            " a web page other than the review web app"
+        },
+        415: {"description": "the body is not application/json"},
         422: {"description": "the URL or the commit breaks the rules of requirement F2"},
         500: {"description": "the scope file can't be loaded"},
     },
 )
 def start_scan(body: StartScan, service: Service):
-    """Starts a scan of a repository in the scope file (requirement F2). The scope check runs
-    first, and a refused repository gets an error with nothing created. Otherwise the scan is
+    """Starts a scan of a repository in the scope file (requirement F2). Like every endpoint
+    that changes data, it takes only a JSON body and refuses other web pages by their Origin
+    (json_from_the_ui). The scope check runs next, and a refused repository gets an error with
+    nothing created. Otherwise the scan is
     queued as a background job: read its progress with GET /scans/{scan_id}."""
     try:
         started = service.start_scan(body.repo_url, body.commit)

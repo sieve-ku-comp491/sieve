@@ -32,7 +32,7 @@
           "scans"
         ],
         "summary": "Start Scan",
-        "description": "Starts a scan of a repository in the scope file (requirement F2). The scope check runs\nfirst, and a refused repository gets an error with nothing created. Otherwise the scan is\nqueued as a background job: read its progress with GET /scans/{scan_id}.",
+        "description": "Starts a scan of a repository in the scope file (requirement F2). Like every endpoint\nthat changes data, it takes only a JSON body and refuses other web pages by their Origin\n(json_from_the_ui). The scope check runs next, and a refused repository gets an error with\nnothing created. Otherwise the scan is\nqueued as a background job: read its progress with GET /scans/{scan_id}.",
         "operationId": "start_scan_scans_post",
         "requestBody": {
           "required": true,
@@ -56,7 +56,10 @@
             }
           },
           "403": {
-            "description": "the repository is not in the scope file"
+            "description": "the repository is not in the scope file, or the request comes from a web page other than the review web app"
+          },
+          "415": {
+            "description": "the body is not application/json"
           },
           "422": {
             "description": "the URL or the commit breaks the rules of requirement F2"
