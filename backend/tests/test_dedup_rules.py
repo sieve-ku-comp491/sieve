@@ -11,6 +11,7 @@ file, and the lines checked in the PyGoat source.
 
 import pytest
 
+from app.cwe import related
 from app.dedup import (
     NEARBY,
     SAME_FUNCTION,
@@ -21,7 +22,6 @@ from app.dedup import (
     ScanFinding,
     group_findings,
 )
-from app.eval.metrics import related
 
 APP = "app/views.py"
 LAB = "dockerized_labs/sql_injection_lab/app.py"
