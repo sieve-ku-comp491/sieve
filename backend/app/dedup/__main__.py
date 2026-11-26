@@ -1,8 +1,10 @@
 """python -m app.dedup group <scan ID>, or python -m app.dedup csv <scan ID> (see --help).
 
-Both connect to DATABASE_URL. group runs the rule step and the text-similarity step without a
-function lookup, so findings are grouped by the same file and nearby lines until the tree-sitter
-lookup of T3.3 is there. The LLM step needs a triage run's budget, so it runs only in triage.
+Both connect to DATABASE_URL. group runs the rule step and the text-similarity step, both with
+the tree-sitter function lookup on the scan's checkout, which the worker keeps in
+SIEVE_DATA_DIR/scans/<scan ID>/src (/data by default). When the checkout is gone, both group by
+the same file and nearby lines instead. The LLM step needs a triage run's budget, so it runs only
+in triage.
 """
 
 import argparse
@@ -10,6 +12,9 @@ import os
 import sys
 from pathlib import Path
 
+from app.checkout import CheckoutReader
+from app.context.functions import TreeSitterFunctionLookup
+from app.dedup.functions import FunctionLookup
 from app.dedup.groups import GroupingError
 from app.dedup.similarity import SimilarityStep
 from app.dedup.store import group_scan, write_groups_csv
@@ -35,7 +40,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.command == "group":
         try:
-            groups = group_scan(conninfo, args.scan_id, later_steps=[SimilarityStep()])
+            lookup = checkout_lookup(args.scan_id)
+            groups = group_scan(
+                conninfo, args.scan_id, lookup, later_steps=[SimilarityStep(lookup)]
+            )
         except GroupingError as error:
             print(error, file=sys.stderr)
             return 1
@@ -51,6 +59,19 @@ def main(argv: list[str] | None = None) -> int:
             count = write_groups_csv(conninfo, args.scan_id, handle)
         print(f"{count} findings written to {args.out}")
     return 0
+
+
+def checkout_lookup(scan_id: str) -> FunctionLookup | None:
+    """The function lookup on the scan's checkout, or None, with a note on standard error, when
+    the checkout is gone."""
+    checkout = Path(os.environ.get("SIEVE_DATA_DIR", "/data")) / "scans" / scan_id / "src"
+    if not checkout.is_dir():
+        print(
+            f"no checkout at {checkout}, grouping by the same file and nearby lines",
+            file=sys.stderr,
+        )
+        return None
+    return TreeSitterFunctionLookup(CheckoutReader(checkout))
 
 
 if __name__ == "__main__":

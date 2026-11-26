@@ -2,8 +2,8 @@
 with related CWEs (requirement F3).
 
 Two findings match when they are in the same file, some CWE of one is the same as or related to
-some CWE of the other (RELATED_CWES in app.eval.metrics, the list the evaluation uses, and
-COPIED_RULE_CWES below), and either:
+some CWE of the other (RELATED_CWES in app.cwe, the list the evaluation uses, and COPIED_RULE_CWES
+below), and either:
 
 - the function lookup knows a function for both and it is the same function
   (same_function_related_cwe), or
@@ -31,9 +31,9 @@ import re
 from collections import defaultdict
 from collections.abc import Sequence
 
+from app.cwe import related
 from app.dedup.functions import FunctionLookup, FunctionSpan, NoFunctionLookup
 from app.dedup.groups import Group, ScanFinding
-from app.eval.metrics import related
 
 # Kept small, because a wrong merge costs more than a missed one: the precision target of F3 is
 # 0.9. Analyzers that flag the same call report the same line or lines of the same statement.

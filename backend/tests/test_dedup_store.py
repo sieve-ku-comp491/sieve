@@ -22,6 +22,7 @@ import pytest
 
 from app.adapters import AdapterResult, Finding, Location
 from app.dedup import (
+    NEARBY,
     SAME_FUNCTION,
     FunctionSpan,
     Group,
@@ -200,10 +201,9 @@ def test_the_groups_as_the_csv_of_the_dedup_metric(database, pygoat, tmp_path, c
     }
 
 
-def store_scan(
-    database, runs: dict[str, list[tuple[int, list[str]]]], repo=None, status="completed"
-) -> str:
-    """One scan with a run of each tool, and one finding in VIEWS for each (line, CWEs)."""
+def store_scan(database, runs: dict[str, list[tuple]], repo=None, status="completed") -> str:
+    """One scan with a run of each tool, and one finding in VIEWS for each (line, CWEs), or
+    (line, CWEs, rule ID, message)."""
     store = PostgresRunStore(database)
     scan_id = store.create_scan(repo or f"https://example.test/{uuid.uuid4().hex}", COMMIT)
     store.update_scan(scan_id, "running")
@@ -217,16 +217,16 @@ def store_scan(
                     run_id=run.run_id,
                     tool=tool,
                     tool_version="1",
-                    rule_id=f"{tool}-rule",
-                    message="m",
+                    rule_id=spec[2] if len(spec) > 2 else f"{tool}-rule",
+                    message=spec[3] if len(spec) > 2 else "m",
                     tool_severity="warning",
-                    location=Location(VIEWS, line, line),
+                    location=Location(VIEWS, spec[0], spec[0]),
                     raw={},
-                    cwe=cwe,
+                    cwe=spec[1],
                     fingerprint=f"v1:{tool}{n}",
                     context_hash="c1:x",
                 )
-                for n, (line, cwe) in enumerate(findings)
+                for n, spec in enumerate(findings)
             ]
         )
         store.save_findings(run, result)
@@ -423,3 +423,124 @@ def test_the_command_line_groups_a_scan_and_writes_the_csv(database, pygoat, tmp
     # CWE-915 and CWE-704, by text similarity.
     assert len(rows) == 9 and sum(1 for row in rows if row["group"]) == 6
     assert len({row["group"] for row in rows if row["group"]}) == 2
+
+
+# Two methods with findings three lines apart, and two functions with findings four lines apart.
+# The finding lines, and the function lines in the reasons below, were counted by hand.
+NETWORK_VIEWS = """import os
+import subprocess
+
+from django.db import connection
+
+
+class Network:
+    def ping(self, host):
+        return subprocess.check_output("ping -c 1 " + host, shell=True)
+
+    def trace(self, host):
+        return os.popen("traceroute " + host).read()
+
+
+def lookup(request):
+    name = request.GET["name"]
+    query = "SELECT address FROM hosts WHERE name = '%s'" % name
+    if not name:
+        return None
+    with connection.cursor() as cursor:
+        cursor.execute(query)
+        return cursor.fetchone()
+
+
+def calculate(request):
+    expression = request.GET["expression"]
+    if not expression:
+        return None
+    print(expression)
+    return eval(expression)
+"""
+EVAL_MESSAGE = "User input from request.GET is evaluated as Python code by eval()."
+NETWORK_FINDINGS = {
+    "semgrep": [
+        (9, ["CWE-78"], "python.lang.security.audit.subprocess-shell-true", "Found shell=True."),
+        (
+            21,
+            ["CWE-89"],
+            "python.django.security.injection.sql.sql-injection-db-cursor-execute",
+            "User-controlled data from a request is passed to 'execute()'.",
+        ),
+        (26, ["CWE-95"], "python.django.security.injection.code.user-eval", EVAL_MESSAGE),
+    ],
+    "bandit": [
+        (12, ["CWE-78"], "B605", "Starting a process with a shell, possible injection detected."),
+        (
+            17,
+            ["CWE-89"],
+            "B608",
+            "Possible SQL injection vector through string-based query construction.",
+        ),
+        (30, ["CWE-78"], "B307", EVAL_MESSAGE),
+    ],
+}
+
+
+def grouped(database, scan_id) -> list[tuple]:
+    with psycopg.connect(database) as conn:
+        return conn.execute(
+            "SELECT f.tool, f.start_line, g.method, g.rule, g.reason FROM findings f"
+            " JOIN duplicate_groups g ON g.id = f.group_id WHERE f.scan_id = %s"
+            " ORDER BY f.start_line",
+            (scan_id,),
+        ).fetchall()
+
+
+def test_the_command_line_groups_with_the_functions_of_the_checkout(
+    database, tmp_path, monkeypatch, capsys
+):
+    """The rules split the two methods of Network and join the two SQL injection findings of
+    lookup(). The eval findings carry the same message, but their CWEs, CWE-95 and the CWE-78
+    that Bandit gives eval, don't relate, so text similarity joins them, and only because it
+    asks the same lookup."""
+    scan_id = store_scan(database, NETWORK_FINDINGS)
+    views = tmp_path / "scans" / scan_id / "src" / VIEWS
+    views.parent.mkdir(parents=True)
+    views.write_text(NETWORK_VIEWS, encoding="utf-8")
+    monkeypatch.setenv("DATABASE_URL", database)
+    monkeypatch.setenv("SIEVE_DATA_DIR", str(tmp_path))
+
+    assert dedup_main(["group", scan_id]) == 0
+
+    out, err = capsys.readouterr()
+    assert out.startswith("groups: 2, with 4 findings\n")
+    assert err == ""
+    rows = grouped(database, scan_id)
+    assert [row[:4] for row in rows] == [
+        ("bandit", 17, "rule", SAME_FUNCTION),
+        ("semgrep", 21, "rule", SAME_FUNCTION),
+        ("semgrep", 26, "similarity", None),
+        ("bandit", 30, "similarity", None),
+    ]
+    assert rows[0][4] == "Same function lookup (lines 15 to 22) and related CWEs (CWE-89)"
+    assert rows[2][4].startswith(
+        "Same function calculate (lines 25 to 30), similar analyzer messages (text similarity "
+    )
+
+
+def test_the_command_line_groups_by_nearby_lines_when_the_checkout_is_gone(
+    database, tmp_path, monkeypatch, capsys
+):
+    """The same scan without its checkout: the two methods are three lines apart, so the rules
+    join them, and the other pairs are four lines apart."""
+    scan_id = store_scan(database, NETWORK_FINDINGS)
+    monkeypatch.setenv("DATABASE_URL", database)
+    monkeypatch.setenv("SIEVE_DATA_DIR", str(tmp_path))
+
+    assert dedup_main(["group", scan_id]) == 0
+
+    out, err = capsys.readouterr()
+    assert out.startswith("groups: 1, with 2 findings\n")
+    checkout = tmp_path / "scans" / scan_id / "src"
+    assert err == f"no checkout at {checkout}, grouping by the same file and nearby lines\n"
+    assert grouped(database, scan_id) == [
+        ("semgrep", 9, "rule", NEARBY, "Same file, lines 9 to 12, and related CWEs (CWE-78)"),
+        ("bandit", 12, "rule", NEARBY, "Same file, lines 9 to 12, and related CWEs (CWE-78)"),
+    ]
