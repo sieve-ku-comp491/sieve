@@ -1,12 +1,15 @@
-"""The scan endpoints: the scans, and the review queue of one scan."""
+"""The scan endpoints: the scans, the review queue of one scan and the code of its checkout."""
 
+from pathlib import PurePosixPath
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_reader, get_scan_service
+from app.api.deps import Settings, get_reader, get_scan_service, get_settings
+from app.api.findings import MAX_CODE_LINES, checkout_dir, masked_lines
 from app.api.models import (
+    Code,
     FindingPage,
     Level,
     Scan,
@@ -17,6 +20,7 @@ from app.api.models import (
     ToolSeverity,
     Verdict,
 )
+from app.checkout import CheckoutError, CheckoutReader
 from app.scan import OutOfScope, RefError, ScanService, ScopeError, UrlError
 from app.scan.service import NoQueue
 from app.store.queries import FindingFilter, FindingsReader
@@ -111,3 +115,50 @@ def list_findings(
         raise HTTPException(404, "no such scan")
     total, items = reader.list_findings(str(scan_id), filters, limit, offset)
     return {"total": total, "limit": limit, "offset": offset, "items": items}
+
+
+@router.get(
+    "/{scan_id}/code",
+    response_model=Code,
+    responses={
+        404: {"description": "no such scan, or the file isn't one the scan's checkout can serve"},
+        422: {"description": "the range is not one of the file's lines"},
+    },
+)
+def get_code(
+    scan_id: UUID,
+    reader: Reader,
+    settings: Annotated[Settings, Depends(get_settings)],
+    file: Annotated[
+        str, Query(min_length=1, max_length=4096, description="a path relative to the checkout")
+    ],
+    start: Annotated[int, Query(ge=1, le=10_000_000, description="the first line")],
+    end: Annotated[int, Query(ge=1, le=10_000_000, description="the last line")],
+):
+    """Lines start to end of one file of the scan's checkout, for code the finding's code
+    window doesn't hold, such as cited lines and injection lines elsewhere. At most 200 lines:
+    a longer range stops after 200, and an end past the file stops at its last line, so
+    end_line tells where the lines stop. Every finding of the scan in the file is masked as in
+    the code window, so a secret Gitleaks found reads REDACTED. A path outside the checkout,
+    a file that can't be read, and a file with a finding of a tool whose adapter is unknown
+    are not found."""
+    if end < start:
+        raise HTTPException(422, "end is before start")
+    if not reader.scan_exists(str(scan_id)):
+        raise HTTPException(404, "no such scan")
+    checkout = CheckoutReader(checkout_dir(settings.data_dir, str(scan_id)))
+    try:
+        target = checkout.resolve(file).relative_to(checkout.root).as_posix()
+    except CheckoutError:
+        raise HTTPException(404, "no such file in the scan's checkout") from None
+    # Findings store paths in this form. A link in the checkout reads its target, so the
+    # findings under the target's path are masked too.
+    name = PurePosixPath(file).as_posix()
+    flagged = reader.flagged_lines(str(scan_id), *{name, target})
+    lines = masked_lines(settings.data_dir, str(scan_id), file, flagged)
+    if lines is None:
+        raise HTTPException(404, "no such file in the scan's checkout")
+    if start > len(lines):
+        raise HTTPException(422, f"the file has {len(lines)} lines")
+    last = min(end, len(lines), start + MAX_CODE_LINES - 1)
+    return {"file": name, "start_line": start, "end_line": last, "lines": lines[start - 1 : last]}

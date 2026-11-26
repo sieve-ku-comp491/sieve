@@ -194,6 +194,7 @@ def test_one_finding_with_its_location_and_code(client, scan_id):
     assert code["lines"][-1] == "                )"
     assert detail["state"] == "new"
     assert detail["verdict"] is None and detail["latest_edit"] is None
+    assert detail["edits"] == []
     assert detail["reviews"] == [] and detail["carried_review"] is None
     assert detail["group"] is None
 
@@ -431,3 +432,232 @@ def test_the_code_window_of_a_long_finding_stops_at_200_lines(database, tmp_path
     assert (code["start_line"], code["end_line"], len(code["lines"])) == (10, 209, 200)
     assert code["lines"][:2] == ["", 'app = Flask("app")']
     assert set(code["lines"][10:]) == {"REDACTED"}
+
+
+def code(client, scan_id, file, start, end):
+    return client.get(f"/scans/{scan_id}/code", params={"file": file, "start": start, "end": end})
+
+
+@pytest.fixture
+def gitleaks_scan(database, tmp_path):
+    scan_id = load_gitleaks(database, tmp_path)
+    return make_client(database, tmp_path), scan_id, tmp_path / "scans" / scan_id
+
+
+def test_the_code_endpoint_masks_every_secret_in_the_range(gitleaks_scan):
+    """Lines 50 to 62 hold the Gitleaks findings at 53 and 59. Both read REDACTED and the
+    lines around them show as they are. The same file asked for under other spellings of its
+    path is masked the same way, and named as the findings name it."""
+    client, scan_id, _ = gitleaks_scan
+    source = (FIXTURE / "pygoat" / AUTH).read_text(encoding="utf-8").splitlines()
+    expected = [
+        "REDACTED" if number in (53, 59) else source[number - 1] for number in range(50, 63)
+    ]
+    assert expected[3] == "REDACTED" and expected[8] == '        "role": "user",'
+    for spelling in (AUTH, "dockerized_labs/./auth_failure_lab/app.py", f"./{AUTH}"):
+        response = code(client, scan_id, spelling, 50, 62)
+        assert response.status_code == 200, response.text
+        assert response.json() == {
+            "file": AUTH,
+            "start_line": 50,
+            "end_line": 62,
+            "lines": expected,
+        }
+
+
+def test_the_code_endpoint_masks_a_file_read_through_a_link(gitleaks_scan):
+    """A link in the checkout to the file reads the file, so its secrets are masked too."""
+    client, scan_id, scan_dir = gitleaks_scan
+    try:
+        (scan_dir / "src" / "link.py").symlink_to(scan_dir / "src" / AUTH)
+    except OSError:
+        pytest.skip("this system can't make symbolic links")
+    lines = code(client, scan_id, "link.py", 53, 53).json()["lines"]
+    assert lines == ["REDACTED"]
+
+
+def test_the_code_endpoint_serves_files_without_findings(gitleaks_scan):
+    client, scan_id, _ = gitleaks_scan
+    response = code(client, scan_id, LAB, 1, 1)
+    assert response.json()["lines"] == ["from flask import Flask, render_template, request"]
+
+
+def test_the_code_endpoint_stops_at_200_lines_and_at_the_end_of_the_file(gitleaks_scan):
+    """The file has 238 lines. Lines 10 to 238 are 229 lines, so they stop at 209. From line
+    230, an end past the file stops at 238, its last line."""
+    client, scan_id, _ = gitleaks_scan
+    body = code(client, scan_id, AUTH, 10, 238).json()
+    assert (body["start_line"], body["end_line"], len(body["lines"])) == (10, 209, 200)
+    assert body["lines"][:2] == ["", 'app = Flask("app")']
+    assert body["lines"][43] == "REDACTED"
+    body = code(client, scan_id, AUTH, 230, 5000).json()
+    assert (body["start_line"], body["end_line"], len(body["lines"])) == (230, 238, 9)
+
+
+@pytest.mark.parametrize(
+    "file",
+    [
+        "../outside.txt",
+        "src/../../outside.txt",
+        "dockerized_labs/../../outside.txt",
+        "missing.py",
+        "dockerized_labs",
+        "dockerized_labs/auth_failure_lab/app.py\x00",
+    ],
+)
+def test_the_code_endpoint_serves_nothing_outside_the_checkout(gitleaks_scan, file):
+    """outside.txt is in the scan's folder in the data folder, next to src."""
+    client, scan_id, scan_dir = gitleaks_scan
+    (scan_dir / "outside.txt").write_text("worker secret\n", encoding="utf-8")
+    response = code(client, scan_id, file, 1, 1)
+    assert response.status_code == 404, response.text
+    assert "worker secret" not in response.text
+
+
+def test_the_code_endpoint_refuses_an_absolute_path_and_a_link_out(gitleaks_scan):
+    client, scan_id, scan_dir = gitleaks_scan
+    outside = scan_dir / "outside.txt"
+    outside.write_text("worker secret\n", encoding="utf-8")
+    assert code(client, scan_id, str(outside), 1, 1).status_code == 404
+    assert code(client, scan_id, outside.as_posix(), 1, 1).status_code == 404
+    try:
+        (scan_dir / "src" / "out.txt").symlink_to(outside)
+    except OSError:
+        pytest.skip("this system can't make symbolic links")
+    assert code(client, scan_id, "out.txt", 1, 1).status_code == 404
+
+
+def test_the_code_endpoint_needs_a_known_scan_and_its_checkout(database, gitleaks_scan, tmp_path):
+    client, scan_id, _ = gitleaks_scan
+    unknown = "00000000-0000-0000-0000-000000000000"
+    assert code(client, unknown, AUTH, 1, 1).status_code == 404
+    other = make_client(database, tmp_path / "empty")
+    assert code(other, scan_id, AUTH, 1, 1).status_code == 404
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"file": AUTH, "start": 0, "end": 1},
+        {"file": AUTH, "start": 5, "end": 4},
+        {"file": AUTH, "start": 239, "end": 240},
+        {"file": AUTH, "start": 1},
+        {"file": "", "start": 1, "end": 1},
+        {"file": AUTH, "start": 1, "end": 10_000_001},
+    ],
+)
+def test_the_code_endpoint_refuses_a_bad_range(gitleaks_scan, params):
+    client, scan_id, _ = gitleaks_scan
+    assert client.get(f"/scans/{scan_id}/code", params=params).status_code == 422
+
+
+def test_the_code_endpoint_needs_the_token(gitleaks_scan):
+    client, scan_id, _ = gitleaks_scan
+    response = client.get(
+        f"/scans/{scan_id}/code",
+        params={"file": AUTH, "start": 53, "end": 53},
+        headers={"Authorization": "Bearer wrong"},
+    )
+    assert response.status_code == 401
+    assert "REDACTED" not in response.text
+
+
+def test_the_detail_lists_every_edit_newest_first(database, tmp_path):
+    """Two edits of the SQL finding on line 57, each saved in a transaction of its own as the
+    edit endpoint saves them. The second keeps the first one's verdict and adds the vector of
+    the verdict, which scores 9.3 in FIRST's CVSS v4.0 calculator."""
+    scan_id = load(database, tmp_path)
+    client = make_client(database, tmp_path)
+    target = finding_id(client, scan_id, SQL_RULE, 57)
+    with psycopg.connect(database) as conn:
+        verdict_id = insert_verdict(conn, insert_triage_run(conn, scan_id), finding=target)
+    edit_ids = []
+    vector = "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"
+    for editor, vector_or_none, score, level, note in [
+        ("Furkan", None, None, None, "needs a look"),
+        ("Ali", vector, 9.3, "critical", "the query takes the form field"),
+    ]:
+        with psycopg.connect(database) as conn:
+            edit_ids.append(
+                conn.execute(
+                    "INSERT INTO finding_edits (finding_id, verdict_id, editor, verdict,"
+                    " cvss_v4_vector, cvss_v4_score, cvss_v4_level, note)"
+                    " VALUES (%s, %s, %s, 'unsure', %s, %s, %s, %s) RETURNING id",
+                    (target, verdict_id, editor, vector_or_none, score, level, note),
+                ).fetchone()[0]
+            )
+
+    detail = client.get(f"/findings/{target}").json()
+    edits = detail["edits"]
+    assert [edit["id"] for edit in edits] == [str(edit_ids[1]), str(edit_ids[0])]
+    assert edits[0] == detail["latest_edit"]
+    assert set(edits[1]) == set(detail["latest_edit"])
+    assert (edits[0]["editor"], edits[0]["cvss_v4_score"], edits[0]["cvss_v4_level"]) == (
+        "Ali",
+        9.3,
+        "critical",
+    )
+    assert (edits[1]["editor"], edits[1]["verdict"], edits[1]["note"]) == (
+        "Furkan",
+        "unsure",
+        "needs a look",
+    )
+    assert edits[1]["cvss_v4_vector"] is None
+    assert {edit["verdict_id"] for edit in edits} == {str(verdict_id)}
+
+
+def test_a_grouped_row_counts_its_whole_group(database, tmp_path):
+    """The two tainted-sql-string findings on line 50 in one group with one verdict. The
+    reviewer approves Django's and edits Flask's, so the group has one approved and one edited
+    member, whichever rows the filters keep. A repository URL of its own keeps the approval
+    from hiding findings in later scans of the other tests."""
+    scan_id = load(database, tmp_path, repo=f"https://example.test/{uuid.uuid4().hex}")
+    client = make_client(database, tmp_path)
+    django = finding_id(client, scan_id, DJANGO_RULE, 50)
+    flask = finding_id(client, scan_id, FLASK_RULE, 50)
+    with psycopg.connect(database) as conn:
+        run_id = insert_triage_run(conn, scan_id)
+        group_id = conn.execute(
+            "INSERT INTO duplicate_groups (scan_id, representative_finding_id, method, rule,"
+            " reason) VALUES (%s, %s, 'rule', 'nearby_lines_related_cwe', 'same line, CWE-89')"
+            " RETURNING id",
+            (scan_id, django),
+        ).fetchone()[0]
+        conn.execute(
+            "UPDATE findings SET group_id = %s WHERE id IN (%s, %s)", (group_id, django, flask)
+        )
+        verdict_id = insert_verdict(conn, run_id, group=group_id)
+        conn.execute(
+            "INSERT INTO reviews (finding_id, decision, reviewer, verdict_id)"
+            " VALUES (%s, 'approve', 'Ali', %s)",
+            (django, verdict_id),
+        )
+        conn.execute(
+            "INSERT INTO finding_edits (finding_id, verdict_id, editor, verdict)"
+            " VALUES (%s, %s, 'Furkan', 'unsure')",
+            (flask, verdict_id),
+        )
+
+    states = {
+        "new": 0,
+        "grouped": 0,
+        "triaged": 0,
+        "edited": 1,
+        "approved": 1,
+        "rejected": 0,
+        "reported": 0,
+    }
+    rows = {item["id"]: item for item in findings(client, scan_id)["items"]}
+    for member in (django, flask):
+        assert (rows[member]["group_size"], rows[member]["group_states"]) == (2, states)
+    others = [item for item in rows.values() if item["id"] not in (django, flask)]
+    assert len(others) == 7
+    assert {(item["group_size"], item["group_states"]) for item in others} == {(None, None)}
+    (approved,) = findings(client, scan_id, status="approved")["items"]
+    assert (approved["id"], approved["group_size"], approved["group_states"]) == (
+        django,
+        2,
+        states,
+    )
+    detail = client.get(f"/findings/{django}").json()
+    assert len(detail["group"]["members"]) == 2

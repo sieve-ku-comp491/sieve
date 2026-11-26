@@ -122,6 +122,14 @@ class FindingItem(BaseModel):
     severity: Level | None = Field(description="the CVSS v4.0 level, from the same place")
     score: float | None = Field(description="the CVSS v4.0 score, from the same place")
     injection_suspected: bool
+    group_size: int | None = Field(
+        description="the number of findings in its duplicate group, itself included, whatever "
+        "the filters: the members of group in the finding detail. Hidden findings are never "
+        "grouped, so every member is in the queue. Null when it has no group."
+    )
+    group_states: dict[State, int] | None = Field(
+        description="the number of those members in each state. Null when it has no group."
+    )
 
 
 class FindingPage(BaseModel):
@@ -146,7 +154,7 @@ class FlowStep(Location):
 
 
 class Code(BaseModel):
-    """Lines of the scanned file around the finding, read from the scan's checkout."""
+    """Lines of a scanned file, read from the scan's checkout."""
 
     file: str
     start_line: int = Field(description="the line number of the first line in lines")
@@ -266,6 +274,9 @@ class FindingDetail(BaseModel):
     )
     verdict: VerdictOut | None = Field(description="the latest verdict of its triage item")
     latest_edit: FindingEdit | None
+    edits: list[FindingEdit] = Field(
+        description="every edit of the finding, newest first, with the fields of latest_edit"
+    )
     reviews: list[Review] = Field(description="newest first")
     carried_review: Review | None = Field(
         description="the earlier review that applies to it from an earlier scan. It decides "

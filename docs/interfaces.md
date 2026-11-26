@@ -5,6 +5,7 @@ This document fixes the interfaces between Sieve's components, so each of us can
 - Plug-in contract: how the scan service runs an analyzer.
 - Triage API: what the triage agent reads and writes.
 - Report schema: what the report service produces from an approved finding.
+- Review screen API: what the review screen reads beyond the fields in docs/openapi.json.
 
 ## Plug-in contract
 
@@ -412,3 +413,13 @@ Location: dockerized_labs/sql_injection_lab/app.py, lines 46 to 57
 Each place in `locations` has its own Location line, as the report preview shows it (docs/ui-mockups.md), so a program's triager knows where the code is.
 
 The HackerOne and Bugcrowd formats are stretch goals (T4.2). They use the same fields, with HackerOne's CVSS-based severity and Bugcrowd's VRT priority.
+
+## Review screen API
+
+The REST API's fields are in docs/openapi.json, generated from the code. Every request needs the API token (docs/architecture.md). This section covers what the field list doesn't say.
+
+The finding detail, `GET /findings/{id}`, has a code window: the flagged lines with up to 10 lines before and after, at most 200 lines. Code the window doesn't hold, such as the verdict's cited lines and the injection lines in other parts of the file or in other files, comes from `GET /scans/{id}/code?file=&start=&end=`. It returns lines `start` to `end` of one file of the scan's checkout, read through `CheckoutReader`, at most 200 lines: a longer range stops after 200, and an `end` past the file stops at its last line, so `end_line` in the answer tells where the lines stop. In both, every finding of the scan in the file, hidden ones too, is masked by its tool's adapter, so the lines Gitleaks flagged read `REDACTED`. The endpoint answers 404 for an unknown scan, a path outside the checkout (through `..`, an absolute path or a link), a file that can't be read, and a file with a finding of a tool whose adapter is unknown, since then nothing says which lines to mask. It answers 422 when `start` is below 1 or past the end of the file, or `end` is before `start`.
+
+The finding detail lists the reviewer's edits in `edits`, every row of `finding_edits` for the finding, newest first, with the fields of `latest_edit`, so the screen can show the edit history. The AI's verdict stays in `verdict`.
+
+A row of the review queue, `GET /scans/{id}/findings`, that belongs to a duplicate group carries `group_size`, the number of findings in the group, itself included, and `group_states`, the number of those members in each state. Both count the whole group whatever the filters, the same members as `group` in the finding detail, so a collapsed group row can show "1 of 2 approved" without more requests. Hidden findings are never grouped, so every member is in the queue. Both are null for a finding without a group. The list query counts them for the whole page at once.

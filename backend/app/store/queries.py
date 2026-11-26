@@ -62,6 +62,13 @@ LATEST_EDIT = """
 SELECT e.* FROM finding_edits e WHERE e.finding_id = f.id ORDER BY e.created_at DESC LIMIT 1
 """
 
+# The size of the finding's duplicate group and its members' states, counted over the scan's
+# findings before any filter, so a row knows its whole group. Members of a group are always of
+# the group's scan.
+GROUP_STATES = ", ".join(
+    f"'{state}', count(*) FILTER (WHERE st.state = '{state}') OVER g" for state in STATES
+)
+
 ITEMS = f"""
 SELECT
     f.id, f.scan_id, f.run_id, f.group_id, f.tool, f.tool_version, f.rule_id, f.cwe, f.message,
@@ -71,12 +78,15 @@ SELECT
     coalesce(e.verdict, v.verdict) AS verdict,
     coalesce(e.cvss_v4_level, v.cvss_v4_level) AS severity,
     coalesce(e.cvss_v4_score, v.cvss_v4_score) AS score,
-    coalesce(v.injection_suspected, false) AS injection_suspected
+    coalesce(v.injection_suspected, false) AS injection_suspected,
+    CASE WHEN f.group_id IS NOT NULL THEN count(*) OVER g END AS group_size,
+    CASE WHEN f.group_id IS NOT NULL THEN jsonb_build_object({GROUP_STATES}) END AS group_states
 FROM findings f
 JOIN finding_states st ON st.finding_id = f.id
 LEFT JOIN LATERAL ({LATEST_VERDICT}) v ON true
 LEFT JOIN LATERAL ({LATEST_EDIT}) e ON true
 WHERE f.scan_id = %(scan_id)s AND st.scan_id = %(scan_id)s
+WINDOW g AS (PARTITION BY f.group_id)
 """
 
 FILTERED = f"""
@@ -123,6 +133,10 @@ WHERE f.id = %(id)s
 
 FINDING_EDIT = f"SELECT e.* FROM findings f, LATERAL ({LATEST_EDIT}) e WHERE f.id = %(id)s"
 
+FINDING_EDITS = """
+SELECT * FROM finding_edits WHERE finding_id = %(id)s ORDER BY created_at DESC, id
+"""
+
 FINDING_REVIEWS = """
 SELECT id, decision, reviewer, comment, verdict_id, finding_edit_id, created_at
 FROM reviews WHERE finding_id = %(id)s ORDER BY created_at DESC, id
@@ -148,7 +162,7 @@ ORDER BY f.file, f.start_line, f.rule_id, f.id
 
 FLAGGED_LINES = """
 SELECT DISTINCT tool, start_line, end_line FROM findings
-WHERE scan_id = %(scan_id)s AND file = %(file)s
+WHERE scan_id = %(scan_id)s AND file = ANY(%(files)s::text[])
 ORDER BY tool, start_line, end_line
 """
 
@@ -214,11 +228,13 @@ class FindingsReader:
             row = conn.execute("SELECT 1 FROM scans WHERE id = %s", (scan_id,)).fetchone()
         return row is not None
 
-    def flagged_lines(self, scan_id: str, file: str) -> list[dict]:
-        """The tool and lines of every finding of the scan in the file, hidden ones too, for
-        masking the code around one of them."""
+    def flagged_lines(self, scan_id: str, *files: str) -> list[dict]:
+        """The tool and lines of every finding of the scan in the files, hidden ones too, for
+        masking the code around one of them. Two names of one file, such as a link and its
+        target, give the findings under either name."""
         with self._connect() as conn:
-            return conn.execute(FLAGGED_LINES, {"scan_id": scan_id, "file": file}).fetchall()
+            params = {"scan_id": scan_id, "files": list(files)}
+            return conn.execute(FLAGGED_LINES, params).fetchall()
 
     def list_findings(
         self, scan_id: str, filters: FindingFilter, limit: int, offset: int
@@ -232,7 +248,7 @@ class FindingsReader:
         return total, rows
 
     def get_finding(self, finding_id: str) -> dict | None:
-        """The finding with its locations, its latest verdict and edit, its reviews, the review
+        """The finding with its locations, its latest verdict, its edits, its reviews, the review
         carried over from an earlier scan, and its duplicate group with the members."""
         with self._connect() as conn:
             finding = conn.execute(GET_FINDING, {"id": finding_id}).fetchone()
@@ -245,6 +261,7 @@ class FindingsReader:
             ]
             finding["verdict"] = conn.execute(FINDING_VERDICT, {"id": finding_id}).fetchone()
             finding["latest_edit"] = conn.execute(FINDING_EDIT, {"id": finding_id}).fetchone()
+            finding["edits"] = conn.execute(FINDING_EDITS, {"id": finding_id}).fetchall()
             finding["reviews"] = conn.execute(FINDING_REVIEWS, {"id": finding_id}).fetchall()
             finding["carried_review"] = None
             if finding["carried_review_id"] is not None:

@@ -40,24 +40,10 @@ def get_finding(
 
 def read_code(data_dir: Path, finding: dict, flagged: list[dict]) -> dict | None:
     """The flagged lines with up to CONTEXT_LINES lines around them, at most MAX_CODE_LINES in
-    all, from the scan's checkout in the data folder. flagged holds the tool and lines of every
-    finding of the scan in the same file, and each is masked by its tool's adapter the same way
-    as its stored snippets, so a secret Gitleaks found a few lines away doesn't show either.
-    None when the file can't be read, or when one of those tools has no known adapter, since
-    then nothing says which lines must be masked."""
-    registry = AdapterRegistry()
-    try:
-        adapters = [(registry.get(row["tool"]), row) for row in flagged]
-    except AdapterError:
-        return None
-    reader = CheckoutReader(data_dir / "scans" / str(finding["scan_id"]) / "src")
-    lines = reader.read_lines(finding["file"])
+    all, masked by masked_lines. None when masked_lines can't give the file's lines."""
+    lines = masked_lines(data_dir, str(finding["scan_id"]), finding["file"], flagged)
     if lines is None:
         return None
-    for adapter, row in adapters:
-        if isinstance(adapter, BaseSarifAdapter) and adapter.masks:
-            location = Location(finding["file"], row["start_line"], row["end_line"])
-            lines = adapter.mask(lines, location)
     first = max(1, finding["start_line"] - CONTEXT_LINES)
     last = min(len(lines), finding["end_line"] + CONTEXT_LINES, first + MAX_CODE_LINES - 1)
     if first > last:
@@ -68,3 +54,27 @@ def read_code(data_dir: Path, finding: dict, flagged: list[dict]) -> dict | None
         "end_line": last,
         "lines": lines[first - 1 : last],
     }
+
+
+def masked_lines(data_dir: Path, scan_id: str, file: str, flagged: list[dict]) -> list[str] | None:
+    """The lines of a file of the scan's checkout in the data folder. flagged holds the tool
+    and lines of every finding of the scan in the same file, and each is masked by its tool's
+    adapter the same way as its stored snippets, so a secret Gitleaks found a few lines away
+    doesn't show either. None when the file can't be read, or when one of those tools has no
+    known adapter, since then nothing says which lines must be masked."""
+    registry = AdapterRegistry()
+    try:
+        adapters = [(registry.get(row["tool"]), row) for row in flagged]
+    except AdapterError:
+        return None
+    lines = CheckoutReader(checkout_dir(data_dir, scan_id)).read_lines(file)
+    if lines is None:
+        return None
+    for adapter, row in adapters:
+        if isinstance(adapter, BaseSarifAdapter) and adapter.masks:
+            lines = adapter.mask(lines, Location(file, row["start_line"], row["end_line"]))
+    return lines
+
+
+def checkout_dir(data_dir: Path, scan_id: str) -> Path:
+    return data_dir / "scans" / scan_id / "src"
