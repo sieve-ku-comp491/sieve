@@ -1,0 +1,290 @@
+"""The export of a scanned commit, on a local repository served over file://, so these tests
+need no network. The repository has a symbolic link, the tools' ignore files, export-ignore and
+export-subst attributes, a branch, a tag, and a commit that no branch or tag reaches, which
+stands in for a commit that exists only in a fork. A second repository has attributes that
+would convert its files."""
+
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from app.scan import CheckoutExporter, ExportError, RefError, ScopeEntry, split_ref
+from app.scan.exporter import GIT_OPTIONS
+
+
+def git(repo: Path, *args: str, stdin: str | None = None) -> str:
+    env = {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        input=stdin,
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, **env},
+    )
+    return result.stdout.strip()
+
+
+def commit_all(repo: Path, message: str) -> str:
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", message)
+    return git(repo, "rev-parse", "HEAD")
+
+
+@pytest.fixture(scope="module")
+def origin(tmp_path_factory) -> dict:
+    repo = tmp_path_factory.mktemp("origin")
+    git(repo, "init", "-q", "-b", "main")
+    (repo / "app.py").write_text("import os\nos.system(input())\n", encoding="utf-8")
+    (repo / "web").mkdir()
+    (repo / "web" / "index.js").write_text("eval(location.hash)\n", encoding="utf-8")
+    (repo / "hidden.py").write_text("x = 1\n", encoding="utf-8")
+    (repo / "subst.py").write_text("# $Format:%H$\n", encoding="utf-8")
+    (repo / ".gitattributes").write_text(
+        "hidden.py export-ignore\nsubst.py export-subst\n", encoding="utf-8"
+    )
+    for name in (".semgrepignore", ".gitleaks.toml", ".gitleaksignore", ".bandit"):
+        (repo / name).write_text("app.py\n", encoding="utf-8")
+    (repo / "web" / ".semgrepignore").write_text("index.js\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    # A link to the worker's environment, made with plumbing so it is a link on every system.
+    blob = git(repo, "hash-object", "-w", "--stdin", stdin="/proc/self/environ")
+    git(repo, "update-index", "--add", "--cacheinfo", f"120000,{blob},environ")
+    first = commit_all(repo, "first")
+    git(repo, "tag", "v1.0")
+    (repo / "app.py").write_text("print('second')\n", encoding="utf-8")
+    second = commit_all(repo, "second")
+
+    git(repo, "checkout", "-q", "-b", "fork")
+    (repo / "app.py").write_text("print('fork')\n", encoding="utf-8")
+    fork_only = commit_all(repo, "fork only")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "branch", "-q", "-D", "fork")
+    # Serve the unreachable commit when asked for it by hash, as GitHub does for fork commits.
+    git(repo, "config", "uploadpack.allowAnySHA1InWant", "true")
+    git(repo, "config", "uploadpack.allowFilter", "true")
+    return {
+        "entry": ScopeEntry(url=repo.as_uri(), reason="test"),
+        "first": first,
+        "second": second,
+        "fork_only": fork_only,
+    }
+
+
+def export(origin: dict, ref: str | None, dest: Path) -> str:
+    return CheckoutExporter(protocols=("file",)).export(origin["entry"], ref, dest)
+
+
+def files(dest: Path) -> list[str]:
+    return sorted(p.relative_to(dest).as_posix() for p in dest.rglob("*") if p.is_file())
+
+
+def test_the_export_has_regular_files_only_without_links_ignore_files_or_git(origin, tmp_path):
+    dest = tmp_path / "src"
+    assert export(origin, origin["first"], dest) == origin["first"]
+    assert files(dest) == [".gitattributes", "app.py", "hidden.py", "subst.py", "web/index.js"]
+    assert not (dest / "environ").exists() and not (dest / "environ").is_symlink()
+    assert not (dest / ".git").exists()
+
+
+def test_the_repository_attributes_cannot_hide_or_change_files(origin, tmp_path):
+    dest = tmp_path / "src"
+    export(origin, origin["first"], dest)
+    assert (dest / "hidden.py").read_text(encoding="utf-8") == "x = 1\n"
+    assert (dest / "subst.py").read_text(encoding="utf-8") == "# $Format:%H$\n"
+
+
+@pytest.mark.parametrize(
+    ("ref", "expected"),
+    [(None, "second"), ("main", "second"), ("v1.0", "first"), ("HEAD", "second")],
+)
+def test_branches_tags_and_the_default_branch_resolve_to_full_hashes(
+    origin, tmp_path, ref, expected
+):
+    assert export(origin, ref, tmp_path / "src") == origin[expected]
+
+
+@pytest.fixture(scope="module")
+def converted(tmp_path_factory) -> ScopeEntry:
+    """A repository whose second commit adds a .gitattributes that would make git archive
+    convert the files of the first: to UTF-16, to CRLF line endings, and with $Id$ expanded."""
+    repo = tmp_path_factory.mktemp("converted")
+    git(repo, "init", "-q", "-b", "main")
+    for name, content in CONVERTED.items():
+        (repo / name).write_bytes(content)
+    commit_all(repo, "files")
+    (repo / ".gitattributes").write_bytes(
+        b"encoded.py working-tree-encoding=UTF-16\ncrlf.py text eol=crlf\nident.py ident\n"
+    )
+    # Only .gitattributes, so Git doesn't read the files again with the new attributes.
+    git(repo, "add", ".gitattributes")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "attributes")
+    return ScopeEntry(url=repo.as_uri(), reason="test")
+
+
+CONVERTED = {
+    "encoded.py": b"import os\n",
+    "crlf.py": b"a = 1\nb = 2\n",
+    "ident.py": b"# $Id$\n",
+}
+
+
+def test_the_repository_attributes_cannot_change_the_bytes_of_a_file(converted, tmp_path):
+    dest = tmp_path / "src"
+    CheckoutExporter(protocols=("file",)).export(converted, None, dest)
+    assert {name: (dest / name).read_bytes() for name in CONVERTED} == CONVERTED
+
+
+def test_a_short_hash_resolves(origin, tmp_path):
+    assert export(origin, origin["first"][:9], tmp_path / "src") == origin["first"]
+    assert (tmp_path / "src" / "app.py").read_text(encoding="utf-8") == (
+        "import os\nos.system(input())\n"
+    )
+
+
+def test_a_commit_on_no_branch_or_tag_is_refused_even_though_the_server_serves_it(origin, tmp_path):
+    with pytest.raises(ExportError) as refused:
+        export(origin, origin["fork_only"], tmp_path / "src")
+    url = origin["entry"].url
+    assert str(refused.value) == f"commit {origin['fork_only']} is not on a branch or tag of {url}"
+    assert not (tmp_path / "src").exists()
+    assert not (tmp_path / "src.git-work").exists()
+
+
+def test_the_refusal_of_a_commit_leaves_out_what_git_printed(origin, tmp_path, monkeypatch):
+    # Apple's Git 2.39.5 ends its error with this warning, and other builds print nothing.
+    run = subprocess.run
+
+    def run_like_apple_git(args, **kwargs):
+        completed = run(args, **kwargs)
+        if "rev-parse" in args and completed.returncode != 0:
+            completed.stderr += (
+                b"warning: lazy fetching disabled; some objects may not be available\n"
+            )
+        return completed
+
+    monkeypatch.setattr("app.scan.exporter.subprocess.run", run_like_apple_git)
+    with pytest.raises(ExportError) as refused:
+        export(origin, origin["fork_only"], tmp_path / "src")
+    url = origin["entry"].url
+    assert str(refused.value) == f"commit {origin['fork_only']} is not on a branch or tag of {url}"
+
+
+def test_an_unknown_ref_is_refused(origin, tmp_path):
+    with pytest.raises(ExportError) as refused:
+        export(origin, "no-such-branch", tmp_path / "src")
+    url = origin["entry"].url
+    assert (
+        str(refused.value)
+        == f"no-such-branch is not a branch, tag or commit on a branch or tag of {url}"
+    )
+
+
+@pytest.fixture(scope="module")
+def decoy(tmp_path_factory) -> Path:
+    repo = tmp_path_factory.mktemp("decoy")
+    git(repo, "init", "-q", "-b", "main")
+    (repo / "app.py").write_text("print('decoy')\n", encoding="utf-8")
+    commit_all(repo, "decoy")
+    return repo
+
+
+@pytest.mark.parametrize(
+    "where", ["GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_GLOBAL", "HOME", "XDG"]
+)
+def test_git_ignores_the_git_config_of_the_worker_environment(
+    origin, decoy, tmp_path, monkeypatch, where
+):
+    # Config that would export the decoy instead of the scope entry's repository, and a
+    # credential helper that leaves a mark if Git calls it, in each place Git reads config from.
+    marker = tmp_path / "helper-called"
+    config = {
+        f"url.{decoy.as_uri()}.insteadOf": origin["entry"].url,
+        "credential.helper": f"!echo called >>{marker.as_posix()}",
+    }
+    config_file = (
+        f'[url "{decoy.as_uri()}"]\n\tinsteadOf = {origin["entry"].url}\n'
+        f'[credential]\n\thelper = "!echo called >>{marker.as_posix()}"\n'
+    )
+    home = tmp_path / "home"
+    if where == "GIT_CONFIG_COUNT":
+        monkeypatch.setenv("GIT_CONFIG_COUNT", str(len(config)))
+        for number, (key, value) in enumerate(config.items()):
+            monkeypatch.setenv(f"GIT_CONFIG_KEY_{number}", key)
+            monkeypatch.setenv(f"GIT_CONFIG_VALUE_{number}", value)
+    elif where == "GIT_CONFIG_PARAMETERS":
+        quoted = " ".join(f"'{key}'='{value}'" for key, value in config.items())
+        monkeypatch.setenv("GIT_CONFIG_PARAMETERS", quoted)
+    elif where == "GIT_CONFIG_GLOBAL":
+        (tmp_path / "global").write_text(config_file, encoding="utf-8")
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "global"))
+    elif where == "HOME":
+        home.mkdir()
+        (home / ".gitconfig").write_text(config_file, encoding="utf-8")
+        monkeypatch.setenv("HOME", str(home))
+    else:
+        (tmp_path / "xdg" / "git").mkdir(parents=True)
+        (tmp_path / "xdg" / "git" / "config").write_text(config_file, encoding="utf-8")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        monkeypatch.setenv("HOME", str(home))
+
+    dest = tmp_path / "src"
+    assert export(origin, "main", dest) == origin["second"]
+    assert (dest / "app.py").read_text(encoding="utf-8") == "print('second')\n"
+    assert not marker.exists()
+
+
+def test_only_the_allowed_protocols_are_used(origin, tmp_path):
+    with pytest.raises(ExportError, match="cloning .* failed"):
+        CheckoutExporter().export(origin["entry"], None, tmp_path / "src")
+
+
+def test_git_runs_without_credential_helpers_redirects_or_submodules():
+    options = dict(zip(GIT_OPTIONS[1::2], GIT_OPTIONS[0::2], strict=True))
+    assert set(options) == {
+        "credential.helper=",
+        "credential.interactive=false",
+        "core.askPass=",
+        "http.followRedirects=false",
+        "submodule.recurse=false",
+        "fetch.recurseSubmodules=false",
+    }
+
+
+@pytest.mark.parametrize(
+    ("ref", "split"),
+    [
+        (None, (None, "HEAD")),
+        ("", (None, "HEAD")),
+        (
+            "2AA4CC14F251E4A780E94E200AED6B36A5B15C21",
+            ("2aa4cc14f251e4a780e94e200aed6b36a5b15c21", None),
+        ),
+        ("2aa4cc1", (None, "2aa4cc1")),
+        ("release/v3.0.0", (None, "release/v3.0.0")),
+    ],
+)
+def test_split_ref(ref, split):
+    assert split_ref(ref) == split
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "--upload-pack=touch /tmp/x",
+        "-x",
+        "a..b",
+        "a b",
+        "main.lock",
+        "a//b",
+        "x/.hidden",
+        "@{1}",
+        "main\n",
+        "2aa4cc14f251e4a780e94e200aed6b36a5b15c21\n",
+    ],
+)
+def test_refs_that_could_be_options_or_odd_names_are_refused(ref):
+    with pytest.raises(RefError):
+        split_ref(ref)

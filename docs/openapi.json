@@ -27,6 +27,45 @@
       }
     },
     "/scans": {
+      "post": {
+        "tags": [
+          "scans"
+        ],
+        "summary": "Start Scan",
+        "description": "Starts a scan of a repository in the scope file (requirement F2). The scope check runs\nfirst, and a refused repository gets an error with nothing created. Otherwise the scan is\nqueued as a background job: read its progress with GET /scans/{scan_id}.",
+        "operationId": "start_scan_scans_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartScan"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanStarted"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "the repository is not in the scope file"
+          },
+          "422": {
+            "description": "the URL or the commit breaks the rules of requirement F2"
+          },
+          "500": {
+            "description": "the scope file can't be loaded"
+          }
+        }
+      },
       "get": {
         "tags": [
           "scans"
@@ -1897,6 +1936,68 @@
           "hidden_count"
         ],
         "title": "ScanDetail"
+      },
+      "ScanStarted": {
+        "properties": {
+          "scan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Scan Id"
+          },
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          },
+          "repo_url": {
+            "type": "string",
+            "title": "Repo Url",
+            "description": "the repository URL, normalized as in the scope check"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scan_id",
+          "job_id",
+          "repo_url",
+          "status"
+        ],
+        "title": "ScanStarted"
+      },
+      "StartScan": {
+        "properties": {
+          "repo_url": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Repo Url",
+            "description": "an https URL of a repository in the scope file, without a user name, password, port, query or fragment",
+            "examples": [
+              "https://github.com/adeyosemanputra/pygoat"
+            ]
+          },
+          "commit": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit",
+            "description": "a full or short commit hash, a branch or a tag. The commit must be on a branch or tag of the repository. The default branch when left out."
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo_url"
+        ],
+        "title": "StartScan"
       },
       "TriageRun": {
         "properties": {

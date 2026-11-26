@@ -5,13 +5,55 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_reader
-from app.api.models import FindingPage, Level, Scan, ScanDetail, State, ToolSeverity, Verdict
+from app.api.deps import get_reader, get_scan_service
+from app.api.models import (
+    FindingPage,
+    Level,
+    Scan,
+    ScanDetail,
+    ScanStarted,
+    StartScan,
+    State,
+    ToolSeverity,
+    Verdict,
+)
+from app.scan import OutOfScope, RefError, ScanService, ScopeError, UrlError
+from app.scan.service import NoQueue
 from app.store.queries import FindingFilter, FindingsReader
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
 Reader = Annotated[FindingsReader, Depends(get_reader)]
+Service = Annotated[ScanService, Depends(get_scan_service)]
+
+
+@router.post(
+    "",
+    status_code=202,
+    response_model=ScanStarted,
+    responses={
+        403: {"description": "the repository is not in the scope file"},
+        422: {"description": "the URL or the commit breaks the rules of requirement F2"},
+        500: {"description": "the scope file can't be loaded"},
+    },
+)
+def start_scan(body: StartScan, service: Service):
+    """Starts a scan of a repository in the scope file (requirement F2). The scope check runs
+    first, and a refused repository gets an error with nothing created. Otherwise the scan is
+    queued as a background job: read its progress with GET /scans/{scan_id}."""
+    try:
+        started = service.start_scan(body.repo_url, body.commit)
+    except OutOfScope as error:
+        raise HTTPException(403, str(error)) from None
+    except (UrlError, RefError) as error:
+        raise HTTPException(422, str(error)) from None
+    except ScopeError as error:
+        raise HTTPException(500, str(error)) from None
+    except NoQueue as error:
+        raise HTTPException(503, str(error)) from None
+    return ScanStarted(
+        scan_id=started.scan_id, job_id=started.job_id, repo_url=started.repo_url, status="queued"
+    )
 
 
 @router.get("", response_model=list[Scan])
