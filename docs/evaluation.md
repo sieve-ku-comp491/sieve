@@ -112,14 +112,16 @@ The answers go to `eval-data/answers/<dataset>/`, outside the copy: `expected.cs
 
 The copies stay on the machine that made them, and evaluation runs load them into the findings store from there. Requirement F2 lets Sieve scan only public repositories listed in the scope file, cloned over `https://`, and a copy is a local repository, so it can't go through a scan request. We don't push the copies to a public repository to get around that: both Benchmarks are GPL, which asks a published copy to keep the copyright notices that name OWASP Benchmark, and a public copy could end up in a later model's training data, which is what the copy is there to avoid.
 
-The analyzers run on the copy as in the baseline run, and `python -m app.store load-sarif` stores each analyzer's SARIF file as a scan of the copy, from backend/:
+The analyzers run on the copy as in the baseline run, and `python -m app.store load-sarif` stores the copy as one scan, with a run for each analyzer's SARIF file, from backend/:
 
-    python -m app.store load-sarif --manifest ../plugins/bandit/plugin.toml \
-        --sarif <bandit.sarif> --checkout ../eval-data/neutral/benchmark-python \
+    python -m app.store load-sarif \
+        --manifest ../plugins/semgrep/plugin.toml --sarif <semgrep.sarif> \
+        --manifest ../plugins/bandit/plugin.toml --sarif <bandit.sarif> \
+        --checkout ../eval-data/neutral/benchmark-python \
         --repo-url eval:benchmark-python/t6.4 \
         --commit $(git -C ../eval-data/neutral/benchmark-python rev-parse HEAD)
 
-`load-sarif` copies the checkout into the data folder, where triage reads it like the checkout of any scan, and clones nothing. The `eval:` prefix marks these scans as evaluation runs, and it can't match a scope entry, since those start with `https://`. The part after the Benchmark names the run, here `t6.4`. Repeated scans are matched by repository URL, so two loads of the same copy under one URL would match, and findings rejected in an earlier run would come back hidden and skip grouping and triage. Each evaluation run gets its own name to keep them apart. On a throwaway PostgreSQL 17, this stored 536 Bandit findings for the Python copy and 3,176 Semgrep findings for the Java copy. docs/requirements.md gives this as the one exception to F2. Until #71 changes it, load-sarif accepts any URL, and from then on only these `eval:` URLs and the repositories in the scope file.
+`load-sarif` copies the checkout into the data folder, where triage reads it like the checkout of any scan, and clones nothing. The `eval:` prefix marks these scans as evaluation runs, and it can't match a scope entry, since those start with `https://`. The part after the Benchmark names the run, here `t6.4`. Repeated scans are matched by repository URL, so two loads of the same copy under one URL would match, and findings rejected in an earlier run would come back hidden and skip grouping and triage. Each evaluation run gets its own name to keep them apart. Grouping works within a scan, so with both analyzers in one scan, duplicates across the two tools are grouped as in a real scan. On a throwaway PostgreSQL 17, this stored 2,009 findings for the Python copy, 1,473 from Semgrep and 536 from Bandit, and 11,380 for the Java copy, 3,176 from Semgrep and 8,204 from SpotBugs, the 13,389 of the T6.4 limits. docs/requirements.md gives this as the one exception to F2. load-sarif accepts only these `eval:` URLs and the repositories in the scope file.
 
 The code itself can still look familiar to a model, as docs/data-flow.md says, which is why the evaluation also uses CWE-Bench-Java and the recent CVEs.
 
