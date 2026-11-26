@@ -146,6 +146,12 @@ WHERE f.group_id = %(id)s AND st.group_id = %(id)s
 ORDER BY f.file, f.start_line, f.rule_id, f.id
 """
 
+FLAGGED_LINES = """
+SELECT DISTINCT tool, start_line, end_line FROM findings
+WHERE scan_id = %(scan_id)s AND file = %(file)s
+ORDER BY tool, start_line, end_line
+"""
+
 
 @dataclass
 class FindingFilter:
@@ -207,6 +213,12 @@ class FindingsReader:
         with self._connect() as conn:
             row = conn.execute("SELECT 1 FROM scans WHERE id = %s", (scan_id,)).fetchone()
         return row is not None
+
+    def flagged_lines(self, scan_id: str, file: str) -> list[dict]:
+        """The tool and lines of every finding of the scan in the file, hidden ones too, for
+        masking the code around one of them."""
+        with self._connect() as conn:
+            return conn.execute(FLAGGED_LINES, {"scan_id": scan_id, "file": file}).fetchall()
 
     def list_findings(
         self, scan_id: str, filters: FindingFilter, limit: int, offset: int

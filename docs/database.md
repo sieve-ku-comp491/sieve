@@ -492,13 +492,13 @@ Report drafts are charged to the latest triage run of the finding's scan, so the
 
 ### llm_calls
 
-Every call that goes through `LLMClient`: triage, severity, deduplication and report drafts. The LLM client (#34) already creates this table from `backend/app/llm/llm_calls.sql`, and `CallLog.record()` writes one row per call and returns its `id`, the call ID that verdicts and groups link to (requirement N3). The columns below are that file's, plus `triage_run_id`, the only one the review side adds.
+Every call that goes through `LLMClient`: triage, severity, deduplication and report drafts. Migration `0002_llm_calls.sql` creates this table, which the LLM client (#34) used to create on its own, and `CallLog.record()` writes one row per call and returns its `id`, the call ID that verdicts and groups link to (requirement N3). The columns below are those of `0002_llm_calls.sql`, plus `triage_run_id`, the only one the review side adds, in `0003_review_side.sql`.
 
 | Column | Type | Can be empty | Meaning |
 |---|---|---|---|
 | `id` | uuid | no | primary key, the call ID |
-| `job_id` | uuid | yes | the job that made the call. It will reference `jobs` once the findings store creates that table, as `llm_calls.sql` says. |
-| `triage_run_id` | uuid | yes | the run whose budget the call is charged to, references `triage_runs`: the triage run itself, or for a report draft the latest triage run of the finding's scan. Empty for calls outside a run, such as the smoke test. Not called `run_id`, because `findings.run_id` is the plug-in run. Added to `llm_calls.sql` with the findings store's migrations. |
+| `job_id` | uuid | yes | the job that made the call, references `jobs` |
+| `triage_run_id` | uuid | yes | the run whose budget the call is charged to, references `triage_runs`: the triage run itself, or for a report draft the latest triage run of the finding's scan. Empty for calls outside a run, such as the smoke test. Not called `run_id`, because `findings.run_id` is the plug-in run. Added by `0003_review_side.sql`. |
 | `provider` | text | no | the provider's `name`, such as `anthropic` or `openai` |
 | `model` | text | no | the model that was asked for |
 | `model_version` | text | yes | the exact model version the API answered with |
@@ -685,8 +685,8 @@ Besides the primary keys and the unique constraints above:
 | `jobs` | `(created_at)` where `status = 'queued'` | the worker taking the oldest waiting job |
 | `triage_runs` | `(scan_id, created_at)` | the runs of a scan, and whether its group step has finished |
 | `llm_calls` | `(triage_run_id)` | the calls and the cost of a run (requirement N1) |
-| `llm_calls` | `(cache_key, created_at DESC)` where `NOT cached AND error IS NULL AND stop_reason = 'complete'` | the cache lookup, created by `llm_calls.sql` |
-| `llm_calls` | `(job_id)` | the calls of a job, created by `llm_calls.sql` |
+| `llm_calls` | `(cache_key, created_at DESC)` where `NOT cached AND error IS NULL AND stop_reason = 'complete'` | the cache lookup, created by `0002_llm_calls.sql` |
+| `llm_calls` | `(job_id)` | the calls of a job, created by `0002_llm_calls.sql` |
 | `verdicts` | `(finding_id, created_at DESC)` | the latest verdict of a finding |
 | `verdicts` | `(group_id, created_at DESC)` | the latest verdict of a group |
 | `verdict_llm_calls` | `(llm_call_id)` | the verdict a call belongs to, when reading the call log |

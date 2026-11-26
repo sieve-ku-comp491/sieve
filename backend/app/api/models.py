@@ -259,8 +259,10 @@ class FindingDetail(BaseModel):
     created_at: datetime
     state: State
     code: Code | None = Field(
-        description="the flagged lines with up to 10 lines before and after. Empty when the "
-        "checkout can't be read."
+        description="the flagged lines with up to 10 lines before and after, at most 200 lines: "
+        "a longer finding shows its first lines, and end_line tells where the window stops. "
+        "Lines that any finding of the scan masks, such as a secret Gitleaks found, read "
+        "REDACTED. Empty when the checkout can't be read."
     )
     verdict: VerdictOut | None = Field(description="the latest verdict of its triage item")
     latest_edit: FindingEdit | None
